@@ -3,6 +3,7 @@
 ## Release 0.5.1
 - Fixed a leak memory with timer events.
 - Improved timer events accuracy.
+- Fixed decoding issue when the messages length was less than encoding padding.
 
 ## Release 0.5.0
 - Renamed: `receive_event_timeout` to `receive_timeout`.

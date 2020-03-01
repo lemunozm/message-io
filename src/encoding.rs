@@ -60,8 +60,9 @@ impl Decoder {
             self.decoded_data.extend_from_slice(&data[..pos]);
             &data[pos..]
         }
-        // No decoded data into decoder, first time data arrives.
-        else if data.len() >= PADDING {
+        // No decoded data into decoder.
+        else if self.decoded_data.len() + data.len() >= PADDING {
+            // Deserializing the decoded data size
             let size_pos = std::cmp::min(PADDING - self.decoded_data.len(), PADDING);
             self.decoded_data.extend_from_slice(&data[..size_pos]);
             let expected_size =
@@ -78,7 +79,7 @@ impl Decoder {
                 &data[expected_size..]
             }
         }
-        // No decoded data into decoder. First time data arrives. Not enough data to know about size.
+        // No decoded data into decoder. Not enough data to know about size.
         else {
             self.decoded_data.extend_from_slice(data);
             &data[data.len()..]
@@ -271,6 +272,39 @@ mod tests {
         let (decoded_data, next_data) = decoder.decode(next_data);
         assert_eq!(next_data.len(), 0);
         assert_eq!(decoded_data.unwrap(), &MESSAGE);
+    }
+
+    #[test]
+    // Data content:
+    // a\n   -> 2 < PADDING
+    // aa\n  -> 5 > PADDING
+    // aaa\n -> 9 > PADDING
+    fn decode_len_less_than_padding() {
+        let mut buffer = Vec::new();
+        let mut decoder = Decoder::new();
+
+        buffer.push('a' as u8);
+        buffer.push('\n' as u8);
+        let (decoded_data, next_data) = decoder.decode(&buffer);
+        assert!(decoded_data.is_none());
+        assert_eq!(next_data.len(), 0);
+        buffer.clear();
+
+        buffer.push('a' as u8);
+        buffer.push('a' as u8);
+        buffer.push('\n' as u8);
+        let (decoded_data, next_data) = decoder.decode(&buffer);
+        assert!(decoded_data.is_none());
+        assert_eq!(next_data.len(), 0);
+        buffer.clear();
+
+        buffer.push('a' as u8);
+        buffer.push('a' as u8);
+        buffer.push('a' as u8);
+        buffer.push('\n' as u8);
+        let (decoded_data, next_data) = decoder.decode(&buffer);
+        assert!(decoded_data.is_none());
+        assert_eq!(next_data.len(), 0);
     }
 
     //TODO: test DecodingPool

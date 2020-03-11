@@ -28,7 +28,7 @@ Of course, any contribution is welcome!
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.2"
+message-io = "0.3"
 ```
 
 ### Documentation

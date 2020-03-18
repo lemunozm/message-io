@@ -1,12 +1,12 @@
 # Changelog
 
-## To be released
+## Release 0.3.2
 - Internal behavior changed: non-blocking TCP stream.
-- Internal thread names for debugging easily.
 - Fixed some UDP issues.
+- Internal thread names for debugging easily.
 - Modified *distributed* example to use UDP instead of TCP in the participant connections.
 
-## Current 0.3.1
+## Release 0.3.1
 - Fixed issue with the `TcpListener`.
   Sometimes a socket was not registered into the connection registry
   if several endpoints connect to a same listener at the same time.

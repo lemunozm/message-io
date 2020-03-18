@@ -1,5 +1,9 @@
 # Changelog
 
+## To be released
+- Added multicast feature.
+- Added multicast example.
+
 ## Release 0.3.2
 - Internal behavior changed: non-blocking TCP stream.
 - Fixed some UDP issues.

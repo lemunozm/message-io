@@ -84,6 +84,7 @@ dependencies = [
  "crossbeam-channel",
  "log",
  "mio",
+ "net2",
  "serde",
 ]
 
@@ -108,6 +109,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07b88fb9795d4d36d62a012dfbf49a8f5cf12751f36d31a9dbe66d528e58979e"
 dependencies = [
  "socket2",
+ "winapi",
+]
+
+[[package]]
+name = "net2"
+version = "0.2.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ba7c918ac76704fb42afcbbb43891e72731f3dcca3bef2a19786297baf14af7"
+dependencies = [
+ "cfg-if",
+ "libc",
  "winapi",
 ]
 

@@ -7,6 +7,7 @@ use std::net::{SocketAddr};
 use std::thread::{self, JoinHandle};
 use std::fmt::{self};
 use std::time::{Duration};
+use std::io::{self};
 
 /// Alias to improve the management of the connection ids.
 pub type Endpoint = usize;
@@ -18,6 +19,7 @@ const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 pub enum TransportProtocol {
     Tcp,
     Udp,
+    UdpMulticast,
 }
 
 /// Input network events.
@@ -102,32 +104,44 @@ impl<'a> NetworkManager {
     /// Only for TCP, if the connection can not be performed (the address is not reached) a None will be returned.
     /// UDP has no the ability to be aware of this, so always an endpoint will be returned.
     pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
-        match transport {
+        self.register_connection(match transport {
             TransportProtocol::Tcp => Connection::new_tcp_stream(addr),
             TransportProtocol::Udp => Connection::new_udp_socket(addr),
-        }
-        .ok()
-        .map(|connection| {
-            let address = connection.local_address();
-            let endpoint = self.network_controller.add_connection(connection);
-            (endpoint, address)
+            _ => panic!("UdpMulticast is only valid for listening")
         })
     }
 
     /// Open a port to listen messages from either TCP or UDP.
     /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
     pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
-        match transport {
+        self.register_connection(match transport {
             TransportProtocol::Tcp => Connection::new_tcp_listener(addr),
             TransportProtocol::Udp => Connection::new_udp_listener(addr),
-        }
-        .ok()
-        .map(|connection| {
-            let address = connection.local_address();
-            let endpoint = self.network_controller.add_connection(connection);
-            (endpoint, address)
+            TransportProtocol::UdpMulticast => {
+                match addr {
+                    SocketAddr::V4(addr) => Connection::new_udp_multicast_listener(addr),
+                    _ => panic!("UdpMulticast is only valid for ipv4 addresses")
+                }
+            }
         })
     }
+
+    fn register_connection(&mut self, connection: io::Result<Connection>) -> Option<(Endpoint, SocketAddr)> {
+        connection
+            .ok()
+            .map(|connection| {
+                let address = connection.local_address();
+                let endpoint = self.network_controller.add_connection(connection);
+                (endpoint, address)
+            })
+    }
+
+    /// Remove the endpoint.
+    /// Returns None if the endpoint does not exists.
+    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
+        self.network_controller.remove_connection(endpoint)
+    }
+
 
     /// Retrieve the local address associated to an endpoint, or None if the endpoint does not exists.
     pub fn endpoint_local_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
@@ -137,12 +151,6 @@ impl<'a> NetworkManager {
     /// Retrieve the address associated to an endpoint, or None if the endpoint does not exists or the endpoint is a listener.
     pub fn endpoint_remote_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
         self.network_controller.connection_remote_address(endpoint)
-    }
-
-    /// Remove the endpoint.
-    /// Returns None if the endpoint does not exists.
-    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
-        self.network_controller.remove_connection(endpoint)
     }
 
     /// Serialize and send the message thought the connection represented by the given endpoint.

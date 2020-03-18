@@ -1,7 +1,8 @@
 use mio::net::{TcpListener, TcpStream, UdpSocket};
 use mio::{event, Poll, Interest, Token, Events, Registry};
 
-use std::net::{SocketAddr, TcpStream as StdTcpStream};
+use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr, TcpStream as StdTcpStream};
+use net2::{UdpBuilder};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration};
 use std::collections::{HashMap};
@@ -47,6 +48,14 @@ impl Connection {
         UdpSocket::bind(addr).map(|socket| Connection::UdpListener(socket))
     }
 
+    pub fn new_udp_multicast_listener(addr: SocketAddrV4) -> io::Result<Connection> {
+        let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
+        UdpBuilder::new_v4().unwrap().reuse_address(true).unwrap().bind(listening_addr).map(|socket| {
+            socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
+            Connection::UdpListener(UdpSocket::from_std(socket))
+        })
+    }
+
     pub fn new_udp_socket(addr: SocketAddr) -> io::Result<Connection> {
         UdpSocket::bind("0.0.0.0:0".parse().unwrap()).map(|socket| {
             socket.connect(addr).unwrap();
@@ -81,17 +90,32 @@ impl Connection {
         }
     }
 
-    pub fn tcp_listener(&mut self) -> &mut TcpListener {
+    fn tcp_listener(&mut self) -> &mut TcpListener {
         match self {
             Connection::TcpListener(listener) => listener,
             _ => panic!(),
         }
     }
 
-    pub fn udp_listener(&mut self) -> &mut UdpSocket {
+    fn udp_listener(&mut self) -> &mut UdpSocket {
         match self {
             Connection::UdpListener(socket) => socket,
             _ => panic!(),
+        }
+    }
+}
+
+impl Drop for Connection {
+    fn drop(&mut self) {
+        match self {
+            Connection::UdpListener(socket) => {
+                if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
+                    if addr.ip().is_multicast() {
+                        socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
+                    }
+                }
+            },
+            _ => (),
         }
     }
 }
@@ -148,7 +172,7 @@ impl Store {
         }
     }
 
-    pub fn register_virtual_socket_connection(&mut self, addr: SocketAddr) -> (bool, usize) {
+    fn register_virtual_socket_connection(&mut self, addr: SocketAddr) -> (bool, usize) {
         match self.virtual_socket_connections_addr_id.get(&addr) {
             Some(id) => (false, *id),
             None => {

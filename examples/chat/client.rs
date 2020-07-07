@@ -16,8 +16,9 @@ pub fn run() {
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
     let addr = "127.0.0.1:3000".parse().unwrap();
-    if let Some(server) = network.connect(addr, TransportProtocol::Tcp) {
-        println!("Connected to server: {}", addr);
+    let protocol = TransportProtocol::Tcp;
+    if let Some(server) = network.connect(addr, protocol) {
+        println!("Connected to server by {} at {}", protocol, addr);
         event_queue.sender().send_with_timer(Event::Signal(Signal::WriteToServer), Duration::from_secs(1));
 
         loop {
@@ -49,6 +50,6 @@ pub fn run() {
         }
     }
     else {
-        println!("Can not connect to the server");
+        println!("Can not connect to the server by {} to {}", protocol, addr);
     }
 }

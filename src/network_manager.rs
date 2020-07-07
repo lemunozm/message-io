@@ -5,12 +5,20 @@ use serde::{Serialize, Deserialize};
 
 use std::net::{SocketAddr};
 use std::thread::{self, JoinHandle};
+use std::fmt::{self};
 
 pub type ConnectionId = usize;
 
+#[derive(Debug, Clone, Copy)]
 pub enum TransportProtocol {
     Tcp,
     Udp,
+}
+
+impl fmt::Display for TransportProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", format!("{:?}", self).to_lowercase())
+    }
 }
 
 pub struct NetworkManager {

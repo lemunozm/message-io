@@ -43,15 +43,15 @@ impl<'a> NetworkManager {
     }
 
     pub fn create_tcp_stream(&mut self, addr: SocketAddr) -> Option<ConnectionId> {
-        Connection::new_tcp_stream(addr).ok().map(|connection| {
-            self.network_controller.add_connection(connection)
-        })
+        Connection::new_tcp_stream(addr)
+            .ok()
+            .map(|connection| self.network_controller.add_connection(connection))
     }
 
     pub fn create_tcp_listener(&mut self, addr: SocketAddr) -> Option<ConnectionId> {
-        Connection::new_tcp_listener(addr).ok().map(|connection| {
-            self.network_controller.add_connection(connection)
-        })
+        Connection::new_tcp_listener(addr)
+            .ok()
+            .map(|connection| self.network_controller.add_connection(connection))
     }
 
     pub fn remove_connection(&mut self, connection_id: ConnectionId) {
@@ -60,11 +60,9 @@ impl<'a> NetworkManager {
 
     pub fn send<M>(&mut self, connection_id: ConnectionId, message: M)
     where M: Serialize + Deserialize<'a> + Send + 'static {
-        todo!()
     }
 
     pub fn send_all<'b, M>(&mut self, connection_ids: impl IntoIterator<Item=&'b ConnectionId>, message: M)
     where M: Serialize + Deserialize<'a> + Send + 'static {
-        todo!()
     }
 }

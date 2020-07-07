@@ -105,11 +105,17 @@ impl<'a> Receiver {
     }
 
     pub fn receive(&mut self) -> (usize, Event<'a>) {
-        self.receive_timeout(Duration::from_secs(0)).unwrap()
+        self.poll.poll(&mut self.events, None).unwrap();
+        self.process_event()
     }
 
     pub fn receive_timeout(&mut self, timeout: Duration) -> Option<(usize, Event<'a>)> {
-        self.poll.poll(&mut self.events, Some(timeout)).unwrap();
+        self.poll.poll(&mut self.events, Some(timeout))
+            .ok()
+            .map(|_| self.process_event())
+    }
+
+    fn process_event(&mut self) -> (usize, Event<'a>) {
         self.events.iter().next().map(|event| {
             match event.token() {
                 token => {
@@ -118,16 +124,15 @@ impl<'a> Receiver {
                     match store.endpoints.get(&id).unwrap() {
                         Connection::Listener(listener) => {
                             listener.accept();
-                            Some((id, Event::Connection))
+                            (id, Event::Connection)
                         },
                         Connection::Stream(stream) => {
-                            Some((id, Event::Connection))
+                            (id, Event::Connection)
                         }
-                    };
+                    }
                 }
             }
-        });
-        None
+        }).unwrap()
     }
 }
 

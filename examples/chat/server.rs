@@ -1,7 +1,7 @@
 use super::common::Message;
 
 use message_io::events::{EventQueue, Event};
-use message_io::network_manager::{NetworkManager, ConnectionId};
+use message_io::network_manager::{NetworkManager, TransportProtocol, ConnectionId};
 
 use std::time::{Duration};
 use std::net::{SocketAddr};
@@ -19,7 +19,7 @@ pub fn run() {
     let mut clients: HashMap<ConnectionId, SocketAddr> = HashMap::new();
     let listen_addr = "127.0.0.1:3000".parse().unwrap();
 
-    if let Some(_) = network.create_tcp_listener(listen_addr) {
+    if let Some(_) = network.listen(listen_addr, TransportProtocol::Tcp) {
         println!("Server running at {}", listen_addr);
         event_queue.sender().send_with_timer(Event::Signal(Signal::NotifyDisconnection), Duration::from_secs(5));
 
@@ -59,6 +59,6 @@ pub fn run() {
         }
     }
     else {
-        println!("Can not listening at selected address/port");
+        println!("Can not listening at selected interface/port");
     }
 }

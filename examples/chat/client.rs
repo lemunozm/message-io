@@ -1,7 +1,7 @@
 use super::common::Message;
 
 use message_io::events::{EventQueue, Event};
-use message_io::network_manager::{NetworkManager};
+use message_io::network_manager::{NetworkManager, TransportProtocol};
 
 use std::time::{Duration};
 
@@ -16,7 +16,7 @@ pub fn run() {
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
     let addr = "127.0.0.1:3000".parse().unwrap();
-    if let Some(server) = network.create_tcp_stream(addr) {
+    if let Some(server) = network.connect(addr, TransportProtocol::Tcp) {
         println!("Connected to server: {}", addr);
         event_queue.sender().send_with_timer(Event::Signal(Signal::WriteToServer), Duration::from_secs(1));
 

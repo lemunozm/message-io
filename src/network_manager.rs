@@ -8,6 +8,11 @@ use std::thread::{self, JoinHandle};
 
 pub type ConnectionId = usize;
 
+pub enum TransportProtocol {
+    Tcp,
+    Udp,
+}
+
 pub struct NetworkManager {
     network_event_thread: JoinHandle<()>,
     network_controller: network::Controller,
@@ -43,16 +48,22 @@ impl<'a> NetworkManager {
         }
     }
 
-    pub fn create_tcp_stream(&mut self, addr: SocketAddr) -> Option<ConnectionId> {
-        Connection::new_tcp_stream(addr)
-            .ok()
-            .map(|connection| self.network_controller.add_connection(connection))
+    pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<ConnectionId> {
+        match transport {
+            TransportProtocol::Tcp => Connection::new_tcp_stream(addr),
+            TransportProtocol::Udp => Connection::new_udp_socket(addr),
+        }
+        .ok()
+        .map(|connection| self.network_controller.add_connection(connection))
     }
 
-    pub fn create_tcp_listener(&mut self, addr: SocketAddr) -> Option<ConnectionId> {
-        Connection::new_tcp_listener(addr)
-            .ok()
-            .map(|connection| self.network_controller.add_connection(connection))
+    pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<ConnectionId> {
+        match transport {
+            TransportProtocol::Tcp => Connection::new_tcp_listener(addr),
+            TransportProtocol::Udp => Connection::new_udp_listener(addr),
+        }
+        .ok()
+        .map(|connection| self.network_controller.add_connection(connection))
     }
 
     pub fn connection_address(&mut self, connection_id: ConnectionId) -> Option<SocketAddr> {

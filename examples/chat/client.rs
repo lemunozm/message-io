@@ -1,7 +1,7 @@
 use super::common::Message;
 
-use message_io::events::{self, Event};
-use message_io::network_manager::{NetworkManager, Endpoint};
+use message_io::events::{EventQueue, Event};
+use message_io::network_manager::{NetworkManager};
 
 use std::time::{Duration};
 
@@ -12,10 +12,10 @@ enum Signal {
 }
 
 pub fn run() {
-    let mut event_queue = EventQueue::new<Message, Signal, Endpoint>();
+    let mut event_queue = EventQueue::new();
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
-    if let Some(server) = network.create_tcp_connection("127.0.0.1:3000".parse().unwrap()) {
+    if let Some(server) = network.create_tcp_stream("127.0.0.1:3000".parse().unwrap()) {
         println!("Server connected");
         event_queue.sender().send(Event::Signal(Signal::WriteToServer));
 
@@ -30,7 +30,7 @@ pub fn run() {
                     Signal::Close => {
                         println!("Closing client");
                         network.send(server, Message::Bye);
-                        network.remove_tcp_connection(server);
+                        network.remove_connection(server);
                         return;
                     }
                 }

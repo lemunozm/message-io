@@ -50,6 +50,13 @@ impl Connection {
             Connection::Stream(ref mut stream) => stream,
         }
     }
+
+    pub fn address(&self) -> SocketAddr {
+        match *self {
+            Connection::Listener(ref listener) => listener.local_addr().unwrap(),
+            Connection::Stream(ref stream) => stream.peer_addr().unwrap(),
+        }
+    }
 }
 
 struct Store {
@@ -67,7 +74,7 @@ impl Controller {
         Controller { store, registry }
     }
 
-    pub fn add_endpoint(&mut self, mut endpoint: Connection) -> usize {
+    pub fn add_connection(&mut self, mut endpoint: Connection) -> usize {
         let mut store = self.store.lock().unwrap();
         let id = store.last_id;
         self.registry.register(endpoint.event_source(), Token(id), Interest::READABLE).unwrap();
@@ -75,7 +82,7 @@ impl Controller {
         id
     }
 
-    pub fn remove_endpoint(&mut self, id: usize) {
+    pub fn remove_connection(&mut self, id: usize) {
         let mut store = self.store.lock().unwrap();
         let mut endpoint = store.endpoints.remove(&id).unwrap();
         self.registry.deregister(endpoint.event_source()).unwrap();

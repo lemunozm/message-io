@@ -5,7 +5,6 @@ use std::thread::{self, JoinHandle};
 use std::collections::{HashMap};
 
 pub enum Event<Message, Signal, Endpoint>
-//where Message: Send, Signal: Send, Endpoint: Send
 {
     Message(Message, Endpoint),
     AddedEndpoint(Endpoint),
@@ -28,8 +27,8 @@ impl<E: Send + 'static> EventQueue<E> {
         }
     }
 
-    pub fn sender(&self) -> &EventSender<E> {
-        &self.event_sender
+    pub fn sender(&mut self) -> &mut EventSender<E> {
+        &mut self.event_sender
     }
 
     pub fn receive(&mut self) -> E {

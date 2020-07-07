@@ -15,9 +15,10 @@ pub fn run() {
     let mut event_queue = EventQueue::new();
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
-    if let Some(server) = network.create_tcp_stream("127.0.0.1:3000".parse().unwrap()) {
-        println!("Server connected");
-        event_queue.sender().send(Event::Signal(Signal::WriteToServer));
+    let addr = "127.0.0.1:3000".parse().unwrap();
+    if let Some(server) = network.create_tcp_stream(addr) {
+        println!("Connected to server: {}", addr);
+        event_queue.sender().send_with_timer(Event::Signal(Signal::WriteToServer), Duration::from_secs(1));
 
         loop {
             match event_queue.receive() {

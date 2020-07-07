@@ -16,11 +16,11 @@ pub fn run() {
     let mut event_queue = EventQueue::new();
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
-    let clients: HashMap<ConnectionId, SocketAddr> = HashMap::new();
+    let mut clients: HashMap<ConnectionId, SocketAddr> = HashMap::new();
+    let listen_addr = "127.0.0.1:3000".parse().unwrap();
 
-    let addr = "127.0.0.1:3000".parse().unwrap();
-    if let Some(server) = network.create_tcp_listener(addr) {
-        println!("Server running at {}", addr);
+    if let Some(_) = network.create_tcp_listener(listen_addr) {
+        println!("Server running at {}", listen_addr);
         event_queue.sender().send_with_timer(Event::Signal(Signal::NotifyDisconnection), Duration::from_secs(5));
 
         loop {
@@ -40,19 +40,21 @@ pub fn run() {
                         }
                         return;
                     }
-                }
+                },
                 Event::Message(message, endpoint) => match message {
                     Message::Info(text) => println!("Client: {} says: {}", clients[&endpoint], text),
                     Message::Bye => println!("Client {} closed", clients[&endpoint]),
                     _ => eprintln!("Unexpected message from {}", clients[&endpoint]),
                 },
                 Event::AddedEndpoint(endpoint) => {
-                    println!("Client {} connected (total clients: {})", clients[&endpoint], clients.len());
-                }
+                    let addr = network.connection_address(endpoint).unwrap();
+                    clients.insert(endpoint, addr);
+                    println!("Client {} connected (total clients: {})", addr, clients.len());
+                },
                 Event::RemovedEndpoint(endpoint) => {
-                    println!("Client {} disconnected (total clients: {})", clients[&endpoint], clients.len());
-                }
-                _ => unreachable!()
+                    let addr = clients.remove(&endpoint).unwrap();
+                    println!("Client {} disconnected (total clients: {})", addr, clients.len());
+                },
             }
         }
     }

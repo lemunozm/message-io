@@ -15,24 +15,25 @@ pub struct NetworkManager {
 
 impl<'a> NetworkManager {
     pub fn new<M, S>(mut event_sender: EventSender<Event<M, S, ConnectionId>>) -> NetworkManager
-    where M: Serialize + Deserialize<'a> + Send + 'static, S: Send + 'static {
+    where M: Serialize + for<'b> Deserialize<'b> + Send + 'static, S: Send + 'static {
         let (network_controller, mut network_receiver) = network::adapter();
 
         let network_event_thread = thread::spawn(move || {
             loop {
-                let (connection_id, event) = network_receiver.receive();
-                match event {
-                    network::Event::Connection => {
-                        event_sender.send(Event::AddedEndpoint(connection_id));
+                network_receiver.receive(|connection_id, event| {
+                    match event {
+                        network::Event::Connection => {
+                            event_sender.send(Event::AddedEndpoint(connection_id));
+                        }
+                        network::Event::Data(data) => {
+                            let message: M = bincode::deserialize(&data[..]).unwrap();
+                            event_sender.send(Event::Message(message, connection_id));
+                        }
+                        network::Event::Disconnection => {
+                            event_sender.send(Event::RemovedEndpoint(connection_id));
+                        }
                     }
-                    network::Event::Data(data) => {
-                        let message: M = bincode::deserialize(&data[..]).unwrap();
-                        event_sender.send(Event::Message(message, connection_id));
-                    }
-                    network::Event::Disconnection => {
-                        event_sender.send(Event::RemovedEndpoint(connection_id));
-                    }
-                }
+                });
             }
         });
 
@@ -52,6 +53,10 @@ impl<'a> NetworkManager {
         Connection::new_tcp_listener(addr)
             .ok()
             .map(|connection| self.network_controller.add_connection(connection))
+    }
+
+    pub fn connection_address(&mut self, connection_id: ConnectionId) -> Option<SocketAddr> {
+        self.network_controller.connection_address(connection_id)
     }
 
     pub fn remove_connection(&mut self, connection_id: ConnectionId) {

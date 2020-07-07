@@ -1,15 +1,14 @@
 use mio::net::{TcpListener, TcpStream};
-use mio::{Poll, Interest, Token, Events, event, Registry};
+use mio::{event, Poll, Interest, Token, Events, Registry};
 
+use std::net::{SocketAddr, Shutdown, TcpStream as StdTcpStream};
 use std::sync::{Arc, Mutex};
-
-use std::net::{SocketAddr};
 use std::time::{Duration};
 use std::collections::{HashMap};
-use std::io::{self};
+use std::io::{self, prelude::*};
 
 const EVENTS_SIZE: usize = 128;
-const INITIAL_BUFFER_SIZE: usize = 1024;
+const INPUT_BUFFER_SIZE: usize = 1024;
 
 pub enum Event<'a> {
     Connection,
@@ -18,15 +17,14 @@ pub enum Event<'a> {
 }
 
 pub fn adapter() -> (Controller, Receiver) {
+    let poll = Poll::new().unwrap();
     let store = Arc::new(Mutex::new(Store {
-        endpoints: HashMap::new(),
+        connections: HashMap::new(),
         last_id: 0,
+        registry: poll.registry().try_clone().unwrap(),
     }));
 
-    let poll = Poll::new().unwrap();
-    let registry = poll.registry().try_clone().unwrap();
-
-    (Controller::new(store.clone(), registry), Receiver::new(store, poll))
+    (Controller::new(store.clone()), Receiver::new(store, poll))
 }
 
 pub enum Connection {
@@ -37,7 +35,7 @@ pub enum Connection {
 
 impl Connection {
     pub fn new_tcp_stream(addr: SocketAddr) -> io::Result<Connection> {
-        TcpStream::connect(addr).map(|stream| Connection::Stream(stream))
+        StdTcpStream::connect(addr).map(|stream| Connection::Stream(TcpStream::from_std(stream)))
     }
 
     pub fn new_tcp_listener(addr: SocketAddr) -> io::Result<Connection> {
@@ -60,32 +58,53 @@ impl Connection {
 }
 
 struct Store {
-    pub endpoints: HashMap<usize, Connection>,
+    pub connections: HashMap<usize, Connection>,
     pub last_id: usize,
+    pub registry: Registry,
 }
+
+impl Store {
+    fn add_connection(&mut self, mut connection: Connection) -> usize {
+        let id = self.last_id;
+        self.last_id += 1;
+        self.registry.register(connection.event_source(), Token(id), Interest::READABLE).unwrap();
+        self.connections.insert(id, connection);
+        id
+    }
+
+    fn remove_connection(&mut self, id: usize) {
+        let mut connection = self.connections.remove(&id).unwrap();
+        match &connection {
+            Connection::Stream(stream) => stream.shutdown(Shutdown::Both).unwrap(),
+            _ => (),
+        };
+        self.registry.deregister(connection.event_source()).unwrap();
+    }
+}
+
 
 pub struct Controller {
     store: Arc<Mutex<Store>>,
-    registry: Registry,
 }
 
 impl Controller {
-    fn new(store: Arc<Mutex<Store>>, registry: Registry) -> Controller {
-        Controller { store, registry }
+    fn new(store: Arc<Mutex<Store>>) -> Controller {
+        Controller { store }
     }
 
-    pub fn add_connection(&mut self, mut endpoint: Connection) -> usize {
+    pub fn add_connection(&mut self, connection: Connection) -> usize {
         let mut store = self.store.lock().unwrap();
-        let id = store.last_id;
-        self.registry.register(endpoint.event_source(), Token(id), Interest::READABLE).unwrap();
-        store.endpoints.insert(id, endpoint);
-        id
+        store.add_connection(connection)
     }
 
     pub fn remove_connection(&mut self, id: usize) {
         let mut store = self.store.lock().unwrap();
-        let mut endpoint = store.endpoints.remove(&id).unwrap();
-        self.registry.deregister(endpoint.event_source()).unwrap();
+        store.remove_connection(id)
+    }
+
+    pub fn connection_address(&mut self, connection_id: usize) -> Option<SocketAddr> {
+        let store = self.store.lock().unwrap();
+        store.connections.get(&connection_id).map(|connection| connection.address())
     }
 }
 
@@ -93,6 +112,7 @@ pub struct Receiver {
     store: Arc<Mutex<Store>>,
     poll: Poll,
     events: Events,
+    input_buffer: [u8; INPUT_BUFFER_SIZE],
 }
 
 impl<'a> Receiver {
@@ -101,38 +121,50 @@ impl<'a> Receiver {
             store,
             poll,
             events: Events::with_capacity(EVENTS_SIZE),
+            input_buffer: [0; INPUT_BUFFER_SIZE],
         }
     }
 
-    pub fn receive(&mut self) -> (usize, Event<'a>) {
+    pub fn receive<C>(&mut self, callback: C)
+    where C: for <'b> FnMut(usize, Event<'b>) {
         self.poll.poll(&mut self.events, None).unwrap();
-        self.process_event()
+        self.process_event(callback);
     }
 
-    pub fn receive_timeout(&mut self, timeout: Duration) -> Option<(usize, Event<'a>)> {
-        self.poll.poll(&mut self.events, Some(timeout))
-            .ok()
-            .map(|_| self.process_event())
+    pub fn receive_timeout<C>(&mut self, timeout: Duration, callback: C)
+    where C: for<'b> FnMut(usize, Event<'b>) {
+        if let Ok(_) = self.poll.poll(&mut self.events, Some(timeout)) {
+            self.process_event(callback);
+        }
     }
 
-    fn process_event(&mut self) -> (usize, Event<'a>) {
-        self.events.iter().next().map(|event| {
-            match event.token() {
-                token => {
-                    let id = token.0;
-                    let store = self.store.lock().unwrap();
-                    match store.endpoints.get(&id).unwrap() {
-                        Connection::Listener(listener) => {
-                            listener.accept();
-                            (id, Event::Connection)
-                        },
-                        Connection::Stream(stream) => {
-                            (id, Event::Connection)
-                        }
-                    }
-                }
+    fn process_event<C>(&mut self, mut callback: C)
+    where C: for<'b> FnMut(usize, Event<'b>) {
+        let net_event = self.events.iter().next().unwrap();
+        match net_event.token() {
+            token => {
+                let id = token.0;
+                let mut store = self.store.lock().unwrap();
+                match store.connections.get_mut(&id).unwrap() {
+                    Connection::Listener(listener) => {
+                        let (stream, _) = listener.accept().unwrap();
+                        let stream_id = store.add_connection(Connection::Stream(stream));
+                        callback(stream_id, Event::Connection);
+                    },
+                    Connection::Stream(ref mut stream) => {
+                        if let Ok(size) = stream.read(&mut self.input_buffer) {
+                            match size {
+                                0 => {
+                                    store.remove_connection(id);
+                                    callback(id, Event::Disconnection);
+                                },
+                                _ => callback(id, Event::Data(&self.input_buffer)),
+                            }
+                        };
+                    },
+                };
             }
-        }).unwrap()
+        };
     }
 }
 

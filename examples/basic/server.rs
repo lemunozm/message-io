@@ -1,7 +1,7 @@
 use super::common::{ClientMessage, ServerMessage};
 
 use message_io::event_queue::{EventQueue};
-use message_io::network_manager::{NetworkManager, Event, TransportProtocol, ConnectionId};
+use message_io::network_manager::{NetworkManager, Event, TransportProtocol, Endpoint};
 
 use std::time::{Duration};
 use std::net::{SocketAddr};
@@ -16,7 +16,7 @@ pub fn run(protocol: TransportProtocol) {
     let mut event_queue = EventQueue::new();
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
-    let mut clients: HashMap<ConnectionId, SocketAddr> = HashMap::new();
+    let mut clients: HashMap<Endpoint, SocketAddr> = HashMap::new();
 
     let listen_addr = "127.0.0.1:3000".parse().unwrap();
     if let Some(_) = network.listen(listen_addr, protocol) {
@@ -36,7 +36,7 @@ pub fn run(protocol: TransportProtocol) {
                         println!("Closing server");
                         network.send_all(clients.keys(), ServerMessage::Bye).ok();
                         for endpoint in clients.keys() {
-                            network.remove_connection(*endpoint);
+                            network.remove_endpoint(*endpoint);
                         }
                         return;
                     }
@@ -49,7 +49,7 @@ pub fn run(protocol: TransportProtocol) {
                     ClientMessage::Bye => println!("Client {} closed", clients[&endpoint]),
                 },
                 Event::AddedEndpoint(endpoint) => {
-                    let addr = network.connection_address(endpoint).unwrap();
+                    let addr = network.endpoint_address(endpoint).unwrap();
                     clients.insert(endpoint, addr);
                     println!("Client {} connected (total clients: {})", addr, clients.len());
                 },

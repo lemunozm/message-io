@@ -9,12 +9,12 @@ use std::thread::{self, JoinHandle};
 use std::fmt::{self};
 use std::time::{Duration};
 
-/// Alias to improve the readability of the connection ids.
-pub type ConnectionId = usize;
+/// Alias to improve the management of the connection ids.
+pub type Endpoint = usize;
 
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 
-/// Used to define the protocol when create a connection
+/// Used to define the protocol when create a connection/listener
 #[derive(Debug, Clone, Copy)]
 pub enum TransportProtocol {
     Tcp,
@@ -27,14 +27,14 @@ pub enum TransportProtocol {
 pub enum Event<Message, Signal>
 {
     // Input message received by the network.
-    Message(Message, ConnectionId),
+    Message(Message, Endpoint),
 
     // New endpoint added to a listener.
-    AddedEndpoint(ConnectionId),
+    AddedEndpoint(Endpoint),
 
     // A connection lost event.
-    // This event is only dispatched when a connection is lost, [remove_connection()] not generate any event.
-    RemovedEndpoint(ConnectionId),
+    // This event is only dispatched when a connection is lost, [remove_endpoint()] not generate any event.
+    RemovedEndpoint(Endpoint),
 
     // Used for internal events communication by the API user.
     // Signal is not needed to be [Deserialize].
@@ -69,17 +69,17 @@ impl<'a> NetworkManager {
         let network_event_thread = thread::spawn(move || {
             let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
             while running.load(Ordering::Relaxed) {
-                network_receiver.receive(Some(timeout), |connection_id, event| {
+                network_receiver.receive(Some(timeout), |endpoint, event| {
                     match event {
                         network::Event::Connection => {
-                            event_sender.send(Event::AddedEndpoint(connection_id));
+                            event_sender.send(Event::AddedEndpoint(endpoint));
                         }
                         network::Event::Data(data) => {
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
-                            event_sender.send(Event::Message(message, connection_id));
+                            event_sender.send(Event::Message(message, endpoint));
                         }
                         network::Event::Disconnection => {
-                            event_sender.send(Event::RemovedEndpoint(connection_id));
+                            event_sender.send(Event::RemovedEndpoint(endpoint));
                         }
                     }
                 });
@@ -95,10 +95,10 @@ impl<'a> NetworkManager {
     }
 
     /// Creates a connection to the specific address thougth the given protocol.
-    /// An identified of the new connection will be returned.
+    /// The endpoint, an identified of the new connection, will be returned.
     /// Only for TCP, if the connection can not be performed (the address is not reached) a None will be returned.
-    /// UDP has no the ability to be aware of this, so always a new connection id will be returned.
-    pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<ConnectionId> {
+    /// UDP has no the ability to be aware of this, so always an endpoint will be returned.
+    pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<Endpoint> {
         match transport {
             TransportProtocol::Tcp => Connection::new_tcp_stream(addr),
             TransportProtocol::Udp => Connection::new_udp_socket(addr),
@@ -108,48 +108,48 @@ impl<'a> NetworkManager {
     }
 
     /// Open a port to listen messages from either TCP or UDP.
-    /// If the port can be opened, a connection id of this "connection" will be returned, or a None if not.
-    pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<ConnectionId> {
+    /// If the port can be opened, a endpoint identifying the listener will be returned, or a None if not.
+    pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<Endpoint> {
         match transport {
             TransportProtocol::Tcp => Connection::new_tcp_listener(addr),
             TransportProtocol::Udp => Connection::new_udp_listener(addr),
         }
         .ok()
-        .map(|connection| self.network_controller.add_connection(connection))
+        .map(|listener| self.network_controller.add_connection(listener))
     }
 
-    /// Retrieve the address associated to a connection id, or None if the connection does not exists.
-    pub fn connection_address(&mut self, connection_id: ConnectionId) -> Option<SocketAddr> {
-        self.network_controller.connection_address(connection_id)
+    /// Retrieve the address associated to an endpoint, or None if the endpoint does not exists.
+    pub fn endpoint_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
+        self.network_controller.connection_address(endpoint)
     }
 
-    /// Remove the connection associated to the connection id.
-    /// Returns None if the connection does not exists.
-    pub fn remove_connection(&mut self, connection_id: ConnectionId) -> Option<()> {
-        self.network_controller.remove_connection(connection_id)
+    /// Remove the endpoint.
+    /// Returns None if the endpoint does not exists.
+    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
+        self.network_controller.remove_connection(endpoint)
     }
 
-    /// Serialize and send the message thought the connection represented by the given id.
-    /// Returns None if the connection does not exists.
-    pub fn send<OutMessage>(&mut self, connection_id: ConnectionId, message: OutMessage) -> Option<()>
+    /// Serialize and send the message thought the connection represented by the given endpoint.
+    /// Returns None if the endpoint does not exists.
+    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> Option<()>
     where OutMessage: Serialize {
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        let result = self.network_controller.send(connection_id, &self.output_buffer);
+        let result = self.network_controller.send(endpoint, &self.output_buffer);
         self.output_buffer.clear();
         result
     }
 
-    /// Serialize and send the message thought the connections represented by the given ids.
+    /// Serialize and send the message thought the connections represented by the given endpoints.
     /// When there are severals endpoints to send the data. It is better to call this function instead of [send()],
     /// because the serialization only is performed one time.
     /// An Err with the unrecognized ids is returned.
-    pub fn send_all<'b, OutMessage>(&mut self, connection_ids: impl IntoIterator<Item=&'b ConnectionId>, message: OutMessage) -> Result<(), Vec<ConnectionId>>
+    pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<Endpoint>>
     where OutMessage: Serialize {
         let mut unrecognized_ids = Vec::new();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        for id in connection_ids {
-            if let None = self.network_controller.send(*id, &self.output_buffer) {
-                unrecognized_ids.push(*id);
+        for endpoint in endpoints {
+            if let None = self.network_controller.send(*endpoint, &self.output_buffer) {
+                unrecognized_ids.push(*endpoint);
             }
         }
         self.output_buffer.clear();

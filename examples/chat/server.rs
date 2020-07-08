@@ -21,15 +21,15 @@ pub fn run(protocol: TransportProtocol) {
     let listen_addr = "127.0.0.1:3000".parse().unwrap();
     if let Some(_) = network.listen(listen_addr, protocol) {
         println!("Server running in {} at {}", protocol, listen_addr);
-        event_queue.sender().send_with_timer(Event::Signal(Signal::NotifyDisconnection), Duration::from_secs(5));
+        event_queue.sender().send_with_timer(Event::Signal(Signal::NotifyDisconnection), Duration::from_secs(30));
 
         loop {
             match event_queue.receive() {
                 Event::Signal(signal) => match signal {
                     Signal::NotifyDisconnection => {
-                        let disconnection_time = Duration::from_secs(3);
+                        let disconnection_time = Duration::from_secs(5);
                         println!("The server will be disconnected in {} secs", disconnection_time.as_secs());
-                        network.send_all(clients.keys(), Message::Info(String::from("This is client info")));
+                        network.send_all(clients.keys(), Message::NotifyDisconnection(disconnection_time));
                         event_queue.sender().send_with_timer(Event::Signal(Signal::Close), disconnection_time);
                     },
                     Signal::Close => {
@@ -42,7 +42,10 @@ pub fn run(protocol: TransportProtocol) {
                     }
                 },
                 Event::Message(message, endpoint) => match message {
-                    Message::Info(text) => println!("Client: {} says: {}", clients[&endpoint], text),
+                    Message::Info(text) => {
+                        println!("Client {} says: {}", clients[&endpoint], text);
+                        network.send(endpoint, Message::Info(String::from("Hi! I heart you")))
+                    },
                     Message::Bye => println!("Client {} closed", clients[&endpoint]),
                     _ => eprintln!("Unexpected message from {}", clients[&endpoint]),
                 },

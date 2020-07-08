@@ -29,10 +29,11 @@ pub struct NetworkManager {
     network_event_thread: Option<JoinHandle<()>>,
     network_thread_running: Arc<AtomicBool>,
     network_controller: network::Controller,
+    output_buffer: Vec<u8>,
 }
 
 impl<'a> NetworkManager {
-    pub fn new<M, S>(mut event_sender: EventSender<Event<M, S, ConnectionId>>) -> NetworkManager
+    pub fn new<M, S>(event_sender: EventSender<Event<M, S, ConnectionId>>) -> NetworkManager
     where M: Serialize + for<'b> Deserialize<'b> + Send + 'static, S: Send + 'static {
         let (network_controller, mut network_receiver) = network::adapter();
 
@@ -63,6 +64,7 @@ impl<'a> NetworkManager {
             network_event_thread: Some(network_event_thread),
             network_thread_running,
             network_controller,
+            output_buffer: Vec::new()
         }
     }
 
@@ -94,10 +96,18 @@ impl<'a> NetworkManager {
 
     pub fn send<M>(&mut self, connection_id: ConnectionId, message: M)
     where M: Serialize + Deserialize<'a> + Send + 'static {
+        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+        self.network_controller.send(connection_id, &self.output_buffer);
+        self.output_buffer.clear();
     }
 
     pub fn send_all<'b, M>(&mut self, connection_ids: impl IntoIterator<Item=&'b ConnectionId>, message: M)
     where M: Serialize + Deserialize<'a> + Send + 'static {
+        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+        for id in connection_ids {
+            self.network_controller.send(*id, &self.output_buffer);
+        }
+        self.output_buffer.clear();
     }
 }
 

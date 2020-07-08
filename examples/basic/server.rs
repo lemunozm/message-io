@@ -1,4 +1,4 @@
-use super::common::Message;
+use super::common::{ClientMessage, ServerMessage};
 
 use message_io::events::{EventQueue, Event};
 use message_io::network_manager::{NetworkManager, TransportProtocol, ConnectionId};
@@ -29,12 +29,12 @@ pub fn run(protocol: TransportProtocol) {
                     Signal::NotifyDisconnection => {
                         let disconnection_time = Duration::from_secs(5);
                         println!("The server will be disconnected in {} secs", disconnection_time.as_secs());
-                        network.send_all(clients.keys(), Message::NotifyDisconnection(disconnection_time));
+                        network.send_all(clients.keys(), ServerMessage::NotifyDisconnection(disconnection_time));
                         event_queue.sender().send_with_timer(Event::Signal(Signal::Close), disconnection_time);
                     },
                     Signal::Close => {
                         println!("Closing server");
-                        network.send_all(clients.keys(), Message::Bye);
+                        network.send_all(clients.keys(), ServerMessage::Bye);
                         for endpoint in clients.keys() {
                             network.remove_connection(*endpoint);
                         }
@@ -42,12 +42,11 @@ pub fn run(protocol: TransportProtocol) {
                     }
                 },
                 Event::Message(message, endpoint) => match message {
-                    Message::Info(text) => {
+                    ClientMessage::Greet(text) => {
                         println!("Client {} says: {}", clients[&endpoint], text);
-                        network.send(endpoint, Message::Info(String::from("Hi! I hear you")))
+                        network.send(endpoint, ServerMessage::Greet(String::from("Hi! I hear you")))
                     },
-                    Message::Bye => println!("Client {} closed", clients[&endpoint]),
-                    _ => eprintln!("Unexpected message from {}", clients[&endpoint]),
+                    ClientMessage::Bye => println!("Client {} closed", clients[&endpoint]),
                 },
                 Event::AddedEndpoint(endpoint) => {
                     let addr = network.connection_address(endpoint).unwrap();

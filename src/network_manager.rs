@@ -33,8 +33,8 @@ pub struct NetworkManager {
 }
 
 impl<'a> NetworkManager {
-    pub fn new<M, S>(event_sender: EventSender<Event<M, S, ConnectionId>>) -> NetworkManager
-    where M: Serialize + for<'b> Deserialize<'b> + Send + 'static, S: Send + 'static {
+    pub fn new<InMessage, S>(event_sender: EventSender<Event<InMessage, S, ConnectionId>>) -> NetworkManager
+    where InMessage: for<'b> Deserialize<'b> + Send + 'static, S: Send + 'static {
         let (network_controller, mut network_receiver) = network::adapter();
 
         let network_thread_running = Arc::new(AtomicBool::new(true));
@@ -49,7 +49,7 @@ impl<'a> NetworkManager {
                             event_sender.send(Event::AddedEndpoint(connection_id));
                         }
                         network::Event::Data(data) => {
-                            let message: M = bincode::deserialize(&data[..]).unwrap();
+                            let message: InMessage = bincode::deserialize(&data[..]).unwrap();
                             event_sender.send(Event::Message(message, connection_id));
                         }
                         network::Event::Disconnection => {
@@ -94,15 +94,15 @@ impl<'a> NetworkManager {
         self.network_controller.remove_connection(connection_id)
     }
 
-    pub fn send<M>(&mut self, connection_id: ConnectionId, message: M)
-    where M: Serialize + Deserialize<'a> + Send + 'static {
+    pub fn send<OutMessage>(&mut self, connection_id: ConnectionId, message: OutMessage)
+    where OutMessage: Serialize {
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         self.network_controller.send(connection_id, &self.output_buffer);
         self.output_buffer.clear();
     }
 
-    pub fn send_all<'b, M>(&mut self, connection_ids: impl IntoIterator<Item=&'b ConnectionId>, message: M)
-    where M: Serialize + Deserialize<'a> + Send + 'static {
+    pub fn send_all<'b, OutMessage>(&mut self, connection_ids: impl IntoIterator<Item=&'b ConnectionId>, message: OutMessage)
+    where OutMessage: Serialize {
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         for id in connection_ids {
             self.network_controller.send(*id, &self.output_buffer);

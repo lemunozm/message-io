@@ -1,4 +1,4 @@
-use super::common::Message;
+use super::common::{ClientMessage, ServerMessage};
 
 use message_io::events::{EventQueue, Event};
 use message_io::network_manager::{NetworkManager, TransportProtocol};
@@ -24,21 +24,21 @@ pub fn run(protocol: TransportProtocol) {
                 Event::Signal(signal) => match signal {
                     Signal::Greet => {
                         println!("Saying hello to the server... ({})", hello_counter);
-                        network.send(server, Message::Info(format!("Hello ({})", hello_counter)));
+                        network.send(server, ClientMessage::Greet(format!("Hello ({})", hello_counter)));
                         event_queue.sender().send_with_timer(Event::Signal(Signal::Greet), Duration::from_secs(2));
                         hello_counter += 1;
                     },
                 }
                 Event::Message(message, _) => match message {
-                    Message::Info(text) => println!("Server says: {}", text),
-                    Message::NotifyDisconnection(duration) => println!("Server notified disconnection in {} secs", duration.as_secs()),
-                    Message::Bye => println!("Server say: good bye!"),
+                    ServerMessage::Greet(text) => println!("Server says: {}", text),
+                    ServerMessage::NotifyDisconnection(duration) => println!("Server notified disconnection in {} secs", duration.as_secs()),
+                    ServerMessage::Bye => println!("Server say: good bye!"),
                 },
+                Event::AddedEndpoint(_) => unreachable!(),
                 Event::RemovedEndpoint(_) => {
                     println!("Server is disconnected");
                     return;
                 }
-                _ => unreachable!()
             }
         }
     }

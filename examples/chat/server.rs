@@ -12,14 +12,13 @@ enum Signal {
     NotifyDisconnection,
 }
 
-pub fn run() {
+pub fn run(protocol: TransportProtocol) {
     let mut event_queue = EventQueue::new();
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
     let mut clients: HashMap<ConnectionId, SocketAddr> = HashMap::new();
 
     let listen_addr = "127.0.0.1:3000".parse().unwrap();
-    let protocol = TransportProtocol::Tcp;
     if let Some(_) = network.listen(listen_addr, protocol) {
         println!("Server running in {} at {}", protocol, listen_addr);
         event_queue.sender().send_with_timer(Event::Signal(Signal::NotifyDisconnection), Duration::from_secs(5));

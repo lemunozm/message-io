@@ -3,11 +3,15 @@ use crate::network::{self, Connection};
 
 use serde::{Serialize, Deserialize};
 
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::net::{SocketAddr};
 use std::thread::{self, JoinHandle};
 use std::fmt::{self};
+use std::time::{Duration};
 
 pub type ConnectionId = usize;
+
+const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 
 #[derive(Debug, Clone, Copy)]
 pub enum TransportProtocol {
@@ -22,7 +26,8 @@ impl fmt::Display for TransportProtocol {
 }
 
 pub struct NetworkManager {
-    network_event_thread: JoinHandle<()>,
+    network_event_thread: Option<JoinHandle<()>>,
+    network_thread_running: Arc<AtomicBool>,
     network_controller: network::Controller,
 }
 
@@ -31,9 +36,13 @@ impl<'a> NetworkManager {
     where M: Serialize + for<'b> Deserialize<'b> + Send + 'static, S: Send + 'static {
         let (network_controller, mut network_receiver) = network::adapter();
 
+        let network_thread_running = Arc::new(AtomicBool::new(true));
+        let running = network_thread_running.clone();
+
         let network_event_thread = thread::spawn(move || {
-            loop {
-                network_receiver.receive(|connection_id, event| {
+            let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
+            while running.load(Ordering::Relaxed) {
+                network_receiver.receive(Some(timeout), |connection_id, event| {
                     match event {
                         network::Event::Connection => {
                             event_sender.send(Event::AddedEndpoint(connection_id));
@@ -51,7 +60,8 @@ impl<'a> NetworkManager {
         });
 
         NetworkManager {
-            network_event_thread,
+            network_event_thread: Some(network_event_thread),
+            network_thread_running,
             network_controller,
         }
     }
@@ -88,5 +98,12 @@ impl<'a> NetworkManager {
 
     pub fn send_all<'b, M>(&mut self, connection_ids: impl IntoIterator<Item=&'b ConnectionId>, message: M)
     where M: Serialize + Deserialize<'a> + Send + 'static {
+    }
+}
+
+impl Drop for NetworkManager {
+    fn drop(&mut self) {
+        self.network_thread_running.store(false, Ordering::Relaxed);
+        self.network_event_thread.take().unwrap().join().unwrap();
     }
 }

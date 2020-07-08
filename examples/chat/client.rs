@@ -11,12 +11,11 @@ enum Signal {
     WriteToServer
 }
 
-pub fn run() {
+pub fn run(protocol: TransportProtocol) {
     let mut event_queue = EventQueue::new();
     let mut network = NetworkManager::new(event_queue.sender().clone());
 
     let addr = "127.0.0.1:3000".parse().unwrap();
-    let protocol = TransportProtocol::Tcp;
     if let Some(server) = network.connect(addr, protocol) {
         println!("Connected to server by {} at {}", protocol, addr);
         event_queue.sender().send_with_timer(Event::Signal(Signal::WriteToServer), Duration::from_secs(1));

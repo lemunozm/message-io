@@ -43,9 +43,8 @@ impl Connection {
     }
 
     pub fn new_udp_socket(addr: SocketAddr) -> io::Result<Connection> {
-        //UdpSocket::connect(addr).map(|stream| Connection::UdpStream(UdpSocket::from_std(stream)))
         UdpSocket::bind("0.0.0.0:0".parse().unwrap()).map(|socket| {
-            socket.connect(addr);
+            socket.connect(addr).unwrap();
             Connection::UdpSocket(socket, addr)
         })
     }
@@ -166,23 +165,18 @@ impl<'a> Receiver {
         }
     }
 
-    pub fn receive<C>(&mut self, callback: C)
-    where C: for <'b> FnMut(usize, Event<'b>) {
-        self.poll.poll(&mut self.events, None).unwrap();
-        self.process_event(callback);
-    }
-
-    pub fn receive_timeout<C>(&mut self, timeout: Duration, callback: C)
+    pub fn receive<C>(&mut self, timeout: Option<Duration>, callback: C)
     where C: for<'b> FnMut(usize, Event<'b>) {
-        if let Ok(_) = self.poll.poll(&mut self.events, Some(timeout)) {
+        self.poll.poll(&mut self.events, timeout).unwrap();
+        if !self.events.is_empty() {
             self.process_event(callback);
         }
     }
 
     fn process_event<C>(&mut self, mut callback: C)
     where C: for<'b> FnMut(usize, Event<'b>) {
-        let net_event = self.events.iter().next().unwrap();
-        match net_event.token() {
+        let mio_event = self.events.iter().next().unwrap();
+        match mio_event.token() {
             token => {
                 let id = token.0;
                 let mut store = self.store.lock().unwrap();
@@ -212,7 +206,7 @@ impl<'a> Receiver {
                             callback(endpoint_id, Event::Data(&self.input_buffer))
                         };
                     },
-                    Connection::UdpSocket(ref socket, addr) => {
+                    Connection::UdpSocket(ref socket, _) => {
                         if let Ok(_) = socket.recv(&mut self.input_buffer) {
                             callback(id, Event::Data(&self.input_buffer))
                         };

@@ -15,8 +15,7 @@ pub enum Event<Message, Signal, Endpoint>
     Signal(Signal),
 }
 
-pub struct EventQueue<E>
-where E: Send + 'static {
+pub struct EventQueue<E> {
     receiver: Receiver<E>,
     event_sender: EventSender<E>,
 }
@@ -46,8 +45,7 @@ where E: Send + 'static {
 }
 
 
-pub struct EventSender<E>
-where E: Send + 'static {
+pub struct EventSender<E> {
     sender: Sender<E>,
     timer_registry: HashMap<usize, JoinHandle<()>>,
     timers_running: Arc<AtomicBool>,
@@ -88,24 +86,18 @@ where E: Send + 'static {
         self.timer_registry.insert(timer_id, timer_handle);
         self.last_timer_id += 1;
     }
-
-    pub fn stop_timers(&mut self) {
-        self.timers_running.store(false, Ordering::Relaxed);
-    }
 }
 
-impl<E> Drop for EventSender<E>
-where E: Send + 'static {
+impl<E> Drop for EventSender<E> {
     fn drop(&mut self) {
-        self.stop_timers();
+        self.timers_running.store(false, Ordering::Relaxed);
         for (_, timer) in self.timer_registry.drain() {
             timer.join().unwrap();
         }
     }
 }
 
-impl<E> Clone for EventSender<E>
-where E: Send + 'static {
+impl<E> Clone for EventSender<E> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),

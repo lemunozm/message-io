@@ -63,7 +63,7 @@ where E: Send + 'static {
         }
     }
 
-    pub fn send(&mut self, event: E) {
+    pub fn send(&self, event: E) {
         self.sender.send(event).unwrap();
     }
 

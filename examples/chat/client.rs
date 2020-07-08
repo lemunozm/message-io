@@ -5,9 +5,7 @@ use message_io::network_manager::{NetworkManager, TransportProtocol};
 
 use std::time::{Duration};
 
-
 enum Signal {
-    Close,
     WriteToServer
 }
 
@@ -28,12 +26,6 @@ pub fn run(protocol: TransportProtocol) {
                         network.send(server, Message::Info(String::from("This is client info")));
                         event_queue.sender().send_with_timer(Event::Signal(Signal::WriteToServer), Duration::from_secs(2));
                     },
-                    Signal::Close => {
-                        println!("Closing client");
-                        network.send(server, Message::Bye);
-                        network.remove_connection(server);
-                        return;
-                    }
                 }
                 Event::Message(message, _) => match message {
                     Message::Info(text) => println!("Server says: {}", text),

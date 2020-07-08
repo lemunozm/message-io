@@ -86,12 +86,17 @@ impl Store {
         id
     }
 
-    fn remove_connection(&mut self, id: usize) {
+    fn remove_connection(&mut self, id: usize) -> Option<()> {
         if let Some(ref mut connection) = self.connections.remove(&id) {
             self.registry.deregister(connection.event_source()).unwrap();
+            Some(())
         }
         else if let Some(addr) = self.virtual_socket_connections_id_addr.remove(&id) {
             self.virtual_socket_connections_addr_id.remove(&addr);
+            Some(())
+        }
+        else {
+            None
         }
     }
 
@@ -124,7 +129,7 @@ impl Controller {
         store.add_connection(connection)
     }
 
-    pub fn remove_connection(&mut self, id: usize) {
+    pub fn remove_connection(&mut self, id: usize) -> Option<()> {
         let mut store = self.store.lock().unwrap();
         store.remove_connection(id)
     }
@@ -141,15 +146,15 @@ impl Controller {
         })
     }
 
-    pub fn send(&mut self, id: usize, data: &[u8]) -> bool {
+    pub fn send(&mut self, id: usize, data: &[u8]) -> Option<()> {
         let mut store = self.store.lock().unwrap();
         match store.connections.get_mut(&id) {
             Some(connection) => match connection {
-                Connection::TcpStream(stream) => { stream.write(data).unwrap(); true },
-                Connection::UdpSocket(socket, _) => { socket.send(data).unwrap(); true },
-                _ => false,
+                Connection::TcpStream(stream) => { stream.write(data).unwrap(); Some(()) },
+                Connection::UdpSocket(socket, _) => { socket.send(data).unwrap(); Some(()) },
+                _ => None,
             },
-            None => false,
+            None => None,
         }
     }
 }

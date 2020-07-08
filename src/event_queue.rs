@@ -7,14 +7,6 @@ use std::collections::{HashMap};
 
 const TIMER_SAMPLING_CHECK: u64 = 50; //ms
 
-pub enum Event<Message, Signal, Endpoint>
-{
-    Message(Message, Endpoint),
-    AddedEndpoint(Endpoint),
-    RemovedEndpoint(Endpoint),
-    Signal(Signal),
-}
-
 pub struct EventQueue<E> {
     receiver: Receiver<E>,
     event_sender: EventSender<E>,
@@ -22,6 +14,7 @@ pub struct EventQueue<E> {
 
 impl<E> EventQueue<E>
 where E: Send + 'static {
+    /// Creates a new event queue for generic incoming events.
     pub fn new() -> EventQueue<E>
     {
         let (sender, receiver) = crossbeam_channel::unbounded();
@@ -31,14 +24,19 @@ where E: Send + 'static {
         }
     }
 
+    /// Returns the internal sender reference to this queue.
+    /// This reference can be safety cloned and shared to other threads in order to make several senders to the same queue.
     pub fn sender(&mut self) -> &mut EventSender<E> {
         &mut self.event_sender
     }
 
+    /// Blocks the current thread until an event is received by this queue.
     pub fn receive(&mut self) -> E {
         self.receiver.recv().unwrap()
     }
 
+    /// Blocks the current thread until an event is received by this queue or timeout is exceeded.
+    /// If timeout is reached a None is returned, otherwise the event is returned.
     pub fn receive_event_timeout(&mut self, timeout: Duration) -> Option<E> {
         self.receiver.recv_timeout(timeout).ok()
     }
@@ -63,10 +61,14 @@ where E: Send + 'static {
         }
     }
 
+    /// Send instantly an event to the event queue.
     pub fn send(&self, event: E) {
         self.sender.send(event).unwrap();
     }
 
+    /// Send a timed event to the [EventQueue].
+    /// The event only will be sent after the specific duration,
+    /// never before, even it the [EventSender] is dropped.
     pub fn send_with_timer(&mut self, event: E, duration: Duration) {
         let sender = self.sender.clone();
         let timer_id = self.last_timer_id;

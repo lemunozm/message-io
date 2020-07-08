@@ -1,7 +1,7 @@
 use super::common::{ClientMessage, ServerMessage};
 
-use message_io::events::{EventQueue, Event};
-use message_io::network_manager::{NetworkManager, TransportProtocol};
+use message_io::event_queue::{EventQueue};
+use message_io::network_manager::{NetworkManager, Event, TransportProtocol};
 
 use std::time::{Duration};
 

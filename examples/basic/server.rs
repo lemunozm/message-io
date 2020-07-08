@@ -1,7 +1,7 @@
 use super::common::{ClientMessage, ServerMessage};
 
-use message_io::events::{EventQueue, Event};
-use message_io::network_manager::{NetworkManager, TransportProtocol, ConnectionId};
+use message_io::event_queue::{EventQueue};
+use message_io::network_manager::{NetworkManager, Event, TransportProtocol, ConnectionId};
 
 use std::time::{Duration};
 use std::net::{SocketAddr};
@@ -29,12 +29,12 @@ pub fn run(protocol: TransportProtocol) {
                     Signal::NotifyDisconnection => {
                         let disconnection_time = Duration::from_secs(5);
                         println!("The server will be disconnected in {} secs", disconnection_time.as_secs());
-                        network.send_all(clients.keys(), ServerMessage::NotifyDisconnection(disconnection_time));
+                        network.send_all(clients.keys(), ServerMessage::NotifyDisconnection(disconnection_time)).ok();
                         event_queue.sender().send_with_timer(Event::Signal(Signal::Close), disconnection_time);
                     },
                     Signal::Close => {
                         println!("Closing server");
-                        network.send_all(clients.keys(), ServerMessage::Bye);
+                        network.send_all(clients.keys(), ServerMessage::Bye).ok();
                         for endpoint in clients.keys() {
                             network.remove_connection(*endpoint);
                         }
@@ -44,7 +44,7 @@ pub fn run(protocol: TransportProtocol) {
                 Event::Message(message, endpoint) => match message {
                     ClientMessage::Greet(text) => {
                         println!("Client {} says: {}", clients[&endpoint], text);
-                        network.send(endpoint, ServerMessage::Greet(String::from("Hi! I hear you")))
+                        network.send(endpoint, ServerMessage::Greet(String::from("Hi! I hear you")));
                     },
                     ClientMessage::Bye => println!("Client {} closed", clients[&endpoint]),
                 },

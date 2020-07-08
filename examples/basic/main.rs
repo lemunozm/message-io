@@ -16,7 +16,7 @@ pub fn main() {
     {
         "client" => client::run(protocol),
         "server" => server::run(protocol),
-        _ => println!("Usage: client_server [client | server]")
+        _ => println!("Usage: basic client | server [tcp(default) | udp]")
     }
 }
 

@@ -1,7 +1,7 @@
 use mio::net::{TcpListener, TcpStream, UdpSocket};
 use mio::{event, Poll, Interest, Token, Events, Registry};
 
-use std::net::{SocketAddr, Shutdown, TcpStream as StdTcpStream};
+use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration};
 use std::collections::{HashMap};

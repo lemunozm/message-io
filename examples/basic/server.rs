@@ -44,7 +44,7 @@ pub fn run(protocol: TransportProtocol) {
                 Event::Message(message, endpoint) => match message {
                     Message::Info(text) => {
                         println!("Client {} says: {}", clients[&endpoint], text);
-                        network.send(endpoint, Message::Info(String::from("Hi! I heart you")))
+                        network.send(endpoint, Message::Info(String::from("Hi! I hear you")))
                     },
                     Message::Bye => println!("Client {} closed", clients[&endpoint]),
                     _ => eprintln!("Unexpected message from {}", clients[&endpoint]),

@@ -1,4 +1,3 @@
-use crate::event_queue::{EventSender};
 use crate::network::{self, Connection};
 
 use serde::{Serialize, Deserialize};
@@ -21,12 +20,9 @@ pub enum TransportProtocol {
     Udp,
 }
 
-/// Event structure to use in EventQueue.
-/// Both Message and Signal must be specified by the API user.
-pub enum Event<InMessage, Signal>
-where InMessage: for<'b> Deserialize<'b> + Send + 'static,
-      Signal: Send + 'static {
-
+/// Input network events.
+pub enum NetEvent<InMessage>
+where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     // Input message received by the network.
     Message(InMessage, Endpoint),
 
@@ -36,9 +32,6 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static,
     // A connection lost event.
     // This event is only dispatched when a connection is lost, [remove_endpoint()] not generate any event.
     RemovedEndpoint(Endpoint),
-
-    // Used for internal events communication by the API user.
-    Signal(Signal),
 }
 
 
@@ -48,8 +41,8 @@ impl fmt::Display for TransportProtocol {
     }
 }
 
-/// NetworkManager joins the network with the EventQueue.
-/// It is in mainly in charge to transform raw data from the network into message events.
+/// NetworkManager allows to manage the network easier.
+/// It is in mainly in charge to transform raw data from the network into message events and vice versa.
 pub struct NetworkManager {
     network_event_thread: Option<JoinHandle<()>>,
     network_thread_running: Arc<AtomicBool>,
@@ -58,9 +51,11 @@ pub struct NetworkManager {
 }
 
 impl<'a> NetworkManager {
-    /// Creates a new [NetworkManager] that are linked to the EventQueue through its [EventSender].
-    pub fn new<InMessage, S>(event_sender: EventSender<Event<InMessage, S>>) -> NetworkManager
-    where InMessage: for<'b> Deserialize<'b> + Send + 'static, S: Send + 'static {
+    /// Creates a new [NetworkManager].
+    /// The user must register an event_callback that can be called each time the network generate and [NetEvent]
+    pub fn new<InMessage, C>(event_callback: C) -> NetworkManager
+    where InMessage: for<'b> Deserialize<'b> + Send + 'static,
+          C: Fn(NetEvent<InMessage>) + Send + 'static {
         let (network_controller, mut network_receiver) = network::adapter();
 
         let network_thread_running = Arc::new(AtomicBool::new(true));
@@ -70,18 +65,19 @@ impl<'a> NetworkManager {
             let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
             while running.load(Ordering::Relaxed) {
                 network_receiver.receive(Some(timeout), |endpoint, event| {
-                    match event {
+                    let net_event = match event {
                         network::Event::Connection => {
-                            event_sender.send(Event::AddedEndpoint(endpoint));
-                        }
+                            NetEvent::AddedEndpoint(endpoint)
+                        },
                         network::Event::Data(data) => {
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
-                            event_sender.send(Event::Message(message, endpoint));
-                        }
+                            NetEvent::Message(message, endpoint)
+                        },
                         network::Event::Disconnection => {
-                            event_sender.send(Event::RemovedEndpoint(endpoint));
-                        }
-                    }
+                            NetEvent::RemovedEndpoint(endpoint)
+                        },
+                    };
+                    event_callback(net_event);
                 });
             }
         });

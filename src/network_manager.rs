@@ -14,20 +14,21 @@ pub type Endpoint = usize;
 
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 
-/// Used to define the protocol when create a connection/listener
+/// Used to define the protocol when a connection/listener is created.
 #[derive(Debug, Clone, Copy)]
 pub enum TransportProtocol {
     Tcp,
     Udp,
 }
 
-/// Event structure to use in the [EventQueue].
-/// Both Message and Signal must be specify by the API user and need to implement [Send].
-/// Futher, Message needs to implement Deserialize.
-pub enum Event<Message, Signal>
-{
+/// Event structure to use in EventQueue.
+/// Both Message and Signal must be specified by the API user.
+pub enum Event<InMessage, Signal>
+where InMessage: for<'b> Deserialize<'b> + Send + 'static,
+      Signal: Send + 'static {
+
     // Input message received by the network.
-    Message(Message, Endpoint),
+    Message(InMessage, Endpoint),
 
     // New endpoint added to a listener.
     AddedEndpoint(Endpoint),
@@ -37,7 +38,6 @@ pub enum Event<Message, Signal>
     RemovedEndpoint(Endpoint),
 
     // Used for internal events communication by the API user.
-    // Signal is not needed to be [Deserialize].
     Signal(Signal),
 }
 
@@ -140,8 +140,8 @@ impl<'a> NetworkManager {
     }
 
     /// Serialize and send the message thought the connections represented by the given endpoints.
-    /// When there are severals endpoints to send the data. It is better to call this function instead of [send()],
-    /// because the serialization only is performed one time.
+    /// When there are severals endpoints to send the data. It is better to call this function instead of several calls to send,
+    /// because the serialization only is performed one time for all the endpoints.
     /// An Err with the unrecognized ids is returned.
     pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<Endpoint>>
     where OutMessage: Serialize {

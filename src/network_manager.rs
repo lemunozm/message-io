@@ -23,14 +23,17 @@ pub enum TransportProtocol {
 /// Input network events.
 pub enum NetEvent<InMessage>
 where InMessage: for<'b> Deserialize<'b> + Send + 'static {
-    // Input message received by the network.
+    /// Input message received by the network.
     Message(InMessage, Endpoint),
 
-    // New endpoint added to a listener.
+    /// New endpoint added to a listener.
+    /// In TCP it will be sent when a new connection was accepted by the listener.
+    /// IN UDP will be sent when the socket send data by first time, before the Message event.
     AddedEndpoint(Endpoint),
 
-    // A connection lost event.
-    // This event is only dispatched when a connection is lost, [remove_endpoint()] not generate any event.
+    /// A connection lost event.
+    /// This event is only dispatched when a connection is lost, `remove_endpoint()` not generate the event.
+    /// This event will be sent only in TCP. Because UDP is not connection oriented, this event can no be detected
     RemovedEndpoint(Endpoint),
 }
 
@@ -136,7 +139,7 @@ impl<'a> NetworkManager {
     }
 
     /// Serialize and send the message thought the connections represented by the given endpoints.
-    /// When there are severals endpoints to send the data. It is better to call this function instead of several calls to send,
+    /// When there are severals endpoints to send the data. It is better to call this function instead of several calls to `send()`,
     /// because the serialization only is performed one time for all the endpoints.
     /// An Err with the unrecognized ids is returned.
     pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<Endpoint>>

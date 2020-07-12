@@ -11,7 +11,7 @@ const EVENTS_SIZE: usize = 1024;
 const INPUT_BUFFER_SIZE: usize = 65536;
 
 pub enum Event<'a> {
-    Connection,
+    Connection(SocketAddr),
     Data(&'a[u8]),
     Disconnection,
 }
@@ -50,11 +50,29 @@ impl Connection {
     }
 
     pub fn event_source(&mut self) -> &mut dyn event::Source {
-        match *self {
-            Connection::TcpListener(ref mut listener) => listener,
-            Connection::TcpStream(ref mut stream) => stream,
-            Connection::UdpListener(ref mut socket) => socket,
-            Connection::UdpSocket(ref mut socket, _) => socket,
+        match self {
+            Connection::TcpListener(listener) => listener,
+            Connection::TcpStream(stream) => stream,
+            Connection::UdpListener(socket) => socket,
+            Connection::UdpSocket(socket, _) => socket,
+        }
+    }
+
+    pub fn local_address(&self) -> SocketAddr {
+        match self {
+            Connection::TcpListener(listener) => listener.local_addr().unwrap(),
+            Connection::TcpStream(stream) => stream.local_addr().unwrap(),
+            Connection::UdpListener(socket) => socket.local_addr().unwrap(),
+            Connection::UdpSocket(socket, _) => socket.local_addr().unwrap(),
+        }
+    }
+
+    pub fn remote_address(&self) -> Option<SocketAddr> {
+        match self {
+            Connection::TcpListener(_) => None,
+            Connection::TcpStream(stream) => Some(stream.peer_addr().unwrap()),
+            Connection::UdpListener(_) => None,
+            Connection::UdpSocket(_, address) => Some(*address),
         }
     }
 }
@@ -134,16 +152,17 @@ impl Controller {
         store.remove_connection(id)
     }
 
-    pub fn connection_address(&mut self, id: usize) -> Option<SocketAddr> {
+    pub fn connection_local_address(&mut self, id: usize) -> Option<SocketAddr> {
         let store = self.store.lock().unwrap();
-        store.connections.get(&id).map(|connection| {
-            match connection {
-                Connection::TcpListener(ref listener) => listener.local_addr().unwrap(),
-                Connection::TcpStream(ref stream) => stream.peer_addr().unwrap(),
-                Connection::UdpListener(ref socket) => socket.local_addr().unwrap(),
-                Connection::UdpSocket(_, address) => *address,
-            }
-        })
+        store.connections.get(&id).map(|connection| connection.local_address())
+    }
+
+    pub fn connection_remote_address(&mut self, id: usize) -> Option<SocketAddr> {
+        let store = self.store.lock().unwrap();
+        match store.connections.get(&id) {
+            Some(connection) => connection.remote_address(),
+            None => None,
+        }
     }
 
     pub fn send(&mut self, id: usize, data: &[u8]) -> Option<()> {
@@ -193,9 +212,9 @@ impl<'a> Receiver {
                 let mut store = self.store.lock().unwrap();
                 match store.connections.get_mut(&id).unwrap() {
                     Connection::TcpListener(listener) => {
-                        let (stream, _) = listener.accept().unwrap();
+                        let (stream, addr) = listener.accept().unwrap();
                         let stream_id = store.add_connection(Connection::TcpStream(stream));
-                        callback(stream_id, Event::Connection);
+                        callback(stream_id, Event::Connection(addr));
                     },
                     Connection::TcpStream(ref mut stream) => {
                         if let Ok(size) = stream.read(&mut self.input_buffer) {
@@ -212,7 +231,7 @@ impl<'a> Receiver {
                         if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
                             let (new, endpoint_id) = store.register_virtual_socket_connection(addr);
                             if new {
-                                callback(endpoint_id, Event::Connection)
+                                callback(endpoint_id, Event::Connection(addr))
                             }
                             callback(endpoint_id, Event::Data(&self.input_buffer))
                         };

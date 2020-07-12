@@ -32,7 +32,7 @@ fn main() {
                     Message::HelloServer => network.send(endpoint, Message::HelloClient).unwrap(),
                     _ => (), // Other messages here
                 },
-                NetEvent::AddedEndpoint(_endpoint) => println!("Client connected"),
+                NetEvent::AddedEndpoint(_endpoint, _address) => println!("Client connected"),
                 NetEvent::RemovedEndpoint(_endpoint) => println!("Client disconnected"),
             },
             // Other events here

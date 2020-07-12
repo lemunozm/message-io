@@ -49,8 +49,7 @@ pub fn run(protocol: TransportProtocol) {
                         },
                         ClientMessage::Bye => println!("Client {} closed", clients[&endpoint]),
                     },
-                    NetEvent::AddedEndpoint(endpoint) => {
-                        let addr = network.endpoint_address(endpoint).unwrap();
+                    NetEvent::AddedEndpoint(endpoint, addr) => {
                         clients.insert(endpoint, addr);
                         println!("Client {} connected (total clients: {})", addr, clients.len());
                     },

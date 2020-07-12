@@ -17,7 +17,7 @@ pub fn run(protocol: TransportProtocol) {
     let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let addr = "127.0.0.1:3000".parse().unwrap();
-    if let Some(server) = network.connect(addr, protocol) {
+    if let Some((server, _)) = network.connect(addr, protocol) {
         println!("Connected to server by {} at {}", protocol, addr);
         event_queue.sender().send_with_timer(Event::Greet, Duration::from_secs(1));
 
@@ -36,7 +36,7 @@ pub fn run(protocol: TransportProtocol) {
                         ServerMessage::NotifyDisconnection(duration) => println!("Server notified disconnection in {} secs", duration.as_secs()),
                         ServerMessage::Bye => println!("Server say: good bye!"),
                     },
-                    NetEvent::AddedEndpoint(_) => unreachable!(),
+                    NetEvent::AddedEndpoint(_, _) => unreachable!(),
                     NetEvent::RemovedEndpoint(_) => {
                         println!("Server is disconnected");
                         return;

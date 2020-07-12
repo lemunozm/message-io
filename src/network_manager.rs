@@ -29,7 +29,7 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     /// New endpoint added to a listener.
     /// In TCP it will be sent when a new connection was accepted by the listener.
     /// IN UDP will be sent when the socket send data by first time, before the Message event.
-    AddedEndpoint(Endpoint),
+    AddedEndpoint(Endpoint, SocketAddr),
 
     /// A connection lost event.
     /// This event is only dispatched when a connection is lost, `remove_endpoint()` not generate the event.
@@ -69,8 +69,8 @@ impl<'a> NetworkManager {
             while running.load(Ordering::Relaxed) {
                 network_receiver.receive(Some(timeout), |endpoint, event| {
                     let net_event = match event {
-                        network::Event::Connection => {
-                            NetEvent::AddedEndpoint(endpoint)
+                        network::Event::Connection(address) => {
+                            NetEvent::AddedEndpoint(endpoint, address)
                         },
                         network::Event::Data(data) => {
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
@@ -94,32 +94,45 @@ impl<'a> NetworkManager {
     }
 
     /// Creates a connection to the specific address thougth the given protocol.
-    /// The endpoint, an identified of the new connection, will be returned.
+    /// The endpoint, an identified of the new connection, will be returned among with the local address of that connection.
     /// Only for TCP, if the connection can not be performed (the address is not reached) a None will be returned.
     /// UDP has no the ability to be aware of this, so always an endpoint will be returned.
-    pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<Endpoint> {
+    pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
         match transport {
             TransportProtocol::Tcp => Connection::new_tcp_stream(addr),
             TransportProtocol::Udp => Connection::new_udp_socket(addr),
         }
         .ok()
-        .map(|connection| self.network_controller.add_connection(connection))
+        .map(|connection| {
+            let address = connection.local_address();
+            let endpoint = self.network_controller.add_connection(connection);
+            (endpoint, address)
+        })
     }
 
     /// Open a port to listen messages from either TCP or UDP.
-    /// If the port can be opened, a endpoint identifying the listener will be returned, or a None if not.
-    pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<Endpoint> {
+    /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
+    pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
         match transport {
             TransportProtocol::Tcp => Connection::new_tcp_listener(addr),
             TransportProtocol::Udp => Connection::new_udp_listener(addr),
         }
         .ok()
-        .map(|listener| self.network_controller.add_connection(listener))
+        .map(|connection| {
+            let address = connection.local_address();
+            let endpoint = self.network_controller.add_connection(connection);
+            (endpoint, address)
+        })
     }
 
-    /// Retrieve the address associated to an endpoint, or None if the endpoint does not exists.
-    pub fn endpoint_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
-        self.network_controller.connection_address(endpoint)
+    /// Retrieve the local address associated to an endpoint, or None if the endpoint does not exists.
+    pub fn endpoint_local_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
+        self.network_controller.connection_local_address(endpoint)
+    }
+
+    /// Retrieve the address associated to an endpoint, or None if the endpoint does not exists or the endpoint is a listener.
+    pub fn endpoint_remote_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
+        self.network_controller.connection_remote_address(endpoint)
     }
 
     /// Remove the endpoint.

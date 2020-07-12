@@ -1,5 +1,6 @@
-use message_io::event_queue::{EventQueue};
-use message_io::network_manager::{NetworkManager, NetEvent, TransportProtocol};
+use message_io::events::{EventQueue};
+use message_io::network::{NetworkManager, NetEvent, TransportProtocol};
+
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]

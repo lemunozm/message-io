@@ -1,3 +1,3 @@
-mod network;
-pub mod event_queue;
-pub mod network_manager;
+mod network_adapter;
+pub mod network;
+pub mod events;

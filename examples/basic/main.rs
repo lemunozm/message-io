@@ -2,7 +2,7 @@ mod common;
 mod client;
 mod server;
 
-use message_io::network_manager::{TransportProtocol};
+use message_io::network::{TransportProtocol};
 
 pub fn main() {
     let args: Vec<String> = std::env::args().collect();

@@ -41,8 +41,8 @@ and responses with a `HelloClient` message.
 It is capable to manage several client connections and listen from 2 differents ports and interfaces.
 
 ```rust
-use message_io::event_queue::{EventQueue};
-use message_io::network_manager::{NetworkManager, NetEvent, TransportProtocol};
+use message_io::events::{EventQueue};
+use message_io::network::{NetworkManager, NetEvent, TransportProtocol};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]

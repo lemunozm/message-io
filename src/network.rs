@@ -1,249 +1,177 @@
-use mio::net::{TcpListener, TcpStream, UdpSocket};
-use mio::{event, Poll, Interest, Token, Events, Registry};
+use crate::network_adapter::{self, Connection};
 
-use std::net::{SocketAddr, TcpStream as StdTcpStream};
-use std::sync::{Arc, Mutex};
+use serde::{Serialize, Deserialize};
+
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::net::{SocketAddr};
+use std::thread::{self, JoinHandle};
+use std::fmt::{self};
 use std::time::{Duration};
-use std::collections::{HashMap};
-use std::io::{self, prelude::*};
 
-const EVENTS_SIZE: usize = 1024;
-const INPUT_BUFFER_SIZE: usize = 65536;
+/// Alias to improve the management of the connection ids.
+pub type Endpoint = usize;
 
-pub enum Event<'a> {
-    Connection(SocketAddr),
-    Data(&'a[u8]),
-    Disconnection,
+const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
+
+/// Used to define the protocol when a connection/listener is created.
+#[derive(Debug, Clone, Copy)]
+pub enum TransportProtocol {
+    Tcp,
+    Udp,
 }
 
-pub fn adapter() -> (Controller, Receiver) {
-    let poll = Poll::new().unwrap();
-    let store = Arc::new(Mutex::new(Store::new(poll.registry().try_clone().unwrap())));
-    (Controller::new(store.clone()), Receiver::new(store, poll))
+/// Input network events.
+pub enum NetEvent<InMessage>
+where InMessage: for<'b> Deserialize<'b> + Send + 'static {
+    /// Input message received by the network.
+    Message(InMessage, Endpoint),
+
+    /// New endpoint added to a listener.
+    /// In TCP it will be sent when a new connection was accepted by the listener.
+    /// IN UDP will be sent when the socket send data by first time, before the Message event.
+    AddedEndpoint(Endpoint, SocketAddr),
+
+    /// A connection lost event.
+    /// This event is only dispatched when a connection is lost, `remove_endpoint()` not generate the event.
+    /// This event will be sent only in TCP. Because UDP is not connection oriented, this event can no be detected
+    RemovedEndpoint(Endpoint),
 }
 
-pub enum Connection {
-    TcpListener(TcpListener),
-    TcpStream(TcpStream),
-    UdpListener(UdpSocket),
-    UdpSocket(UdpSocket, SocketAddr),
+
+impl fmt::Display for TransportProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", format!("{:?}", self).to_lowercase())
+    }
 }
 
-impl Connection {
-    pub fn new_tcp_listener(addr: SocketAddr) -> io::Result<Connection> {
-        TcpListener::bind(addr).map(|listener| Connection::TcpListener(listener))
+/// NetworkManager allows to manage the network easier.
+/// It is in mainly in charge to transform raw data from the network into message events and vice versa.
+pub struct NetworkManager {
+    network_event_thread: Option<JoinHandle<()>>,
+    network_thread_running: Arc<AtomicBool>,
+    network_controller: network_adapter::Controller,
+    output_buffer: Vec<u8>,
+}
+
+impl<'a> NetworkManager {
+    /// Creates a new [NetworkManager].
+    /// The user must register an event_callback that can be called each time the network generate and [NetEvent]
+    pub fn new<InMessage, C>(event_callback: C) -> NetworkManager
+    where InMessage: for<'b> Deserialize<'b> + Send + 'static,
+          C: Fn(NetEvent<InMessage>) + Send + 'static {
+        let (network_controller, mut network_receiver) = network_adapter::adapter();
+
+        let network_thread_running = Arc::new(AtomicBool::new(true));
+        let running = network_thread_running.clone();
+
+        let network_event_thread = thread::spawn(move || {
+            let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
+            while running.load(Ordering::Relaxed) {
+                network_receiver.receive(Some(timeout), |endpoint, event| {
+                    let net_event = match event {
+                        network_adapter::Event::Connection(address) => {
+                            NetEvent::AddedEndpoint(endpoint, address)
+                        },
+                        network_adapter::Event::Data(data) => {
+                            let message: InMessage = bincode::deserialize(&data[..]).unwrap();
+                            NetEvent::Message(message, endpoint)
+                        },
+                        network_adapter::Event::Disconnection => {
+                            NetEvent::RemovedEndpoint(endpoint)
+                        },
+                    };
+                    event_callback(net_event);
+                });
+            }
+        });
+
+        NetworkManager {
+            network_event_thread: Some(network_event_thread),
+            network_thread_running,
+            network_controller,
+            output_buffer: Vec::new()
+        }
     }
 
-    pub fn new_tcp_stream(addr: SocketAddr) -> io::Result<Connection> {
-        StdTcpStream::connect(addr).map(|stream| Connection::TcpStream(TcpStream::from_std(stream)))
-    }
-
-    pub fn new_udp_listener(addr: SocketAddr) -> io::Result<Connection> {
-        UdpSocket::bind(addr).map(|socket| Connection::UdpListener(socket))
-    }
-
-    pub fn new_udp_socket(addr: SocketAddr) -> io::Result<Connection> {
-        UdpSocket::bind("0.0.0.0:0".parse().unwrap()).map(|socket| {
-            socket.connect(addr).unwrap();
-            Connection::UdpSocket(socket, addr)
+    /// Creates a connection to the specific address thougth the given protocol.
+    /// The endpoint, an identified of the new connection, will be returned among with the local address of that connection.
+    /// Only for TCP, if the connection can not be performed (the address is not reached) a None will be returned.
+    /// UDP has no the ability to be aware of this, so always an endpoint will be returned.
+    pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
+        match transport {
+            TransportProtocol::Tcp => Connection::new_tcp_stream(addr),
+            TransportProtocol::Udp => Connection::new_udp_socket(addr),
+        }
+        .ok()
+        .map(|connection| {
+            let address = connection.local_address();
+            let endpoint = self.network_controller.add_connection(connection);
+            (endpoint, address)
         })
     }
 
-    pub fn event_source(&mut self) -> &mut dyn event::Source {
-        match self {
-            Connection::TcpListener(listener) => listener,
-            Connection::TcpStream(stream) => stream,
-            Connection::UdpListener(socket) => socket,
-            Connection::UdpSocket(socket, _) => socket,
+    /// Open a port to listen messages from either TCP or UDP.
+    /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
+    pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
+        match transport {
+            TransportProtocol::Tcp => Connection::new_tcp_listener(addr),
+            TransportProtocol::Udp => Connection::new_udp_listener(addr),
         }
+        .ok()
+        .map(|connection| {
+            let address = connection.local_address();
+            let endpoint = self.network_controller.add_connection(connection);
+            (endpoint, address)
+        })
     }
 
-    pub fn local_address(&self) -> SocketAddr {
-        match self {
-            Connection::TcpListener(listener) => listener.local_addr().unwrap(),
-            Connection::TcpStream(stream) => stream.local_addr().unwrap(),
-            Connection::UdpListener(socket) => socket.local_addr().unwrap(),
-            Connection::UdpSocket(socket, _) => socket.local_addr().unwrap(),
-        }
+    /// Retrieve the local address associated to an endpoint, or None if the endpoint does not exists.
+    pub fn endpoint_local_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
+        self.network_controller.connection_local_address(endpoint)
     }
 
-    pub fn remote_address(&self) -> Option<SocketAddr> {
-        match self {
-            Connection::TcpListener(_) => None,
-            Connection::TcpStream(stream) => Some(stream.peer_addr().unwrap()),
-            Connection::UdpListener(_) => None,
-            Connection::UdpSocket(_, address) => Some(*address),
-        }
-    }
-}
-
-struct Store {
-    pub connections: HashMap<usize, Connection>,
-    pub last_id: usize,
-    pub registry: Registry,
-    pub virtual_socket_connections_addr_id: HashMap<SocketAddr, usize>,
-    pub virtual_socket_connections_id_addr: HashMap<usize, SocketAddr>,
-}
-
-impl Store {
-    fn new(registry: Registry) -> Store {
-        Store {
-            connections: HashMap::new(),
-            last_id: 0,
-            registry,
-            virtual_socket_connections_addr_id: HashMap::new(),
-            virtual_socket_connections_id_addr: HashMap::new(),
-        }
+    /// Retrieve the address associated to an endpoint, or None if the endpoint does not exists or the endpoint is a listener.
+    pub fn endpoint_remote_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
+        self.network_controller.connection_remote_address(endpoint)
     }
 
-    fn add_connection(&mut self, mut connection: Connection) -> usize {
-        let id = self.last_id;
-        self.last_id += 1;
-        self.registry.register(connection.event_source(), Token(id), Interest::READABLE).unwrap();
-        self.connections.insert(id, connection);
-        id
+    /// Remove the endpoint.
+    /// Returns None if the endpoint does not exists.
+    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
+        self.network_controller.remove_connection(endpoint)
     }
 
-    fn remove_connection(&mut self, id: usize) -> Option<()> {
-        if let Some(ref mut connection) = self.connections.remove(&id) {
-            self.registry.deregister(connection.event_source()).unwrap();
-            Some(())
-        }
-        else if let Some(addr) = self.virtual_socket_connections_id_addr.remove(&id) {
-            self.virtual_socket_connections_addr_id.remove(&addr);
-            Some(())
-        }
-        else {
-            None
-        }
+    /// Serialize and send the message thought the connection represented by the given endpoint.
+    /// Returns None if the endpoint does not exists.
+    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> Option<()>
+    where OutMessage: Serialize {
+        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+        let result = self.network_controller.send(endpoint, &self.output_buffer);
+        self.output_buffer.clear();
+        result
     }
 
-    fn register_virtual_socket_connection(&mut self, addr: SocketAddr) -> (bool, usize) {
-        match self.virtual_socket_connections_addr_id.get(&addr) {
-            Some(id) => (false, *id),
-            None => {
-                let id = self.last_id;
-                self.last_id += 1;
-                self.virtual_socket_connections_addr_id.insert(addr, id);
-                self.virtual_socket_connections_id_addr.insert(id, addr);
-                (true, id)
+    /// Serialize and send the message thought the connections represented by the given endpoints.
+    /// When there are severals endpoints to send the data. It is better to call this function instead of several calls to `send()`,
+    /// because the serialization only is performed one time for all the endpoints.
+    /// An Err with the unrecognized ids is returned.
+    pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<Endpoint>>
+    where OutMessage: Serialize {
+        let mut unrecognized_ids = Vec::new();
+        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+        for endpoint in endpoints {
+            if let None = self.network_controller.send(*endpoint, &self.output_buffer) {
+                unrecognized_ids.push(*endpoint);
             }
         }
+        self.output_buffer.clear();
+        if unrecognized_ids.is_empty() { Ok(()) } else { Err(unrecognized_ids) }
     }
 }
 
-
-pub struct Controller {
-    store: Arc<Mutex<Store>>,
-}
-
-impl Controller {
-    fn new(store: Arc<Mutex<Store>>) -> Controller {
-        Controller { store }
-    }
-
-    pub fn add_connection(&mut self, connection: Connection) -> usize {
-        let mut store = self.store.lock().unwrap();
-        store.add_connection(connection)
-    }
-
-    pub fn remove_connection(&mut self, id: usize) -> Option<()> {
-        let mut store = self.store.lock().unwrap();
-        store.remove_connection(id)
-    }
-
-    pub fn connection_local_address(&mut self, id: usize) -> Option<SocketAddr> {
-        let store = self.store.lock().unwrap();
-        store.connections.get(&id).map(|connection| connection.local_address())
-    }
-
-    pub fn connection_remote_address(&mut self, id: usize) -> Option<SocketAddr> {
-        let store = self.store.lock().unwrap();
-        match store.connections.get(&id) {
-            Some(connection) => connection.remote_address(),
-            None => None,
-        }
-    }
-
-    pub fn send(&mut self, id: usize, data: &[u8]) -> Option<()> {
-        let mut store = self.store.lock().unwrap();
-        match store.connections.get_mut(&id) {
-            Some(connection) => match connection {
-                Connection::TcpStream(stream) => { stream.write(data).unwrap(); Some(()) },
-                Connection::UdpSocket(socket, _) => { socket.send(data).unwrap(); Some(()) },
-                _ => None,
-            },
-            None => None,
-        }
+impl Drop for NetworkManager {
+    fn drop(&mut self) {
+        self.network_thread_running.store(false, Ordering::Relaxed);
+        self.network_event_thread.take().unwrap().join().unwrap();
     }
 }
-
-pub struct Receiver {
-    store: Arc<Mutex<Store>>,
-    poll: Poll,
-    events: Events,
-    input_buffer: [u8; INPUT_BUFFER_SIZE],
-}
-
-impl<'a> Receiver {
-    fn new(store: Arc<Mutex<Store>>, poll: Poll) -> Receiver {
-        Receiver {
-            store,
-            poll,
-            events: Events::with_capacity(EVENTS_SIZE),
-            input_buffer: [0; INPUT_BUFFER_SIZE],
-        }
-    }
-
-    pub fn receive<C>(&mut self, timeout: Option<Duration>, callback: C)
-    where C: for<'b> FnMut(usize, Event<'b>) {
-        self.poll.poll(&mut self.events, timeout).unwrap();
-        if !self.events.is_empty() {
-            self.process_event(callback);
-        }
-    }
-
-    fn process_event<C>(&mut self, mut callback: C)
-    where C: for<'b> FnMut(usize, Event<'b>) {
-        let mio_event = self.events.iter().next().unwrap();
-        match mio_event.token() {
-            token => {
-                let id = token.0;
-                let mut store = self.store.lock().unwrap();
-                match store.connections.get_mut(&id).unwrap() {
-                    Connection::TcpListener(listener) => {
-                        let (stream, addr) = listener.accept().unwrap();
-                        let stream_id = store.add_connection(Connection::TcpStream(stream));
-                        callback(stream_id, Event::Connection(addr));
-                    },
-                    Connection::TcpStream(ref mut stream) => {
-                        if let Ok(size) = stream.read(&mut self.input_buffer) {
-                            match size {
-                                0 => {
-                                    store.remove_connection(id);
-                                    callback(id, Event::Disconnection);
-                                },
-                                _ => callback(id, Event::Data(&self.input_buffer)),
-                            }
-                        };
-                    },
-                    Connection::UdpListener(ref socket) => {
-                        if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
-                            let (new, endpoint_id) = store.register_virtual_socket_connection(addr);
-                            if new {
-                                callback(endpoint_id, Event::Connection(addr))
-                            }
-                            callback(endpoint_id, Event::Data(&self.input_buffer))
-                        };
-                    },
-                    Connection::UdpSocket(ref socket, _) => {
-                        if let Ok(_) = socket.recv(&mut self.input_buffer) {
-                            callback(id, Event::Data(&self.input_buffer))
-                        };
-                    }
-                };
-            }
-        };
-    }
-}
-

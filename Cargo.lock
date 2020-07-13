@@ -82,6 +82,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "crossbeam-channel",
+ "log",
  "mio",
  "serde",
 ]

@@ -64,19 +64,23 @@ impl<'a> NetworkManager {
         let network_thread_running = Arc::new(AtomicBool::new(true));
         let running = network_thread_running.clone();
 
+        let input_controller = network_controller.clone();
         let network_event_thread = thread::spawn(move || {
             let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
             while running.load(Ordering::Relaxed) {
                 network_receiver.receive(Some(timeout), |endpoint, event| {
                     let net_event = match event {
                         network_adapter::Event::Connection(address) => {
+                            log::trace!("Connected endpoint {}", address);
                             NetEvent::AddedEndpoint(endpoint, address)
                         },
                         network_adapter::Event::Data(data) => {
+                            log::trace!("Message received from {}", input_controller.connection_remote_address(endpoint).unwrap());
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
                             NetEvent::Message(message, endpoint)
                         },
                         network_adapter::Event::Disconnection => {
+                            log::trace!("Disconnected endpoint {}", input_controller.connection_remote_address(endpoint).unwrap());
                             NetEvent::RemovedEndpoint(endpoint)
                         },
                     };
@@ -148,6 +152,9 @@ impl<'a> NetworkManager {
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         let result = self.network_controller.send(endpoint, &self.output_buffer);
         self.output_buffer.clear();
+        if let Some(_) = result {
+            log::trace!("Message sent to {}", self.network_controller.connection_remote_address(endpoint).unwrap());
+        }
         result
     }
 
@@ -160,8 +167,9 @@ impl<'a> NetworkManager {
         let mut unrecognized_ids = Vec::new();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         for endpoint in endpoints {
-            if let None = self.network_controller.send(*endpoint, &self.output_buffer) {
-                unrecognized_ids.push(*endpoint);
+            match self.network_controller.send(*endpoint, &self.output_buffer) {
+                Some(_) => log::trace!("Message sent to {}", self.network_controller.connection_remote_address(*endpoint).unwrap()),
+                None => unrecognized_ids.push(*endpoint)
             }
         }
         self.output_buffer.clear();

@@ -118,6 +118,17 @@ impl Store {
         }
     }
 
+    fn connection_local_address(&self, id: usize) -> Option<SocketAddr> {
+        self.connections.get(&id).map(|connection| connection.local_address())
+    }
+
+    fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
+        match self.connections.get(&id) {
+            Some(connection) => connection.remote_address(),
+            None => None,
+        }
+    }
+
     fn register_virtual_socket_connection(&mut self, addr: SocketAddr) -> (bool, usize) {
         match self.virtual_socket_connections_addr_id.get(&addr) {
             Some(id) => (false, *id),
@@ -152,17 +163,14 @@ impl Controller {
         store.remove_connection(id)
     }
 
-    pub fn connection_local_address(&mut self, id: usize) -> Option<SocketAddr> {
+    pub fn connection_local_address(&self, id: usize) -> Option<SocketAddr> {
         let store = self.store.lock().unwrap();
-        store.connections.get(&id).map(|connection| connection.local_address())
+        store.connection_local_address(id)
     }
 
-    pub fn connection_remote_address(&mut self, id: usize) -> Option<SocketAddr> {
+    pub fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
         let store = self.store.lock().unwrap();
-        match store.connections.get(&id) {
-            Some(connection) => connection.remote_address(),
-            None => None,
-        }
+        store.connection_remote_address(id)
     }
 
     pub fn send(&mut self, id: usize, data: &[u8]) -> Option<()> {
@@ -175,6 +183,12 @@ impl Controller {
             },
             None => None,
         }
+    }
+}
+
+impl Clone for Controller {
+    fn clone(&self) -> Self {
+        Self { store: self.store.clone() }
     }
 }
 

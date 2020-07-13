@@ -79,7 +79,6 @@ impl<'a> NetworkManager {
                             NetEvent::Message(message, endpoint)
                         },
                         network_adapter::Event::Disconnection => {
-                            dbg!(endpoint);
                             log::trace!("Disconnected endpoint {}", store.connection_remote_address(endpoint).unwrap());
                             NetEvent::RemovedEndpoint(endpoint)
                         },

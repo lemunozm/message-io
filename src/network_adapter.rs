@@ -77,12 +77,12 @@ impl Connection {
     }
 }
 
-struct Store {
-    pub connections: HashMap<usize, Connection>,
-    pub last_id: usize,
-    pub registry: Registry,
-    pub virtual_socket_connections_addr_id: HashMap<SocketAddr, usize>,
-    pub virtual_socket_connections_id_addr: HashMap<usize, SocketAddr>,
+pub struct Store {
+    connections: HashMap<usize, Connection>,
+    last_id: usize,
+    registry: Registry,
+    virtual_socket_connections_addr_id: HashMap<SocketAddr, usize>,
+    virtual_socket_connections_id_addr: HashMap<usize, SocketAddr>,
 }
 
 impl Store {
@@ -96,7 +96,7 @@ impl Store {
         }
     }
 
-    fn add_connection(&mut self, mut connection: Connection) -> usize {
+    pub fn add_connection(&mut self, mut connection: Connection) -> usize {
         let id = self.last_id;
         self.last_id += 1;
         self.registry.register(connection.event_source(), Token(id), Interest::READABLE).unwrap();
@@ -104,7 +104,7 @@ impl Store {
         id
     }
 
-    fn remove_connection(&mut self, id: usize) -> Option<()> {
+    pub fn remove_connection(&mut self, id: usize) -> Option<()> {
         if let Some(ref mut connection) = self.connections.remove(&id) {
             self.registry.deregister(connection.event_source()).unwrap();
             Some(())
@@ -118,18 +118,18 @@ impl Store {
         }
     }
 
-    fn connection_local_address(&self, id: usize) -> Option<SocketAddr> {
+    pub fn connection_local_address(&self, id: usize) -> Option<SocketAddr> {
         self.connections.get(&id).map(|connection| connection.local_address())
     }
 
-    fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
+    pub fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
         match self.connections.get(&id) {
             Some(connection) => connection.remote_address(),
             None => None,
         }
     }
 
-    fn register_virtual_socket_connection(&mut self, addr: SocketAddr) -> (bool, usize) {
+    pub fn register_virtual_socket_connection(&mut self, addr: SocketAddr) -> (bool, usize) {
         match self.virtual_socket_connections_addr_id.get(&addr) {
             Some(id) => (false, *id),
             None => {
@@ -177,8 +177,8 @@ impl Controller {
         let mut store = self.store.lock().unwrap();
         match store.connections.get_mut(&id) {
             Some(connection) => match connection {
-                Connection::TcpStream(stream) => { stream.write(data).unwrap(); Some(()) },
-                Connection::UdpSocket(socket, _) => { socket.send(data).unwrap(); Some(()) },
+                Connection::TcpStream(stream) => { stream.write(data).ok().map(|_|()) }, //TODO: Generate a Disconnection Event if broke pipe
+                Connection::UdpSocket(socket, _) => { socket.send(data).ok().map(|_|()) },
                 _ => None,
             },
             None => None,
@@ -210,7 +210,7 @@ impl<'a> Receiver {
     }
 
     pub fn receive<C>(&mut self, timeout: Option<Duration>, callback: C)
-    where C: for<'b> FnMut(usize, Event<'b>) {
+    where C: for<'b> FnMut(&mut Store, usize, Event<'b>) {
         self.poll.poll(&mut self.events, timeout).unwrap();
         if !self.events.is_empty() {
             self.process_event(callback);
@@ -218,7 +218,7 @@ impl<'a> Receiver {
     }
 
     fn process_event<C>(&mut self, mut callback: C)
-    where C: for<'b> FnMut(usize, Event<'b>) {
+    where C: for<'b> FnMut(&mut Store, usize, Event<'b>) {
         let mio_event = self.events.iter().next().unwrap();
         match mio_event.token() {
             token => {
@@ -228,16 +228,16 @@ impl<'a> Receiver {
                     Connection::TcpListener(listener) => {
                         let (stream, addr) = listener.accept().unwrap();
                         let stream_id = store.add_connection(Connection::TcpStream(stream));
-                        callback(stream_id, Event::Connection(addr));
+                        callback(&mut store, stream_id, Event::Connection(addr));
                     },
                     Connection::TcpStream(ref mut stream) => {
                         if let Ok(size) = stream.read(&mut self.input_buffer) {
                             match size {
                                 0 => {
+                                    callback(&mut store, id, Event::Disconnection);
                                     store.remove_connection(id);
-                                    callback(id, Event::Disconnection);
                                 },
-                                _ => callback(id, Event::Data(&self.input_buffer)),
+                                _ => callback(&mut store, id, Event::Data(&self.input_buffer)),
                             }
                         };
                     },
@@ -245,14 +245,14 @@ impl<'a> Receiver {
                         if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
                             let (new, endpoint_id) = store.register_virtual_socket_connection(addr);
                             if new {
-                                callback(endpoint_id, Event::Connection(addr))
+                                callback(&mut store, endpoint_id, Event::Connection(addr))
                             }
-                            callback(endpoint_id, Event::Data(&self.input_buffer))
+                            callback(&mut store, endpoint_id, Event::Data(&self.input_buffer))
                         };
                     },
                     Connection::UdpSocket(ref socket, _) => {
                         if let Ok(_) = socket.recv(&mut self.input_buffer) {
-                            callback(id, Event::Data(&self.input_buffer))
+                            callback(&mut store, id, Event::Data(&self.input_buffer))
                         };
                     }
                 };

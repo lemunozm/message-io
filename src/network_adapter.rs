@@ -5,7 +5,7 @@ use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration};
 use std::collections::{HashMap};
-use std::io::{self, prelude::*};
+use std::io::{self, prelude::*, ErrorKind};
 
 const EVENTS_SIZE: usize = 1024;
 const INPUT_BUFFER_SIZE: usize = 65536;
@@ -211,9 +211,20 @@ impl<'a> Receiver {
 
     pub fn receive<C>(&mut self, timeout: Option<Duration>, callback: C)
     where C: for<'b> FnMut(&mut Store, usize, Event<'b>) {
-        self.poll.poll(&mut self.events, timeout).unwrap();
-        if !self.events.is_empty() {
-            self.process_event(callback);
+        loop {
+            match self.poll.poll(&mut self.events, timeout) {
+                Ok(_) => {
+                    if !self.events.is_empty() {
+                        self.process_event(callback);
+                    }
+                    // else: timeout
+                    break
+                },
+                Err(e) => match e.kind() {
+                    ErrorKind::Interrupted => continue,
+                    _ => Err(e).unwrap(),
+                }
+            }
         }
     }
 

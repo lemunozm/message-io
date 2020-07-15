@@ -1,4 +1,4 @@
-use crossbeam_channel::{self, Sender, Receiver};
+use crossbeam_channel::{self, Sender, Receiver, select};
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use std::time::Duration;
@@ -9,6 +9,7 @@ const TIMER_SAMPLING_CHECK: u64 = 50; //ms
 
 pub struct EventQueue<E> {
     receiver: Receiver<E>,
+    priority_receiver: Receiver<E>,
     event_sender: EventSender<E>,
 }
 
@@ -18,9 +19,11 @@ where E: Send + 'static {
     pub fn new() -> EventQueue<E>
     {
         let (sender, receiver) = crossbeam_channel::unbounded();
+        let (priority_sender, priority_receiver) = crossbeam_channel::unbounded();
         EventQueue {
             receiver,
-            event_sender: EventSender::new(sender),
+            priority_receiver,
+            event_sender: EventSender::new(sender, priority_sender),
         }
     }
 
@@ -32,19 +35,37 @@ where E: Send + 'static {
 
     /// Blocks the current thread until an event is received by this queue.
     pub fn receive(&mut self) -> E {
-        self.receiver.recv().unwrap()
+        if !self.priority_receiver.is_empty() {
+            self.priority_receiver.recv().unwrap()
+        }
+        else {
+            select! {
+                recv(self.receiver) -> event => event.unwrap(),
+                recv(self.priority_receiver) -> event => event.unwrap(),
+            }
+        }
     }
 
     /// Blocks the current thread until an event is received by this queue or timeout is exceeded.
     /// If timeout is reached a None is returned, otherwise the event is returned.
     pub fn receive_event_timeout(&mut self, timeout: Duration) -> Option<E> {
-        self.receiver.recv_timeout(timeout).ok()
+        if !self.priority_receiver.is_empty() {
+            Some(self.priority_receiver.recv().unwrap())
+        }
+        else {
+            select! {
+                recv(self.receiver) -> event => Some(event.unwrap()),
+                recv(self.priority_receiver) -> event => Some(event.unwrap()),
+                default(timeout) => None
+            }
+        }
     }
 }
 
 
 pub struct EventSender<E> {
     sender: Sender<E>,
+    priority_sender: Sender<E>,
     timer_registry: HashMap<usize, JoinHandle<()>>,
     timers_running: Arc<AtomicBool>,
     last_timer_id: usize,
@@ -52,9 +73,10 @@ pub struct EventSender<E> {
 
 impl<E> EventSender<E>
 where E: Send + 'static {
-    fn new(sender: Sender<E>) -> EventSender<E> {
+    fn new(sender: Sender<E>, priority_sender: Sender<E>) -> EventSender<E> {
         EventSender {
             sender,
+            priority_sender,
             timer_registry: HashMap::new(),
             timers_running: Arc::new(AtomicBool::new(true)),
             last_timer_id: 0,
@@ -64,6 +86,12 @@ where E: Send + 'static {
     /// Send instantly an event to the event queue.
     pub fn send(&self, event: E) {
         self.sender.send(event).unwrap();
+    }
+
+    /// Send instantly an event that would be process before any other event sent by the send() method.
+    /// Successive calls to send_with_priority will maintain the order of arrival.
+    pub fn send_with_priority(&self, event: E) {
+        self.priority_sender.send(event).unwrap();
     }
 
     /// Send a timed event to the [EventQueue].
@@ -103,6 +131,7 @@ impl<E> Clone for EventSender<E> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
+            priority_sender: self.priority_sender.clone(),
             timer_registry: HashMap::new(),
             timers_running: Arc::new(AtomicBool::new(true)),
             last_timer_id: 0,

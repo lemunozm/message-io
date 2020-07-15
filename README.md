@@ -36,7 +36,7 @@ message-io = "0.2"
 - [API documentation](https://docs.rs/message-io/)
 
 ### Example
-The following example is simplest server that reads `HelloServer` message
+The following example is the simplest server that reads `HelloServer` message
 and responses with a `HelloClient` message.
 It is capable to manage several client connections and listen from 2 differents ports and interfaces.
 
@@ -61,8 +61,8 @@ fn main() {
     let mut event_queue = EventQueue::new();
 
     // Create NetworkManager, the callback will push the network event into the event queue
-    let network_sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let sender = event_queue.sender().clone();
+    let mut network = NetworkManager::new(move |net_event| sender.send(Event::Network(net_event)));
 
     // Listen TCP messages at ports 3001 and 3002.
     network.listen("127.0.0.1:3001".parse().unwrap(), TransportProtocol::Tcp).unwrap();

@@ -10,6 +10,7 @@ use std::io::{self, prelude::*, ErrorKind};
 const EVENTS_SIZE: usize = 1024;
 const INPUT_BUFFER_SIZE: usize = 65536;
 
+#[derive(Debug)]
 pub enum Event<'a> {
     Connection(SocketAddr),
     Data(&'a[u8]),

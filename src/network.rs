@@ -21,6 +21,7 @@ pub enum TransportProtocol {
 }
 
 /// Input network events.
+#[derive(Debug)]
 pub enum NetEvent<InMessage>
 where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     /// Input message received by the network.

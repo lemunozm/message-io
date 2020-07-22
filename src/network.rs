@@ -159,8 +159,8 @@ impl<'a> NetworkManager {
     }
 
     /// Serialize and send the message thought the connections represented by the given endpoints.
-    /// When there are severals endpoints to send the data. It is better to call this function instead of several calls to `send()`,
-    /// because the serialization only is performed one time for all the endpoints.
+    /// When there are severals endpoints to send the data, this function is faster than several calls to `send()`,
+    /// because the serialization only is performed one time for all endpoints.
     /// An Err with the unrecognized ids is returned.
     pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<Endpoint>>
     where OutMessage: Serialize {

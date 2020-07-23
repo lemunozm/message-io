@@ -178,7 +178,7 @@ impl Controller {
         let mut store = self.store.lock().unwrap();
         match store.connections.get_mut(&id) {
             Some(connection) => match connection {
-                Connection::TcpStream(stream) => { stream.write(data).ok().map(|_|()) }, //TODO: Generate a Disconnection Event if broke pipe
+                Connection::TcpStream(stream) => { stream.write(data).ok().map(|_|()) },
                 Connection::UdpSocket(socket, _) => { socket.send(data).ok().map(|_|()) },
                 _ => None,
             },

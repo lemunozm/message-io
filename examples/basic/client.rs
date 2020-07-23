@@ -31,7 +31,7 @@ pub fn run(protocol: TransportProtocol) {
                     hello_counter += 1;
                 }
                 Event::Network(net_event) => match net_event {
-                    NetEvent::Message(message, _) => match message {
+                    NetEvent::Message(_, message) => match message {
                         ServerMessage::Greet(text) => println!("Server says: {}", text),
                         ServerMessage::NotifyDisconnection(duration) => println!("Server notified disconnection in {} secs", duration.as_secs()),
                         ServerMessage::Bye => println!("Server say: good bye!"),

@@ -25,7 +25,7 @@ pub enum TransportProtocol {
 pub enum NetEvent<InMessage>
 where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     /// Input message received by the network.
-    Message(InMessage, Endpoint),
+    Message(Endpoint, InMessage),
 
     /// New endpoint added to a listener.
     /// In TCP it will be sent when a new connection was accepted by the listener.
@@ -77,7 +77,7 @@ impl<'a> NetworkManager {
                         network_adapter::Event::Data(data) => {
                             log::trace!("Message received from {}", store.connection_remote_address(endpoint).unwrap());
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
-                            NetEvent::Message(message, endpoint)
+                            NetEvent::Message(endpoint, message)
                         },
                         network_adapter::Event::Disconnection => {
                             log::trace!("Disconnected endpoint {}", store.connection_remote_address(endpoint).unwrap());

@@ -42,7 +42,7 @@ pub fn run(protocol: TransportProtocol) {
                     return;
                 },
                 Event::Network(net_event) => match net_event {
-                    NetEvent::Message(message, endpoint) => match message {
+                    NetEvent::Message(endpoint, message) => match message {
                         ClientMessage::Greet(text) => {
                             println!("Client {} says: {}", clients[&endpoint], text);
                             network.send(endpoint, ServerMessage::Greet(String::from("Hi! I hear you")));

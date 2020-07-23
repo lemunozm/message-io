@@ -29,7 +29,7 @@ fn main() {
     loop {
         match event_queue.receive() { // Read the next event or wait until have it.
             Event::Network(net_event) => match net_event {
-                NetEvent::Message(message, endpoint) => match message {
+                NetEvent::Message(endpoint, message) => match message {
                     Message::HelloServer => network.send(endpoint, Message::HelloClient).unwrap(),
                     _ => (), // Other messages here
                 },

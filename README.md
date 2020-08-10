@@ -66,7 +66,7 @@ fn main() {
 
     // Listen TCP messages at ports 3001 and 3002.
     network.listen("127.0.0.1:3001".parse().unwrap(), TransportProtocol::Tcp).unwrap();
-    network.listen("0.0.0.0.0:3002".parse().unwrap(), TransportProtocol::Tcp).unwrap();
+    network.listen("0.0.0.0:3002".parse().unwrap(), TransportProtocol::Tcp).unwrap();
 
     loop {
         match event_queue.receive() { // Read the next event or wait until have it.

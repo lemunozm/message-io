@@ -139,3 +139,56 @@ impl<E> Clone for EventSender<E> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn waiting_timer_event() {
+        let mut queue = EventQueue::new();
+        queue.sender().send_with_timer("Timed", Duration::from_millis(TIMER_SAMPLING_CHECK));
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(TIMER_SAMPLING_CHECK + 1)).unwrap(), "Timed");
+    }
+
+    #[test]
+    fn standard_events_order() {
+        let mut queue = EventQueue::new();
+        queue.sender().send("first");
+        queue.sender().send("second");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "first");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "second");
+    }
+
+    #[test]
+    fn priority_events_order() {
+        let mut queue = EventQueue::new();
+        queue.sender().send("standard");
+        queue.sender().send_with_priority("priority_first");
+        queue.sender().send_with_priority("priority_second");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "priority_first");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "priority_second");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "standard");
+    }
+
+    #[test]
+    fn timer_events_order() {
+        let mut queue = EventQueue::new();
+        queue.sender().send_with_timer("timed", Duration::from_millis(TIMER_SAMPLING_CHECK));
+        queue.sender().send("standard_first");
+        queue.sender().send("standard_second");
+        std::thread::sleep(Duration::from_millis(TIMER_SAMPLING_CHECK + 1));
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "standard_first");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "standard_second");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "timed");
+    }
+
+    #[test]
+    fn priority_and_time_events_order() {
+        let mut queue = EventQueue::new();
+        queue.sender().send_with_timer("timed", Duration::from_millis(TIMER_SAMPLING_CHECK));
+        queue.sender().send_with_priority("priority");
+        std::thread::sleep(Duration::from_millis(TIMER_SAMPLING_CHECK + 1));
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "priority");
+        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "timed");
+    }
+}

@@ -215,11 +215,7 @@ impl<'a> Receiver {
         loop {
             match self.poll.poll(&mut self.events, timeout) {
                 Ok(_) => {
-                    if !self.events.is_empty() {
-                        self.process_event(callback);
-                    }
-                    // else: timeout
-                    break
+                    break self.process_event(callback)
                 },
                 Err(e) => match e.kind() {
                     ErrorKind::Interrupted => continue,
@@ -231,43 +227,58 @@ impl<'a> Receiver {
 
     fn process_event<C>(&mut self, mut callback: C)
     where C: for<'b> FnMut(&mut Store, usize, Event<'b>) {
-        let mio_event = self.events.iter().next().unwrap();
-        match mio_event.token() {
-            token => {
-                let id = token.0;
-                let mut store = self.store.lock().unwrap();
-                match store.connections.get_mut(&id).unwrap() {
-                    Connection::TcpListener(listener) => {
-                        let (stream, addr) = listener.accept().unwrap();
-                        let stream_id = store.add_connection(Connection::TcpStream(stream));
-                        callback(&mut store, stream_id, Event::Connection(addr));
-                    },
-                    Connection::TcpStream(ref mut stream) => {
-                        if let Ok(size) = stream.read(&mut self.input_buffer) {
-                            match size {
-                                0 => {
+        for mio_event in &self.events {
+            match mio_event.token() {
+                token => {
+                    let id = token.0;
+                    let mut store = self.store.lock().unwrap();
+
+                    let connection = store.connections.get_mut(&id).unwrap();
+                    match connection {
+                        Connection::TcpListener(listener) => {
+                            log::trace!("Wake from poll for endpoint {}: TcpListener", id);
+                            let mut new_connections = Vec::new();
+                            loop {
+                                match listener.accept() {
+                                    Ok((stream, addr)) => new_connections.push((stream, addr)),
+                                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
+                                    Err(e) => Err(e).unwrap(),
+                                }
+                            }
+
+                            for (stream, addr) in new_connections {
+                                let stream_id = store.add_connection(Connection::TcpStream(stream));
+                                callback(&mut store, stream_id, Event::Connection(addr));
+                            }
+                        },
+                        Connection::TcpStream(ref mut stream) => {
+                            log::trace!("Wake from poll for endpoint {}: TcpStream", id);
+                            match stream.read(&mut self.input_buffer) {
+                                Ok(0) => {
                                     callback(&mut store, id, Event::Disconnection);
                                     store.remove_connection(id);
                                 },
-                                _ => callback(&mut store, id, Event::Data(&self.input_buffer)),
-                            }
-                        };
-                    },
-                    Connection::UdpListener(ref socket) => {
-                        if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
-                            let (new, endpoint_id) = store.register_virtual_socket_connection(addr);
-                            if new {
-                                callback(&mut store, endpoint_id, Event::Connection(addr))
-                            }
-                            callback(&mut store, endpoint_id, Event::Data(&self.input_buffer))
-                        };
-                    },
-                    Connection::UdpSocket(ref socket, _) => {
-                        if let Ok(_) = socket.recv(&mut self.input_buffer) {
-                            callback(&mut store, id, Event::Data(&self.input_buffer))
-                        };
-                    }
-                };
+                                Ok(_) => callback(&mut store, id, Event::Data(&self.input_buffer)),
+                                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+                                Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                                Err(err) => Err(err).unwrap(),
+                            };
+                        },
+                        Connection::UdpListener(ref socket) => {
+                            log::trace!("Wake from poll for endpoint {}: UdpListener", id);
+                            if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
+                                let (_, endpoint_id) = store.register_virtual_socket_connection(addr);
+                                callback(&mut store, endpoint_id, Event::Data(&self.input_buffer))
+                            };
+                        },
+                        Connection::UdpSocket(ref socket, _) => {
+                            log::trace!("Wake from poll for endpoint {}: UdpSocket", id);
+                            if let Ok(_) = socket.recv(&mut self.input_buffer) {
+                                callback(&mut store, id, Event::Data(&self.input_buffer))
+                            };
+                        }
+                    };
+                }
             }
         };
     }

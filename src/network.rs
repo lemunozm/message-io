@@ -28,13 +28,13 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     Message(Endpoint, InMessage),
 
     /// New endpoint added to a listener.
-    /// In TCP it will be sent when a new connection was accepted by the listener.
-    /// IN UDP will be sent when the socket send data by first time, before the Message event.
+    /// This event will be sent only in TCP.
+    /// It will be sent when a new connection was accepted by the listener.
     AddedEndpoint(Endpoint, SocketAddr),
 
     /// A connection lost event.
     /// This event is only dispatched when a connection is lost, `remove_endpoint()` not generate the event.
-    /// This event will be sent only in TCP. Because UDP is not connection oriented, this event can no be detected
+    /// This event will be sent only in TCP. Because UDP is not connection oriented, this event can no be detected.
     RemovedEndpoint(Endpoint),
 }
 

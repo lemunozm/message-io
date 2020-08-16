@@ -211,7 +211,7 @@ impl<'a> Receiver {
     }
 
     pub fn receive<C>(&mut self, timeout: Option<Duration>, callback: C)
-    where C: for<'b> FnMut(&mut Store, usize, Event<'b>) {
+    where C: for<'b> FnMut(SocketAddr, usize, Event<'b>) {
         loop {
             match self.poll.poll(&mut self.events, timeout) {
                 Ok(_) => {
@@ -226,7 +226,7 @@ impl<'a> Receiver {
     }
 
     fn process_event<C>(&mut self, mut callback: C)
-    where C: for<'b> FnMut(&mut Store, usize, Event<'b>) {
+    where C: for<'b> FnMut(SocketAddr, usize, Event<'b>) {
         for mio_event in &self.events {
             match mio_event.token() {
                 token => {
@@ -248,34 +248,38 @@ impl<'a> Receiver {
 
                             for (stream, addr) in new_connections {
                                 let stream_id = store.add_connection(Connection::TcpStream(stream));
-                                callback(&mut store, stream_id, Event::Connection(addr));
+                                callback(addr, stream_id, Event::Connection(addr));
                             }
                         },
-                        Connection::TcpStream(ref mut stream) => {
+                        Connection::TcpStream(stream) => {
                             log::trace!("Wake from poll for endpoint {}: TcpStream", id);
                             match stream.read(&mut self.input_buffer) {
                                 Ok(0) => {
-                                    callback(&mut store, id, Event::Disconnection);
+                                    callback(stream.peer_addr().unwrap(), id, Event::Disconnection);
                                     store.remove_connection(id);
                                 },
-                                Ok(_) => callback(&mut store, id, Event::Data(&self.input_buffer)),
+                                Ok(_) => callback(stream.peer_addr().unwrap(), id, Event::Data(&self.input_buffer)),
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
                                 Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
                                 Err(err) => Err(err).unwrap(),
                             };
                         },
-                        Connection::UdpListener(ref socket) => {
+                        Connection::UdpListener(socket) => {
                             log::trace!("Wake from poll for endpoint {}: UdpListener", id);
                             if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
                                 let (_, endpoint_id) = store.register_virtual_socket_connection(addr);
-                                callback(&mut store, endpoint_id, Event::Data(&self.input_buffer))
+                                callback(addr, endpoint_id, Event::Data(&self.input_buffer))
                             };
                         },
-                        Connection::UdpSocket(ref socket, _) => {
+                        Connection::UdpSocket(socket, addr) => {
                             log::trace!("Wake from poll for endpoint {}: UdpSocket", id);
-                            if let Ok(_) = socket.recv(&mut self.input_buffer) {
-                                callback(&mut store, id, Event::Data(&self.input_buffer))
-                            };
+                            loop {
+                                match socket.recv(&mut self.input_buffer) {
+                                    Ok(_) => callback(*addr, id, Event::Data(&self.input_buffer)),
+                                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                                    Err(err) => Err(err).unwrap(),
+                                }
+                            }
                         }
                     };
                 }

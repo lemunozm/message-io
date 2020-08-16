@@ -65,29 +65,29 @@ impl<'a> NetworkManager {
         let network_thread_running = Arc::new(AtomicBool::new(true));
         let running = network_thread_running.clone();
 
-        let network_event_thread = thread::spawn(move || {
+        let network_event_thread = thread::Builder::new().name("message-io: network".into()).spawn(move || {
             let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
             while running.load(Ordering::Relaxed) {
-                network_receiver.receive(Some(timeout), |store, endpoint, event| {
+                network_receiver.receive(Some(timeout), |addr, endpoint, event| {
                     let net_event = match event {
                         network_adapter::Event::Connection(address) => {
                             log::trace!("Connected endpoint {}", address);
                             NetEvent::AddedEndpoint(endpoint, address)
                         },
                         network_adapter::Event::Data(data) => {
-                            log::trace!("Message received from {}", store.connection_remote_address(endpoint).unwrap());
+                            log::trace!("Message received from {}", addr);
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
                             NetEvent::Message(endpoint, message)
                         },
                         network_adapter::Event::Disconnection => {
-                            log::trace!("Disconnected endpoint {}", store.connection_remote_address(endpoint).unwrap());
+                            log::trace!("Disconnected endpoint {}", addr);
                             NetEvent::RemovedEndpoint(endpoint)
                         },
                     };
                     event_callback(net_event);
                 });
             }
-        });
+        }).unwrap();
 
         NetworkManager {
             network_event_thread: Some(network_event_thread),

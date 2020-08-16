@@ -103,7 +103,7 @@ where E: Send + 'static {
         let running = self.timers_running.clone();
         let mut time_acc = Duration::from_secs(0);
         let duration_step = Duration::from_millis(TIMER_SAMPLING_CHECK);
-        let timer_handle = thread::spawn(move || {
+        let timer_handle = thread::Builder::new().name("message-io: timer".into()).spawn(move || {
             while time_acc < duration {
                 thread::sleep(duration_step);
                 time_acc += duration_step;
@@ -112,7 +112,7 @@ where E: Send + 'static {
                 }
             }
             sender.send(event).unwrap();
-        });
+        }).unwrap();
         self.timer_registry.insert(timer_id, timer_handle);
         self.last_timer_id += 1;
     }

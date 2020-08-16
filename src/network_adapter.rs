@@ -36,7 +36,11 @@ impl Connection {
     }
 
     pub fn new_tcp_stream(addr: SocketAddr) -> io::Result<Connection> {
-        StdTcpStream::connect(addr).map(|stream| Connection::TcpStream(TcpStream::from_std(stream)))
+        // Create a standard tcpstream to blocking until the connection is reached.
+        StdTcpStream::connect(addr).map(|stream| {
+            stream.set_nonblocking(true).unwrap();
+            Connection::TcpStream(TcpStream::from_std(stream))
+        })
     }
 
     pub fn new_udp_listener(addr: SocketAddr) -> io::Result<Connection> {
@@ -74,6 +78,13 @@ impl Connection {
             Connection::TcpStream(stream) => Some(stream.peer_addr().unwrap()),
             Connection::UdpListener(_) => None,
             Connection::UdpSocket(_, address) => Some(*address),
+        }
+    }
+
+    pub fn tcp_listener(&mut self) -> &mut TcpListener {
+        match self {
+            Connection::TcpListener(listener) => listener,
+            _ => panic!(),
         }
     }
 }
@@ -237,39 +248,44 @@ impl<'a> Receiver {
                     match connection {
                         Connection::TcpListener(listener) => {
                             log::trace!("Wake from poll for endpoint {}: TcpListener", id);
-                            let mut new_connections = Vec::new();
+                            let mut listener = listener;
                             loop {
                                 match listener.accept() {
-                                    Ok((stream, addr)) => new_connections.push((stream, addr)),
-                                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                                    Err(e) => Err(e).unwrap(),
+                                    Ok((stream, addr)) => {
+                                        let stream_id = store.add_connection(Connection::TcpStream(stream));
+                                        callback(addr, stream_id, Event::Connection(addr));
+                                        listener = store.connections.get_mut(&id).unwrap().tcp_listener();
+                                    }
+                                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                                    Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                                    Err(err) => Err(err).unwrap(),
                                 }
-                            }
-
-                            for (stream, addr) in new_connections {
-                                let stream_id = store.add_connection(Connection::TcpStream(stream));
-                                callback(addr, stream_id, Event::Connection(addr));
                             }
                         },
                         Connection::TcpStream(stream) => {
                             log::trace!("Wake from poll for endpoint {}: TcpStream", id);
-                            match stream.read(&mut self.input_buffer) {
-                                Ok(0) => {
-                                    callback(stream.peer_addr().unwrap(), id, Event::Disconnection);
-                                    store.remove_connection(id);
-                                },
-                                Ok(_) => callback(stream.peer_addr().unwrap(), id, Event::Data(&self.input_buffer)),
-                                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
-                                Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
-                                Err(err) => Err(err).unwrap(),
-                            };
+                            loop {
+                                match stream.read(&mut self.input_buffer) {
+                                    Ok(0) => {
+                                        callback(stream.peer_addr().unwrap(), id, Event::Disconnection);
+                                        store.remove_connection(id);
+                                        break;
+                                    },
+                                    Ok(_) => {
+                                        callback(stream.peer_addr().unwrap(), id, Event::Data(&self.input_buffer));
+                                    }
+                                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                                    Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                                    Err(err) => Err(err).unwrap(),
+                                }
+                            }
                         },
                         Connection::UdpListener(socket) => {
                             log::trace!("Wake from poll for endpoint {}: UdpListener", id);
                             if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
                                 let (_, endpoint_id) = store.register_virtual_socket_connection(addr);
                                 callback(addr, endpoint_id, Event::Data(&self.input_buffer))
-                            };
+                            }
                         },
                         Connection::UdpSocket(socket, addr) => {
                             log::trace!("Wake from poll for endpoint {}: UdpSocket", id);

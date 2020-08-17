@@ -3,8 +3,8 @@
 [![downloads](https://img.shields.io/crates/d/message-io)](https://crates.io/crates/message-io)
 
 # `message-io`
-`message-io` is an asynchronous network message library for building clients and servers.
-This library offers an event-based API over an abstraction network transport layer.
+`message-io` is an asynchronous network message library for building network applications following the actor model.
+The library offers an event-based API over an abstraction network transport layer.
 
 This library can be used but it is still growing, so if you see any bug or strange behaviour, please put an issue!
 Of course, any contribution is welcome!

@@ -26,7 +26,7 @@ impl Participant {
 
         // A listener for any other participant that want to establish connection.
         let listen_addr = "127.0.0.1:0".parse().unwrap();
-        if let Some((_, addr)) = network.listen(listen_addr, TransportProtocol::Tcp) {
+        if let Some((_, addr)) = network.listen(listen_addr, TransportProtocol::Udp) {
             // Connection to the discovery server.
             let discovery_addr = "127.0.0.1:5000".parse().unwrap();
             if let Some((endpoint, _)) = network.connect(discovery_addr, TransportProtocol::Tcp) {
@@ -89,7 +89,7 @@ impl Participant {
     }
 
     fn discovered_participant(&mut self, name: &str, addr: SocketAddr, message: &str) {
-        if let Some((endpoint, _)) = self.network.connect(addr, TransportProtocol::Tcp) {
+        if let Some((endpoint, _)) = self.network.connect(addr, TransportProtocol::Udp) {
             let gretings = format!("Hi '{}', {}", name, message);
             self.network.send(endpoint, Message::Gretings(self.name.clone(), gretings));
         }

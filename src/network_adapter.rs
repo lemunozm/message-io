@@ -87,6 +87,13 @@ impl Connection {
             _ => panic!(),
         }
     }
+
+    pub fn udp_listener(&mut self) -> &mut UdpSocket {
+        match self {
+            Connection::UdpListener(socket) => socket,
+            _ => panic!(),
+        }
+    }
 }
 
 pub struct Store {
@@ -282,9 +289,17 @@ impl<'a> Receiver {
                         },
                         Connection::UdpListener(socket) => {
                             log::trace!("Wake from poll for endpoint {}: UdpListener", id);
-                            if let Ok((_, addr)) = socket.recv_from(&mut self.input_buffer) {
-                                let (_, endpoint_id) = store.register_virtual_socket_connection(addr);
-                                callback(addr, endpoint_id, Event::Data(&self.input_buffer))
+                            let mut socket = socket;
+                            loop {
+                                match socket.recv_from(&mut self.input_buffer) {
+                                    Ok((_, addr)) => {
+                                        let (_, endpoint_id) = store.register_virtual_socket_connection(addr);
+                                        callback(addr, endpoint_id, Event::Data(&self.input_buffer));
+                                        socket = store.connections.get_mut(&id).unwrap().udp_listener();
+                                    },
+                                    Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                                    Err(err) => Err(err).unwrap(),
+                                }
                             }
                         },
                         Connection::UdpSocket(socket, addr) => {

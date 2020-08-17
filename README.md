@@ -17,7 +17,7 @@ Of course, any contribution is welcome!
 
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets.
-- Timed events.
+- FIFO events with internal timed and priority events.
 - Really easy API:
   - Abstraction from transport layer: Do not thinks about sockets, only thing about data messages.
   - Only two main entities: an extensible event-queue to manage all events.

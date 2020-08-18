@@ -18,7 +18,7 @@ pub fn main() {
                     Some(participant) => participant.run(),
                     None => println!("Can not run the participant"),
                 },
-                None => println!("The participant should need a 'name'"),
+                None => println!("The participant needs a 'name'"),
             }
         },
         _ => println!("Usage: discovery-server | participant <name>"),

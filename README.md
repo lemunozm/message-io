@@ -36,6 +36,7 @@ message-io = "0.3"
 - [Basic concepts](#basic-concepts)
 - [API documentation](https://docs.rs/message-io/)
 - Examples:
+  - [TCP client and server](examples/tcp)
   - [Basic client server](examples/basic)
   - [Distributed network with discovery server](examples/distributed)
   - [Multicast](examples/multicast)

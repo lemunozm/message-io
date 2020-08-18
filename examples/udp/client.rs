@@ -17,8 +17,8 @@ pub fn run(name: &str) {
     let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let server_addr = "127.0.0.1:3000";
-    if let Some((server_id, _)) = network.connect_tcp(server_addr) {
-        println!("Connect to server by TCP at {}", server_addr);
+    if let Some((server_id, _)) = network.connect_udp(server_addr) {
+        println!("Sending to {} by UDP", server_addr);
         event_queue.sender().send(Event::Greet);
 
         loop {
@@ -34,15 +34,9 @@ pub fn run(name: &str) {
                         Message::Greetings(text) => println!("Server says: {}", text),
                     },
                     NetEvent::AddedEndpoint(_, _) => unreachable!(),
-                    NetEvent::RemovedEndpoint(_) => {
-                        println!("Server is disconnected");
-                        return;
-                    }
+                    NetEvent::RemovedEndpoint(_) => unreachable!(),
                 }
             }
         }
-    }
-    else {
-        println!("Can not connect to the server by TCP to {}", server_addr);
     }
 }

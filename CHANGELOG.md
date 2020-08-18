@@ -16,7 +16,10 @@
 - Free all resources in the *distributed* example.
 - Fixed sending by endpoints created by `UdpListener`.
 - Fixed bug when sending by UDP in the *basic* example.
-- Added a simple TCP example.
+- Added a simple *TCP* example.
+- Added a simple *UDP* example.
+- Removed *basic* example (too many mixed concepts).
+  All API is mostly coverad among all examples.
 
 ## Release 0.3.2
 - Internal behavior changed: non-blocking TCP stream.

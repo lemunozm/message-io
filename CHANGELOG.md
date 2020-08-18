@@ -12,6 +12,8 @@
     ```rust
     network.connect_tcp("127.0.0.1:1234");
     ```
+- Modified `connect()` returned value, before `Option<(Endpoint, SocketAddr)>`, now `Option<Endpoint>`
+  The socket address can extracted using the network instance or keeping the input connection address.
 - Removed `TransportProtocol`.
 - Free all resources in the *distributed* example.
 - Fixed sending by endpoints created by `UdpListener`.

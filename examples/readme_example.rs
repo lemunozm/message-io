@@ -37,6 +37,7 @@ fn main() {
             Event::Network(net_event) => match net_event {
                 NetEvent::Message(endpoint, message) => match message {
                     InputMessage::HelloServer(msg) => {
+                        println!("Received: {}", msg);
                         network.send(endpoint, OutputMessage::HelloClient(msg)).unwrap();
                     },
                     //Other input messages here

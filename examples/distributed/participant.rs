@@ -32,7 +32,7 @@ impl Participant {
         if let Some((_, addr)) = network.listen_udp(listen_addr) {
             // Connection to the discovery server.
             let discovery_addr = "127.0.0.1:5000";
-            if let Some((endpoint, _)) = network.connect_tcp(discovery_addr) {
+            if let Some(endpoint) = network.connect_tcp(discovery_addr) {
                 Some(Participant {
                     event_queue,
                     network,
@@ -105,7 +105,7 @@ impl Participant {
     }
 
     fn discovered_participant(&mut self, name: &str, addr: SocketAddr, message: &str) {
-        if let Some((endpoint, _)) = self.network.connect_udp(addr) {
+        if let Some(endpoint) = self.network.connect_udp(addr) {
             let gretings = format!("Hi '{}', {}", name, message);
             self.network.send(endpoint, Message::Gretings(self.name.clone(), gretings));
             self.talked_participants.insert(name.to_string(), endpoint);

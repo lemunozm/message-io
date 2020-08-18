@@ -25,7 +25,7 @@ fn main() {
     let mut network = NetworkManager::new(move |net_event| sender.send(Event::Network(net_event)));
 
     let addr = "239.255.0.1:3010";
-    network.connect_udp(addr).map(|(endpoint, _)| {
+    network.connect_udp(addr).map(|endpoint| {
         println!("Notifying on the network");
         network.send(endpoint, Message::HelloLan(my_name.into())).unwrap();
     }).unwrap();

@@ -3,9 +3,8 @@ use crate::network_adapter::{self, Connection};
 use serde::{Serialize, Deserialize};
 
 use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-use std::net::{SocketAddr};
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::thread::{self, JoinHandle};
-use std::fmt::{self};
 use std::time::{Duration};
 use std::io::{self};
 
@@ -13,14 +12,6 @@ use std::io::{self};
 pub type Endpoint = usize;
 
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
-
-/// Used to define the protocol when a connection/listener is created.
-#[derive(Debug, Clone, Copy)]
-pub enum TransportProtocol {
-    Tcp,
-    Udp,
-    UdpMulticast,
-}
 
 /// Input network events.
 #[derive(Debug)]
@@ -35,16 +26,9 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     AddedEndpoint(Endpoint, SocketAddr),
 
     /// A connection lost event.
-    /// This event is only dispatched when a connection is lost, `remove_endpoint()` not generate the event.
-    /// This event will be sent only in TCP. Because UDP is not connection oriented, this event can no be detected.
+    /// This event is only dispatched when a connection is lost. Call to `remove_endpoint()` will not generate the event.
+    /// This event will be sent only in TCP. Because UDP is not connection oriented, the event can no be detected.
     RemovedEndpoint(Endpoint),
-}
-
-
-impl fmt::Display for TransportProtocol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format!("{:?}", self).to_lowercase())
-    }
 }
 
 /// NetworkManager allows to manage the network easier.
@@ -99,31 +83,39 @@ impl<'a> NetworkManager {
         }
     }
 
-    /// Creates a connection to the specific address thougth the given protocol.
+    /// Creates a connection to the specific address by TCP.
     /// The endpoint, an identified of the new connection, will be returned among with the local address of that connection.
-    /// Only for TCP, if the connection can not be performed (the address is not reached) a None will be returned.
-    /// UDP has no the ability to be aware of this, so always an endpoint will be returned.
-    pub fn connect(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
-        self.register_connection(match transport {
-            TransportProtocol::Tcp => Connection::new_tcp_stream(addr),
-            TransportProtocol::Udp => Connection::new_udp_socket(addr),
-            _ => panic!("UdpMulticast is only valid for listening")
-        })
+    /// If the connection can not be performed (the address is not reached) a None will be returned.
+    pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+        self.register_connection(Connection::new_tcp_stream(addr.to_socket_addrs().unwrap().next().unwrap()))
     }
 
-    /// Open a port to listen messages from either TCP or UDP.
+    /// Creates a connection to the specific address by UDP.
+    /// The endpoint, an identified of the new connection, will be returned among with the local address of that connection.
+    /// If there is an error during the socket creation, a None will be returned.
+    pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+        self.register_connection(Connection::new_udp_socket(addr.to_socket_addrs().unwrap().next().unwrap()))
+    }
+
+    /// Open a port to listen messages from TCP.
     /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
-    pub fn listen(&mut self, addr: SocketAddr, transport: TransportProtocol) -> Option<(Endpoint, SocketAddr)> {
-        self.register_connection(match transport {
-            TransportProtocol::Tcp => Connection::new_tcp_listener(addr),
-            TransportProtocol::Udp => Connection::new_udp_listener(addr),
-            TransportProtocol::UdpMulticast => {
-                match addr {
-                    SocketAddr::V4(addr) => Connection::new_udp_multicast_listener(addr),
-                    _ => panic!("UdpMulticast is only valid for ipv4 addresses")
-                }
-            }
-        })
+    pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+        self.register_connection(Connection::new_tcp_listener(addr.to_socket_addrs().unwrap().next().unwrap()))
+    }
+
+    /// Open a port to listen messages from UDP.
+    /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
+    pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+        self.register_connection(Connection::new_udp_listener(addr.to_socket_addrs().unwrap().next().unwrap()))
+    }
+
+    /// Open a port to listen messages from UDP in multicast.
+    /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
+    pub fn listen_udp_multicast<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+        match addr.to_socket_addrs().unwrap().next().unwrap() {
+            SocketAddr::V4(addr) => self.register_connection(Connection::new_udp_listener_multicast(addr)),
+            _ => panic!("listening for udp multicast is only supported for ipv4 addresses"),
+        }
     }
 
     fn register_connection(&mut self, connection: io::Result<Connection>) -> Option<(Endpoint, SocketAddr)> {
@@ -141,7 +133,6 @@ impl<'a> NetworkManager {
     pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
         self.network_controller.remove_connection(endpoint)
     }
-
 
     /// Retrieve the local address associated to an endpoint, or None if the endpoint does not exists.
     pub fn endpoint_local_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {

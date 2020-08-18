@@ -48,7 +48,7 @@ impl Connection {
         UdpSocket::bind(addr).map(|socket| Connection::UdpListener(socket))
     }
 
-    pub fn new_udp_multicast_listener(addr: SocketAddrV4) -> io::Result<Connection> {
+    pub fn new_udp_listener_multicast(addr: SocketAddrV4) -> io::Result<Connection> {
         let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
         UdpBuilder::new_v4().unwrap().reuse_address(true).unwrap().bind(listening_addr).map(|socket| {
             socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
@@ -125,7 +125,7 @@ pub struct Store {
     last_id: usize,
     registry: Registry,
     virtual_socket_connections_addr_id: HashMap<SocketAddr, usize>,
-    virtual_socket_connections_id_addr: HashMap<usize, SocketAddr>,
+    virtual_socket_connections_id_addr: HashMap<usize, (SocketAddr, usize)>,
 }
 
 impl Store {
@@ -152,34 +152,55 @@ impl Store {
             self.registry.deregister(connection.event_source()).unwrap();
             Some(())
         }
-        else if let Some(addr) = self.virtual_socket_connections_id_addr.remove(&id) {
-            self.virtual_socket_connections_addr_id.remove(&addr);
+        else if let Some((addr, _)) = self.virtual_socket_connections_id_addr.remove(&id) {
+            println!("{}", addr);
+            self.virtual_socket_connections_addr_id.remove(&addr).unwrap();
             Some(())
         }
         else {
-            None
+            println!("aaaaa");
+        None }
+    }
+
+    pub fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
+        if let Some(connection) = self.connections.get(&id) {
+            connection.remote_address()
         }
+        else if let Some((addr, _)) = self.virtual_socket_connections_id_addr.get(&id) {
+            Some(*addr)
+        }
+        else { None }
+    }
+
+    pub fn send_by_connection(&mut self, id: usize, data: &[u8]) -> Option<()> {
+        if let Some(connection) = self.connections.get_mut(&id) {
+            match connection {
+                Connection::TcpStream(stream) => stream.write(data).ok().map(|_|()),
+                Connection::UdpSocket(socket, _) => socket.send(data).ok().map(|_|()),
+                _ => None,
+            }
+        }
+        else if let Some((addr, listener_id)) = self.virtual_socket_connections_id_addr.get(&id) {
+            match self.connections.get_mut(&listener_id) {
+                Some(Connection::UdpListener(socket)) => socket.send_to(data, *addr).ok().map(|_|()),
+                Some(_) | None => unreachable!(),
+            }
+        }
+        else { None }
     }
 
     pub fn connection_local_address(&self, id: usize) -> Option<SocketAddr> {
         self.connections.get(&id).map(|connection| connection.local_address())
     }
 
-    pub fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
-        match self.connections.get(&id) {
-            Some(connection) => connection.remote_address(),
-            None => None,
-        }
-    }
-
-    fn register_virtual_socket_connection(&mut self, addr: SocketAddr) -> (bool, usize) {
+    fn register_virtual_socket_connection(&mut self, addr: SocketAddr, listener_id: usize) -> (bool, usize) {
         match self.virtual_socket_connections_addr_id.get(&addr) {
             Some(id) => (false, *id),
             None => {
                 let id = self.last_id;
                 self.last_id += 1;
                 self.virtual_socket_connections_addr_id.insert(addr, id);
-                self.virtual_socket_connections_id_addr.insert(id, addr);
+                self.virtual_socket_connections_id_addr.insert(id, (addr, listener_id));
                 (true, id)
             }
         }
@@ -218,14 +239,7 @@ impl Controller {
 
     pub fn send(&mut self, id: usize, data: &[u8]) -> Option<()> {
         let mut store = self.store.lock().unwrap();
-        match store.connections.get_mut(&id) {
-            Some(connection) => match connection {
-                Connection::TcpStream(stream) => { stream.write(data).ok().map(|_|()) },
-                Connection::UdpSocket(socket, _) => { socket.send(data).ok().map(|_|()) },
-                _ => None,
-            },
-            None => None,
-        }
+        store.send_by_connection(id, data)
     }
 }
 
@@ -304,7 +318,7 @@ impl<'a> Receiver {
                                     },
                                     Ok(_) => {
                                         callback(stream.peer_addr().unwrap(), id, Event::Data(&self.input_buffer));
-                                    }
+                                    },
                                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                     Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
                                     Err(err) => Err(err).unwrap(),
@@ -317,7 +331,7 @@ impl<'a> Receiver {
                             loop {
                                 match socket.recv_from(&mut self.input_buffer) {
                                     Ok((_, addr)) => {
-                                        let (_, endpoint_id) = store.register_virtual_socket_connection(addr);
+                                        let (_, endpoint_id) = store.register_virtual_socket_connection(addr, id);
                                         callback(addr, endpoint_id, Event::Data(&self.input_buffer));
                                         socket = store.connections.get_mut(&id).unwrap().udp_listener();
                                     },
@@ -332,6 +346,7 @@ impl<'a> Receiver {
                                 match socket.recv(&mut self.input_buffer) {
                                     Ok(_) => callback(*addr, id, Event::Data(&self.input_buffer)),
                                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                                    Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => continue,
                                     Err(err) => Err(err).unwrap(),
                                 }
                             }

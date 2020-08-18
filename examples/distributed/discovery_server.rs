@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent, TransportProtocol, Endpoint};
+use message_io::network::{NetworkManager, NetEvent, Endpoint};
 
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
@@ -28,8 +28,8 @@ impl DiscoveryServer {
         let network_sender = event_queue.sender().clone();
         let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
-        let listen_addr = "127.0.0.1:5000".parse().unwrap();
-        if let Some(_) = network.listen(listen_addr, TransportProtocol::Tcp) {
+        let listen_addr = "127.0.0.1:5000";
+        if let Some(_) = network.listen_tcp(listen_addr) {
             println!("Discovery server running at {}", listen_addr);
             Some(DiscoveryServer{
                 event_queue,

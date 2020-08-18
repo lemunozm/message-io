@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent, TransportProtocol};
+use message_io::network::{NetworkManager, NetEvent};
 
 use serde::{Serialize, Deserialize};
 
@@ -24,13 +24,12 @@ fn main() {
     let sender = event_queue.sender().clone();
     let mut network = NetworkManager::new(move |net_event| sender.send(Event::Network(net_event)));
 
-    network.connect("239.255.0.1:3010".parse().unwrap(), TransportProtocol::Udp)
-        //If the things goes well:
-        .map(|(endpoint, _)| {
-            network.send(endpoint, Message::HelloLan(my_name.into())).unwrap();
-        }
-    ).unwrap();
-    network.listen("239.255.0.1:3010".parse().unwrap(), TransportProtocol::UdpMulticast).unwrap();
+    let addr = "239.255.0.1:3010";
+    network.connect_udp(addr).map(|(endpoint, _)| {
+        println!("Notifying on the network");
+        network.send(endpoint, Message::HelloLan(my_name.into())).unwrap();
+    }).unwrap();
+    network.listen_udp_multicast(addr).unwrap();
 
     loop {
         match event_queue.receive() {

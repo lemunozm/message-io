@@ -1,8 +1,21 @@
 # Changelog
 
 ## To be released
-- Added multicast feature.
+- Added multicast support.
 - Added multicast example.
+- Modified `connect()`/`listen()` functions api to make them simpler.
+  Before:
+    ```rust
+    network.connect("127.0.0.1:1234".parse().unwrap(), TransportProtocol::Tcp);
+    ```
+  Now:
+    ```rust
+    network.connect_tcp("127.0.0.1:1234");
+    ```
+- Removed `TransportProtocol`.
+- Free all resources in the *distributed* example.
+- Fixed sending by endpoints created by `UdpListener`.
+- Fixed bug when sending by UDP in the *basic* example.
 
 ## Release 0.3.2
 - Internal behavior changed: non-blocking TCP stream.

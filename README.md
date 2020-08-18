@@ -35,15 +35,19 @@ message-io = "0.3"
 ### Documentation
 - [Basic concepts](#basic-concepts)
 - [API documentation](https://docs.rs/message-io/)
+- Examples:
+  - [Basic client server](examples/basic)
+  - [Distributed network with discovery server](examples/distributed)
+  - [Multicast](examples/multicast)
 
-### Example
-The following example is the simplest server that reads `HelloServer` message
-and responses with a `HelloClient` message.
+### Minimal TCP/UDP server
+The following example is the simplest server that reads message from a client and respond to it.
 It is capable to manage several client connections and listen from 2 differents ports and interfaces.
 
 ```rust
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent, TransportProtocol};
+use message_io::network::{NetworkManager, NetEvent};
+
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
@@ -65,9 +69,9 @@ fn main() {
     let sender = event_queue.sender().clone();
     let mut network = NetworkManager::new(move |net_event| sender.send(Event::Network(net_event)));
 
-    // Listen TCP messages at ports 3001 and 3002.
-    network.listen("127.0.0.1:3001".parse().unwrap(), TransportProtocol::Tcp).unwrap();
-    network.listen("0.0.0.0:3002".parse().unwrap(), TransportProtocol::Tcp).unwrap();
+    // Listen TCP and UDP messages on ports 3001 and 3002.
+    network.listen_tcp("0.0.0.0:3001").unwrap();
+    network.listen_udp("0.0.0.0:3002").unwrap();
 
     loop {
         match event_queue.receive() { // Read the next event or wait until have it.
@@ -76,8 +80,8 @@ fn main() {
                     Message::HelloServer => network.send(endpoint, Message::HelloClient).unwrap(),
                     _ => (), // Other messages here
                 },
-                NetEvent::AddedEndpoint(_endpoint, _address) => println!("Client connected"),
-                NetEvent::RemovedEndpoint(_endpoint) => println!("Client disconnected"),
+                NetEvent::AddedEndpoint(_endpoint, _address) => println!("TCP Client connected"),
+                NetEvent::RemovedEndpoint(_endpoint) => println!("TCP Client disconnected"),
             },
             // Other events here
         }

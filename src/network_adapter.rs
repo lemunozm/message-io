@@ -153,13 +153,10 @@ impl Store {
             Some(())
         }
         else if let Some((addr, _)) = self.virtual_socket_connections_id_addr.remove(&id) {
-            println!("{}", addr);
             self.virtual_socket_connections_addr_id.remove(&addr).unwrap();
             Some(())
         }
-        else {
-            println!("aaaaa");
-        None }
+        else { None }
     }
 
     pub fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {

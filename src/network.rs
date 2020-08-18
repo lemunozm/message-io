@@ -86,7 +86,7 @@ impl<'a> NetworkManager {
     /// Creates a connection to the specific address by TCP.
     /// The endpoint, an identified of the new connection, will be returned.
     /// If the connection can not be performed (the address is not reached) a None will be returned.
-    pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<Endpoint> {
+    pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_connection(Connection::new_tcp_stream(addr))
     }
@@ -94,45 +94,43 @@ impl<'a> NetworkManager {
     /// Creates a connection to the specific address by UDP.
     /// The endpoint, an identified of the new connection, will be returned.
     /// If there is an error during the socket creation, a None will be returned.
-    pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<Endpoint> {
+    pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_connection(Connection::new_udp_socket(addr))
     }
 
     /// Open a port to listen messages from TCP.
     /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
-    pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+    pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_listener(Connection::new_tcp_listener(addr))
     }
 
     /// Open a port to listen messages from UDP.
     /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
-    pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+    pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_listener(Connection::new_udp_listener(addr))
     }
 
     /// Open a port to listen messages from UDP in multicast.
     /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
-    pub fn listen_udp_multicast<A: ToSocketAddrs>(&mut self, addr: A) -> Option<(Endpoint, SocketAddr)> {
+    pub fn listen_udp_multicast<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
         match addr.to_socket_addrs().unwrap().next().unwrap() {
             SocketAddr::V4(addr) => self.register_listener(Connection::new_udp_listener_multicast(addr)),
             _ => panic!("listening for udp multicast is only supported for ipv4 addresses"),
         }
     }
 
-    fn register_connection(&mut self, connection: io::Result<Connection>) -> Option<Endpoint> {
+    fn register_connection(&mut self, connection: io::Result<Connection>) -> io::Result<Endpoint> {
         connection
-            .ok()
             .map(|connection| {
                 self.network_controller.add_connection(connection)
             })
     }
 
-    fn register_listener(&mut self, connection: io::Result<Connection>) -> Option<(Endpoint, SocketAddr)> {
+    fn register_listener(&mut self, connection: io::Result<Connection>) -> io::Result<(Endpoint, SocketAddr)> {
         connection
-            .ok()
             .map(|connection| {
                 let address = connection.local_address();
                 let endpoint = self.network_controller.add_connection(connection);

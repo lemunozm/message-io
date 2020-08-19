@@ -1,6 +1,6 @@
 # Changelog
 
-## To be released
+## Release 0.4.0
 - Added multicast support.
 - Added multicast example.
 - Modified `connect()`/`listen()` functions api to make them simpler.
@@ -17,7 +17,7 @@
 - Modified several `Option` returned values by `Result` in order to get a better management of the errors.
 - Modified: the Endpoint is now an structure with two properties, connection id and address.
 - Removed address field from AddedEndpoint network event since Endpoint contains it.
-- Removed: `endpoint_local_address` `endpoint_remote_address` since Endpoint contains the address.
+- Removed: `endpoint_remote_address` since Endpoint contains the address.
 - Removed `TransportProtocol`.
 - Free all resources in the *distributed* example.
 - Fixed sending by endpoints created by `UdpListener`.
@@ -28,6 +28,7 @@
   All API is mostly coverad among all examples.
 - Fixed some unremoved memory related to UDP.
 - Performance improvements.
+- Added events unitary tests.
 
 ## Release 0.3.2
 - Internal behavior changed: non-blocking TCP stream.

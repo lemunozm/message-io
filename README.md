@@ -16,20 +16,25 @@ Of course, any contribution is welcome!
 - People who want to push the effort in the messages among the apps, not in how to transport them.
 
 ## Features
-- Asynchronous: internal poll event with non-blocking sockets.
+- Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
+- Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - TCP, UDP (with multicast option), protocols.
 - FIFO events with internal timed and priority events.
 - Really easy API:
   - Abstraction from transport layer: Do not thinks about sockets, only thing about data messages.
   - Only two main entities: an extensible event-queue to manage all events.
     and a network manager to manage the connections, and send/receive data.
-  - Forget concurrence problem: "One thread to rule them all",
-- Significant performance: one thread for manage all internal conenctions over a OS poll, binary serialization, small overhead over OS sockets).
+  - Forget concurrence problems: Manage thousands of active connections without any effort,
+    "One thread to rule them all".
+- High performance:
+    - One thread for manage all internal connections over a OS poll.
+    - Binary serialization.
+    - Small runtime overhead over OS sockets.
 
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.3"
+message-io = "0.4"
 ```
 
 ### Documentation

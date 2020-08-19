@@ -9,7 +9,6 @@ use std::collections::{HashMap};
 use std::io::{self, prelude::*, ErrorKind};
 
 const EVENTS_SIZE: usize = 1024;
-const INPUT_BUFFER_SIZE: usize = 65536;
 
 /// Information to identify the remote endpoint.
 /// The endpoint is used mainly as a connection identified.
@@ -263,7 +262,6 @@ pub struct Receiver {
     controller: Arc<Mutex<Controller>>,
     poll: Poll,
     events: Events,
-    input_buffer: [u8; INPUT_BUFFER_SIZE],
 }
 
 impl<'a> Receiver {
@@ -272,16 +270,15 @@ impl<'a> Receiver {
             controller,
             poll,
             events: Events::with_capacity(EVENTS_SIZE),
-            input_buffer: [0; INPUT_BUFFER_SIZE],
         }
     }
 
-    pub fn receive<C>(&mut self, timeout: Option<Duration>, callback: C)
+    pub fn receive<C>(&mut self, input_buffer: &mut[u8], timeout: Option<Duration>, callback: C)
     where C: for<'b> FnMut(Endpoint, Event<'b>) {
         loop {
             match self.poll.poll(&mut self.events, timeout) {
                 Ok(_) => {
-                    break self.process_event(callback)
+                    break self.process_event(input_buffer, callback)
                 },
                 Err(e) => match e.kind() {
                     ErrorKind::Interrupted => continue,
@@ -291,7 +288,7 @@ impl<'a> Receiver {
         }
     }
 
-    fn process_event<C>(&mut self, mut callback: C)
+    fn process_event<C>(&mut self, input_buffer: &mut[u8], mut callback: C)
     where C: for<'b> FnMut(Endpoint, Event<'b>) {
         for mio_event in &self.events {
             let token = mio_event.token();
@@ -324,8 +321,8 @@ impl<'a> Receiver {
                     },
                     Listener::Udp(socket) => {
                         loop {
-                            match socket.recv_from(&mut self.input_buffer) {
-                                Ok((_, addr)) => callback(Endpoint::new(id, addr), Event::Data(&self.input_buffer)),
+                            match socket.recv_from(input_buffer) {
+                                Ok((_, addr)) => callback(Endpoint::new(id, addr), Event::Data(input_buffer)),
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                 Err(err) => Err(err).unwrap(),
                             }
@@ -335,7 +332,7 @@ impl<'a> Receiver {
                 Resource::Remote(remote) => match remote {
                     Remote::Tcp(stream) => {
                         loop {
-                            match stream.read(&mut self.input_buffer) {
+                            match stream.read(input_buffer) {
                                 Ok(0) => {
                                     let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
                                     controller.remove_resource(endpoint.resource_id()).unwrap();
@@ -344,7 +341,7 @@ impl<'a> Receiver {
                                 },
                                 Ok(_) => {
                                     let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
-                                    callback(endpoint, Event::Data(&self.input_buffer));
+                                    callback(endpoint, Event::Data(input_buffer));
                                 },
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                 Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
@@ -354,8 +351,8 @@ impl<'a> Receiver {
                     },
                     Remote::Udp(socket, addr) => {
                         loop {
-                            match socket.recv(&mut self.input_buffer) {
-                                Ok(_) => callback(Endpoint::new(id, *addr), Event::Data(&self.input_buffer)),
+                            match socket.recv(input_buffer) {
+                                Ok(_) => callback(Endpoint::new(id, *addr), Event::Data(input_buffer)),
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                 Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => continue,
                                 Err(err) => Err(err).unwrap(),

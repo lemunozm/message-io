@@ -11,6 +11,7 @@ use std::io::{self};
 pub use crate::network_adapter::{Endpoint};
 
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
+const INPUT_BUFFER_SIZE: usize = 65536;
 
 /// Input network events.
 #[derive(Debug)]
@@ -53,9 +54,10 @@ impl<'a> NetworkManager {
         let running = network_thread_running.clone();
 
         let network_event_thread = thread::Builder::new().name("message-io: network".into()).spawn(move || {
+            let mut input_buffer = [0; INPUT_BUFFER_SIZE];
             let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
             while running.load(Ordering::Relaxed) {
-                network_receiver.receive(Some(timeout), |endpoint, event| {
+                network_receiver.receive(&mut input_buffer[..], Some(timeout), |endpoint, event| {
                     let net_event = match event {
                         network_adapter::Event::Connection => {
                             log::trace!("Connected endpoint {}", endpoint);

@@ -24,16 +24,14 @@ pub fn run(name: &str) {
         loop {
             match event_queue.receive() {
                 Event::Greet => {
-                    let waiting_time = Duration::from_secs(2);
-                    println!("Grettings every {} seconds", waiting_time.as_secs());
                     network.send(server_id, Message::Greetings(format!("Hi, I am {}", name))).unwrap();
-                    event_queue.sender().send_with_timer(Event::Greet, waiting_time);
+                    event_queue.sender().send_with_timer(Event::Greet, Duration::from_secs(1));
                 },
                 Event::Network(net_event) => match net_event {
                     NetEvent::Message(_, message) => match message {
                         Message::Greetings(text) => println!("Server says: {}", text),
                     },
-                    NetEvent::AddedEndpoint(_, _) => unreachable!(),
+                    NetEvent::AddedEndpoint(_) => unreachable!(),
                     NetEvent::RemovedEndpoint(_) => {
                         println!("Server is disconnected");
                         return;

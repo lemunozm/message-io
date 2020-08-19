@@ -5,23 +5,44 @@ use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr, TcpStream as StdTcpStream};
 use net2::{UdpBuilder};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration};
-use std::collections::{HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 use std::io::{self, prelude::*, ErrorKind};
 
 const EVENTS_SIZE: usize = 1024;
 const INPUT_BUFFER_SIZE: usize = 65536;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct Endpoint {
+    connection_id: usize,
+    addr: SocketAddr,
+}
+
+impl Endpoint {
+    fn new(connection_id: usize, addr: SocketAddr) -> Endpoint {
+        Endpoint { connection_id, addr }
+    }
+
+    pub fn connection_id(&self) -> usize {
+        self.connection_id
+    }
+
+    pub fn addr(&self) -> SocketAddr {
+        self.addr
+    }
+}
+
 #[derive(Debug)]
 pub enum Event<'a> {
-    Connection(SocketAddr),
+    Connection,
     Data(&'a[u8]),
     Disconnection,
 }
 
-pub fn adapter() -> (Controller, Receiver) {
+pub fn adapter() -> (Arc<Mutex<Controller>>, Receiver) {
     let poll = Poll::new().unwrap();
-    let store = Arc::new(Mutex::new(Store::new(poll.registry().try_clone().unwrap())));
-    (Controller::new(store.clone()), Receiver::new(store, poll))
+    let controller = Controller::new(poll.registry().try_clone().unwrap());
+    let thread_safe_controller = Arc::new(Mutex::new(controller));
+    (thread_safe_controller.clone(), Receiver::new(thread_safe_controller, poll))
 }
 
 pub enum Connection {
@@ -72,35 +93,21 @@ impl Connection {
         }
     }
 
+    pub fn addr(&self) -> SocketAddr {
+        match self {
+            Connection::TcpListener(listener) => listener.local_addr().unwrap(),
+            Connection::TcpStream(stream) => stream.peer_addr().unwrap(),
+            Connection::UdpListener(socket) => socket.local_addr().unwrap(),
+            Connection::UdpSocket(_, addr) => *addr,
+        }
+    }
+
     pub fn local_address(&self) -> SocketAddr {
         match self {
             Connection::TcpListener(listener) => listener.local_addr().unwrap(),
             Connection::TcpStream(stream) => stream.local_addr().unwrap(),
             Connection::UdpListener(socket) => socket.local_addr().unwrap(),
             Connection::UdpSocket(socket, _) => socket.local_addr().unwrap(),
-        }
-    }
-
-    pub fn remote_address(&self) -> Option<SocketAddr> {
-        match self {
-            Connection::TcpListener(_) => None,
-            Connection::TcpStream(stream) => Some(stream.peer_addr().unwrap()),
-            Connection::UdpListener(_) => None,
-            Connection::UdpSocket(_, address) => Some(*address),
-        }
-    }
-
-    fn tcp_listener(&mut self) -> &mut TcpListener {
-        match self {
-            Connection::TcpListener(listener) => listener,
-            _ => panic!(),
-        }
-    }
-
-    fn udp_listener(&mut self) -> &mut UdpSocket {
-        match self {
-            Connection::UdpListener(socket) => socket,
-            _ => panic!(),
         }
     }
 }
@@ -120,150 +127,73 @@ impl Drop for Connection {
     }
 }
 
-pub struct Store {
+pub struct Controller {
     connections: HashMap<usize, Connection>,
     last_id: usize,
     registry: Registry,
-    virtual_socket_connections_addr_id: HashMap<SocketAddr, usize>,
-    virtual_socket_connections_id_addr: HashMap<usize, (SocketAddr, usize)>,
 }
 
-impl Store {
-    fn new(registry: Registry) -> Store {
-        Store {
+impl Controller {
+    fn new(registry: Registry) -> Controller {
+        Controller {
             connections: HashMap::new(),
             last_id: 0,
             registry,
-            virtual_socket_connections_addr_id: HashMap::new(),
-            virtual_socket_connections_id_addr: HashMap::new(),
         }
     }
 
-    pub fn add_connection(&mut self, mut connection: Connection) -> usize {
+    pub fn add_connection(&mut self, mut connection: Connection) -> Endpoint {
         let id = self.last_id;
         self.last_id += 1;
+        let endpoint = Endpoint::new(id, connection.addr());
         self.registry.register(connection.event_source(), Token(id), Interest::READABLE).unwrap();
         self.connections.insert(id, connection);
-        id
+        endpoint
     }
 
-    pub fn send_by_connection(&mut self, id: usize, data: &[u8]) -> io::Result<()> {
-        if let Some(connection) = self.connections.get_mut(&id) {
+    pub fn remove_connection(&mut self, endpoint: Endpoint) -> Option<()> {
+        match self.connections.entry(endpoint.connection_id()) {
+            Entry::Occupied(mut entry) => {
+                let connection = entry.get_mut();
+                if connection.addr() != endpoint.addr() {
+                    // If address differs means that it is a virtual connection created by the UdpListener.
+                    // Virtual connections are not registered into the registry or the connections.
+                    panic!("Endpoint {} is a virtual UDP connection. It can not be removed because not exists.");
+                }
+                self.registry.deregister(connection.event_source()).unwrap();
+                entry.remove_entry();
+                Some(())
+            },
+            Entry::Vacant(_) => None,
+        }
+    }
+
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> io::Result<()> {
+        if let Some(connection) = self.connections.get_mut(&endpoint.connection_id()) {
             match connection {
                 Connection::TcpStream(stream) => stream.write(data).map(|_|()),
                 Connection::UdpSocket(socket, _) => socket.send(data).map(|_|()),
-                _ => Err(io::Error::new(ErrorKind::PermissionDenied, "Listener connections can not send data")),
-            }
-        }
-        else if let Some((addr, listener_id)) = self.virtual_socket_connections_id_addr.get(&id) {
-            match self.connections.get_mut(&listener_id) {
-                Some(Connection::UdpListener(socket)) => socket.send_to(data, *addr).map(|_|()),
-                Some(_) | None => unreachable!(),
+                Connection::UdpListener(socket) => socket.send_to(data, endpoint.addr()).map(|_|()),
+                _ => Err(io::Error::new(ErrorKind::PermissionDenied, "TCP Listener connections can not send data")),
             }
         }
         else {
             Err(io::Error::new(ErrorKind::NotFound, "Connection id not exists in the network adapter"))
         }
     }
-
-    pub fn remove_connection(&mut self, id: usize) -> Option<SocketAddr> {
-        if let Some(ref mut connection) = self.connections.remove(&id) {
-            self.registry.deregister(connection.event_source()).unwrap();
-            if let Some(addr) = connection.remote_address() {
-                Some(addr)
-            }
-            else {
-                Some(connection.local_address())
-            }
-        }
-        else if let Some((addr, _)) = self.virtual_socket_connections_id_addr.remove(&id) {
-            self.virtual_socket_connections_addr_id.remove(&addr).unwrap();
-            Some(addr)
-        }
-        else { None }
-    }
-
-    pub fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
-        if let Some(connection) = self.connections.get(&id) {
-            connection.remote_address()
-        }
-        else if let Some((addr, _)) = self.virtual_socket_connections_id_addr.get(&id) {
-            Some(*addr)
-        }
-        else { None }
-    }
-
-    pub fn connection_local_address(&self, id: usize) -> Option<SocketAddr> {
-        self.connections.get(&id).map(|connection| connection.local_address())
-    }
-
-    fn register_virtual_socket_connection(&mut self, addr: SocketAddr, listener_id: usize) -> (bool, usize) {
-        match self.virtual_socket_connections_addr_id.get(&addr) {
-            Some(id) => (false, *id),
-            None => {
-                let id = self.last_id;
-                self.last_id += 1;
-                self.virtual_socket_connections_addr_id.insert(addr, id);
-                self.virtual_socket_connections_id_addr.insert(id, (addr, listener_id));
-                (true, id)
-            }
-        }
-    }
-}
-
-
-pub struct Controller {
-    store: Arc<Mutex<Store>>,
-}
-
-impl Controller {
-    fn new(store: Arc<Mutex<Store>>) -> Controller {
-        Controller { store }
-    }
-
-    pub fn add_connection(&mut self, connection: Connection) -> usize {
-        let mut store = self.store.lock().unwrap();
-        store.add_connection(connection)
-    }
-
-    pub fn remove_connection(&mut self, id: usize) -> Option<SocketAddr> {
-        let mut store = self.store.lock().unwrap();
-        store.remove_connection(id)
-    }
-
-    pub fn connection_local_address(&self, id: usize) -> Option<SocketAddr> {
-        let store = self.store.lock().unwrap();
-        store.connection_local_address(id)
-    }
-
-    pub fn connection_remote_address(&self, id: usize) -> Option<SocketAddr> {
-        let store = self.store.lock().unwrap();
-        store.connection_remote_address(id)
-    }
-
-    pub fn send(&mut self, id: usize, data: &[u8]) -> io::Result<()> {
-        let mut store = self.store.lock().unwrap();
-        store.send_by_connection(id, data)
-    }
-}
-
-impl Clone for Controller {
-    fn clone(&self) -> Self {
-        Self { store: self.store.clone() }
-    }
 }
 
 pub struct Receiver {
-    store: Arc<Mutex<Store>>,
+    controller: Arc<Mutex<Controller>>,
     poll: Poll,
     events: Events,
     input_buffer: [u8; INPUT_BUFFER_SIZE],
 }
 
 impl<'a> Receiver {
-    fn new(store: Arc<Mutex<Store>>, poll: Poll) -> Receiver {
+    fn new(controller: Arc<Mutex<Controller>>, poll: Poll) -> Receiver {
         Receiver {
-            store,
+            controller,
             poll,
             events: Events::with_capacity(EVENTS_SIZE),
             input_buffer: [0; INPUT_BUFFER_SIZE],
@@ -271,7 +201,7 @@ impl<'a> Receiver {
     }
 
     pub fn receive<C>(&mut self, timeout: Option<Duration>, callback: C)
-    where C: for<'b> FnMut(SocketAddr, usize, Event<'b>) {
+    where C: for<'b> FnMut(Endpoint, Event<'b>) {
         loop {
             match self.poll.poll(&mut self.events, timeout) {
                 Ok(_) => {
@@ -286,24 +216,29 @@ impl<'a> Receiver {
     }
 
     fn process_event<C>(&mut self, mut callback: C)
-    where C: for<'b> FnMut(SocketAddr, usize, Event<'b>) {
+    where C: for<'b> FnMut(Endpoint, Event<'b>) {
         for mio_event in &self.events {
             match mio_event.token() {
                 token => {
                     let id = token.0;
-                    let mut store = self.store.lock().unwrap();
+                    let mut controller = self.controller.lock().unwrap();
 
-                    let connection = store.connections.get_mut(&id).unwrap();
+                    let connection = controller.connections.get_mut(&id).unwrap();
                     match connection {
                         Connection::TcpListener(listener) => {
                             log::trace!("Wake from poll for endpoint {}: TcpListener", id);
                             let mut listener = listener;
                             loop {
                                 match listener.accept() {
-                                    Ok((stream, addr)) => {
-                                        let stream_id = store.add_connection(Connection::TcpStream(stream));
-                                        callback(addr, stream_id, Event::Connection(addr));
-                                        listener = store.connections.get_mut(&id).unwrap().tcp_listener();
+                                    Ok((stream, _)) => {
+                                        let endpoint = controller.add_connection(Connection::TcpStream(stream));
+                                        callback(endpoint, Event::Connection);
+
+                                        // Used to avoid the consecutive mutable borrows
+                                        listener = match controller.connections.get_mut(&id).unwrap() {
+                                            Connection::TcpListener(listener) => listener,
+                                            _ => unreachable!(),
+                                        }
                                     }
                                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                     Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
@@ -316,12 +251,14 @@ impl<'a> Receiver {
                             loop {
                                 match stream.read(&mut self.input_buffer) {
                                     Ok(0) => {
-                                        callback(stream.peer_addr().unwrap(), id, Event::Disconnection);
-                                        store.remove_connection(id).unwrap();
+                                        let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
+                                        callback(endpoint, Event::Disconnection);
+                                        controller.remove_connection(endpoint).unwrap();
                                         break;
                                     },
                                     Ok(_) => {
-                                        callback(stream.peer_addr().unwrap(), id, Event::Data(&self.input_buffer));
+                                        let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
+                                        callback(endpoint, Event::Data(&self.input_buffer));
                                     },
                                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                     Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
@@ -331,14 +268,9 @@ impl<'a> Receiver {
                         },
                         Connection::UdpListener(socket) => {
                             log::trace!("Wake from poll for endpoint {}: UdpListener", id);
-                            let mut socket = socket;
                             loop {
                                 match socket.recv_from(&mut self.input_buffer) {
-                                    Ok((_, addr)) => {
-                                        let (_, endpoint_id) = store.register_virtual_socket_connection(addr, id);
-                                        callback(addr, endpoint_id, Event::Data(&self.input_buffer));
-                                        socket = store.connections.get_mut(&id).unwrap().udp_listener();
-                                    },
+                                    Ok((_, addr)) => callback(Endpoint::new(id, addr), Event::Data(&self.input_buffer)),
                                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                     Err(err) => Err(err).unwrap(),
                                 }
@@ -348,7 +280,7 @@ impl<'a> Receiver {
                             log::trace!("Wake from poll for endpoint {}: UdpSocket", id);
                             loop {
                                 match socket.recv(&mut self.input_buffer) {
-                                    Ok(_) => callback(*addr, id, Event::Data(&self.input_buffer)),
+                                    Ok(_) => callback(Endpoint::new(id, *addr), Event::Data(&self.input_buffer)),
                                     Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                     Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => continue,
                                     Err(err) => Err(err).unwrap(),

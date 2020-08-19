@@ -22,14 +22,13 @@ pub fn run() {
     loop {
         match event_queue.receive() {
             Event::Network(net_event) => match net_event {
-                NetEvent::Message(client_id, message) => match message {
+                NetEvent::Message(endpoint, message) => match message {
                     Message::Greetings(text) => {
-                        let addr = network.remote_address(client_id).unwrap();
-                        println!("Client ({}) says: {}", addr, text);
-                        network.send(client_id, Message::Greetings("Hi, I hear you".into())).unwrap();
+                        println!("Client ({}) says: {}", endpoint.addr(), text);
+                        network.send(endpoint, Message::Greetings("Hi, I hear you".into())).unwrap();
                     },
                 },
-                NetEvent::AddedEndpoint(_, _) => unreachable!(), // It will not be generated for UDP
+                NetEvent::AddedEndpoint(_) => unreachable!(), // It will not be generated for UDP
                 NetEvent::RemovedEndpoint(_) => unreachable!(), // It will not be generated for UDP
             },
         }

@@ -42,7 +42,7 @@ fn main() {
                     },
                     //Other input messages here
                 },
-                NetEvent::AddedEndpoint(_endpoint, _address) => println!("TCP Client connected"),
+                NetEvent::AddedEndpoint(_endpoint) => println!("TCP Client connected"),
                 NetEvent::RemovedEndpoint(_endpoint) => println!("TCP Client disconnected"),
             },
             // Other events here

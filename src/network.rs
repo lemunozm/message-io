@@ -1,15 +1,16 @@
-use crate::network_adapter::{self, Connection};
+use crate::network_adapter::{self, Connection, Controller};
 
 use serde::{Serialize, Deserialize};
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration};
 use std::io::{self};
 
-/// Alias to improve the management of the connection ids.
-pub type Endpoint = usize;
+/// Information to identify the remote endpoint.
+/// The endpoint is used mainly as a connection identified.
+pub use crate::network_adapter::{Endpoint};
 
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 
@@ -21,12 +22,13 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     Message(Endpoint, InMessage),
 
     /// New endpoint added to a listener.
-    /// This event will be sent only in TCP.
     /// It will be sent when a new connection was accepted by the listener.
-    AddedEndpoint(Endpoint, SocketAddr),
+    /// This event will be sent only in TCP.
+    AddedEndpoint(Endpoint),
 
     /// A connection lost event.
     /// This event is only dispatched when a connection is lost. Call to `remove_endpoint()` will not generate the event.
+    /// A Message event will never be generated after this event.
     /// This event will be sent only in TCP. Because UDP is not connection oriented, the event can no be detected.
     RemovedEndpoint(Endpoint),
 }
@@ -36,7 +38,7 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static {
 pub struct NetworkManager {
     network_event_thread: Option<JoinHandle<()>>,
     network_thread_running: Arc<AtomicBool>,
-    network_controller: network_adapter::Controller,
+    network_controller: Arc<Mutex<Controller>>,
     output_buffer: Vec<u8>,
 }
 
@@ -54,19 +56,19 @@ impl<'a> NetworkManager {
         let network_event_thread = thread::Builder::new().name("message-io: network".into()).spawn(move || {
             let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
             while running.load(Ordering::Relaxed) {
-                network_receiver.receive(Some(timeout), |addr, endpoint, event| {
+                network_receiver.receive(Some(timeout), |endpoint, event| {
                     let net_event = match event {
-                        network_adapter::Event::Connection(address) => {
-                            log::trace!("Connected endpoint {}", address);
-                            NetEvent::AddedEndpoint(endpoint, address)
+                        network_adapter::Event::Connection => {
+                            log::trace!("Connected endpoint {}", endpoint.addr());
+                            NetEvent::AddedEndpoint(endpoint)
                         },
                         network_adapter::Event::Data(data) => {
-                            log::trace!("Message received from {}", addr);
+                            log::trace!("Message received from {}", endpoint.addr());
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
                             NetEvent::Message(endpoint, message)
                         },
                         network_adapter::Event::Disconnection => {
-                            log::trace!("Disconnected endpoint {}", addr);
+                            log::trace!("Disconnected endpoint {}", endpoint.addr());
                             NetEvent::RemovedEndpoint(endpoint)
                         },
                     };
@@ -125,7 +127,7 @@ impl<'a> NetworkManager {
     fn register_connection(&mut self, connection: io::Result<Connection>) -> io::Result<Endpoint> {
         connection
             .map(|connection| {
-                self.network_controller.add_connection(connection)
+                self.network_controller.lock().unwrap().add_connection(connection)
             })
     }
 
@@ -133,25 +135,18 @@ impl<'a> NetworkManager {
         connection
             .map(|connection| {
                 let address = connection.local_address();
-                let endpoint = self.network_controller.add_connection(connection);
+                let endpoint = self.network_controller.lock().unwrap().add_connection(connection);
                 (endpoint, address)
             })
     }
 
-    /// Remove the endpoint and returns its address.
+    /// Remove the endpoint from the network.
     /// Returns `None` if the endpoint does not exists.
-    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
-        self.network_controller.remove_connection(endpoint)
-    }
-
-    /// Retrieve the local address associated to an endpoint, or `None` if the endpoint does not exists.
-    pub fn local_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
-        self.network_controller.connection_local_address(endpoint)
-    }
-
-    /// Retrieve the address associated to an endpoint, or `None` if the endpoint does not exists or the endpoint is a listener.
-    pub fn remote_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
-        self.network_controller.connection_remote_address(endpoint)
+    /// This function could panic if the removed endpoint is a virtual connection.
+    /// Virtual connections are emulated by the UdpListener when some remote endpoint connects to it.
+    /// These kind of connections are not registered into the network, so the endpoint do not need to free any resources.
+    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
+        self.network_controller.lock().unwrap().remove_connection(endpoint)
     }
 
     /// Serialize and send the message thought the connection represented by the given endpoint.
@@ -160,10 +155,10 @@ impl<'a> NetworkManager {
     pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> io::Result<()>
     where OutMessage: Serialize {
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        let result = self.network_controller.send(endpoint, &self.output_buffer);
+        let result = self.network_controller.lock().unwrap().send(endpoint, &self.output_buffer);
         self.output_buffer.clear();
         if let Ok(_) = result {
-            log::trace!("Message sent to {}", self.network_controller.connection_remote_address(endpoint).unwrap());
+            log::trace!("Message sent to {}", endpoint.addr());
         }
         result
     }
@@ -176,9 +171,10 @@ impl<'a> NetworkManager {
     where OutMessage: Serialize {
         let mut errors = Vec::new();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+        let mut controller = self.network_controller.lock().unwrap();
         for endpoint in endpoints {
-            match self.network_controller.send(*endpoint, &self.output_buffer) {
-                Ok(_) => log::trace!("Message sent to {}", self.network_controller.connection_remote_address(*endpoint).unwrap()),
+            match controller.send(*endpoint, &self.output_buffer) {
+                Ok(_) => log::trace!("Message sent to {}", endpoint.addr()),
                 Err(err) => errors.push((*endpoint, err))
             }
         }

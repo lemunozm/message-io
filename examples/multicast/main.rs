@@ -39,7 +39,7 @@ fn main() {
                         println!("{} greets to the network!", name)
                     },
                 },
-                NetEvent::AddedEndpoint(_, _) => (),
+                NetEvent::AddedEndpoint(_) => (),
                 NetEvent::RemovedEndpoint(_) => (),
             },
             // Other events here

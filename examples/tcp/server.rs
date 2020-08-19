@@ -3,8 +3,11 @@ use super::common::{Message};
 use message_io::events::{EventQueue};
 use message_io::network::{NetworkManager, NetEvent, Endpoint};
 
-use std::net::{SocketAddr};
 use std::collections::{HashMap};
+
+struct ClientInfo {
+    count: usize,
+}
 
 enum Event {
     Network(NetEvent<Message>),
@@ -16,7 +19,7 @@ pub fn run() {
     let network_sender = event_queue.sender().clone();
     let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
-    let mut clients: HashMap<Endpoint, SocketAddr> = HashMap::new();
+    let mut clients: HashMap<Endpoint, ClientInfo> = HashMap::new();
 
     let listen_addr = "127.0.0.1:3000";
     match network.listen_tcp(listen_addr) {
@@ -27,19 +30,22 @@ pub fn run() {
     loop {
         match event_queue.receive() {
             Event::Network(net_event) => match net_event {
-                NetEvent::Message(client_id, message) => match message {
+                NetEvent::Message(endpoint, message) => match message {
                     Message::Greetings(text) => {
-                        println!("Client ({}) says: {}", clients[&client_id], text);
-                        network.send(client_id, Message::Greetings("Hi, I hear you".into())).unwrap();
+                        let mut client_info = clients.get_mut(&endpoint).unwrap();
+                        client_info.count += 1;
+                        println!("Client ({}) says '{}' {} times", endpoint.addr(), text, client_info.count);
+                        let msg = format!("Hi, I hear you for {} time", client_info.count);
+                        network.send(endpoint, Message::Greetings(msg)).unwrap();
                     },
                 },
-                NetEvent::AddedEndpoint(client_id, addr) => {
-                    clients.insert(client_id, addr);
-                    println!("Client ({}) connected (total clients: {})", addr, clients.len());
+                NetEvent::AddedEndpoint(endpoint) => {
+                    clients.insert(endpoint, ClientInfo { count: 0 });
+                    println!("Client ({}) connected (total clients: {})", endpoint.addr(), clients.len());
                 },
-                NetEvent::RemovedEndpoint(client_id) => {
-                    let addr = clients.remove(&client_id).unwrap();
-                    println!("Client ({}) disconnected (total clients: {})", addr, clients.len());
+                NetEvent::RemovedEndpoint(endpoint) => {
+                    clients.remove(&endpoint).unwrap();
+                    println!("Client ({}) disconnected (total clients: {})", endpoint.addr(), clients.len());
                 }
             },
         }

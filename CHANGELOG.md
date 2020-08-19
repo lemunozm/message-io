@@ -14,8 +14,10 @@
     ```
 - Modified `connect()` returned value, before `Option<(Endpoint, SocketAddr)>`, now `Option<Endpoint>`
   The socket address can extracted using the network instance or keeping the input connection address.
-- Modified several return `Option` values by `Result` in order to get a better management of the errors.
-- API change: `endpoint_local_address` to `local_address` (same with remote).
+- Modified several `Option` returned values by `Result` in order to get a better management of the errors.
+- Modified: the Endpoint is now an structure with two properties, connection id and address.
+- Removed address field from AddedEndpoint network event since Endpoint contains it.
+- Removed: `endpoint_local_address` `endpoint_remote_address` since Endpoint contains the address.
 - Removed `TransportProtocol`.
 - Free all resources in the *distributed* example.
 - Fixed sending by endpoints created by `UdpListener`.
@@ -24,6 +26,8 @@
 - Added a simple *UDP* example.
 - Removed *basic* example (too many mixed concepts).
   All API is mostly coverad among all examples.
+- Fixed some unremoved memory related to UDP.
+- Performance improvements.
 
 ## Release 0.3.2
 - Internal behavior changed: non-blocking TCP stream.

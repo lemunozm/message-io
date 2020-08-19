@@ -11,3 +11,5 @@ Run a client with a name (one client per terminal):
 ```
 cargo run --example udp client <name>
 ```
+
+Note: Since UDP is not connection-oriented, you can run a client first and then, the server.

@@ -1,4 +1,4 @@
-use crate::network_adapter::{self, Connection, Controller};
+use crate::network_adapter::{self, Controller, Listener, Remote};
 
 use serde::{Serialize, Deserialize};
 
@@ -8,8 +8,6 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration};
 use std::io::{self};
 
-/// Information to identify the remote endpoint.
-/// The endpoint is used mainly as a connection identified.
 pub use crate::network_adapter::{Endpoint};
 
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
@@ -27,7 +25,8 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static {
     AddedEndpoint(Endpoint),
 
     /// A connection lost event.
-    /// This event is only dispatched when a connection is lost. Call to `remove_endpoint()` will not generate the event.
+    /// This event is only dispatched when a connection is lost. Call to `remove_resource()` will not generate the event.
+    /// After this event, the resource is considered removed.
     /// A Message event will never be generated after this event.
     /// This event will be sent only in TCP. Because UDP is not connection oriented, the event can no be detected.
     RemovedEndpoint(Endpoint),
@@ -59,16 +58,16 @@ impl<'a> NetworkManager {
                 network_receiver.receive(Some(timeout), |endpoint, event| {
                     let net_event = match event {
                         network_adapter::Event::Connection => {
-                            log::trace!("Connected endpoint {}", endpoint.addr());
+                            log::trace!("Connected endpoint {}", endpoint);
                             NetEvent::AddedEndpoint(endpoint)
                         },
                         network_adapter::Event::Data(data) => {
-                            log::trace!("Message received from {}", endpoint.addr());
+                            log::trace!("Message received from {}", endpoint);
                             let message: InMessage = bincode::deserialize(&data[..]).unwrap();
                             NetEvent::Message(endpoint, message)
                         },
                         network_adapter::Event::Disconnection => {
-                            log::trace!("Disconnected endpoint {}", endpoint.addr());
+                            log::trace!("Disconnected endpoint {}", endpoint);
                             NetEvent::RemovedEndpoint(endpoint)
                         },
                     };
@@ -90,7 +89,9 @@ impl<'a> NetworkManager {
     /// If the connection can not be performed (e.g. the address is not reached) an error is returned.
     pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.register_connection(Connection::new_tcp_stream(addr))
+        Remote::new_tcp(addr).map(|remote| {
+            self.network_controller.lock().unwrap().add_remote(remote)
+        })
     }
 
     /// Creates a connection to the specific address by UDP.
@@ -98,55 +99,58 @@ impl<'a> NetworkManager {
     /// If there is an error during the socket creation, an error will be returned.
     pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.register_connection(Connection::new_udp_socket(addr))
+        Remote::new_udp(addr).map(|remote| {
+            self.network_controller.lock().unwrap().add_remote(remote)
+        })
     }
 
     /// Open a port to listen messages from TCP.
     /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
-    pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
+    pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.register_listener(Connection::new_tcp_listener(addr))
+        Listener::new_tcp(addr).map(|listener| {
+            self.network_controller.lock().unwrap().add_listener(listener)
+        })
     }
 
     /// Open a port to listen messages from UDP.
     /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
-    pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
+    pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.register_listener(Connection::new_udp_listener(addr))
+        Listener::new_udp(addr).map(|listener| {
+            self.network_controller.lock().unwrap().add_listener(listener)
+        })
     }
 
     /// Open a port to listen messages from UDP in multicast.
     /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
-    pub fn listen_udp_multicast<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
+    /// Only ipv4 addresses are allowed.
+    pub fn listen_udp_multicast<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         match addr.to_socket_addrs().unwrap().next().unwrap() {
-            SocketAddr::V4(addr) => self.register_listener(Connection::new_udp_listener_multicast(addr)),
+            SocketAddr::V4(addr) => {
+                Listener::new_udp_multicast(addr).map(|listener| {
+                    self.network_controller.lock().unwrap().add_listener(listener)
+                })
+            },
             _ => panic!("listening for udp multicast is only supported for ipv4 addresses"),
         }
     }
 
-    fn register_connection(&mut self, connection: io::Result<Connection>) -> io::Result<Endpoint> {
-        connection
-            .map(|connection| {
-                self.network_controller.lock().unwrap().add_connection(connection)
-            })
+    /// Remove a network resource.
+    /// Returns `None` if the resource id not exists.
+    /// This is used mainly to remove resources that the program has been created explicitely, as connection or listeners.
+    /// Resources of endpoints generated by a TcpListener can also be removed to close the connection.
+    /// Note: Udp endpoints generated by a UdpListener shared the resource, the own UdpListener.
+    /// This means that there is no resource to remove as the TCP case.
+    pub fn remove_resource(&mut self, resource_id: usize) -> Option<()> {
+        self.network_controller.lock().unwrap().remove_resource(resource_id)
     }
 
-    fn register_listener(&mut self, connection: io::Result<Connection>) -> io::Result<(Endpoint, SocketAddr)> {
-        connection
-            .map(|connection| {
-                let address = connection.local_address();
-                let endpoint = self.network_controller.lock().unwrap().add_connection(connection);
-                (endpoint, address)
-            })
-    }
-
-    /// Remove the endpoint from the network.
-    /// Returns `None` if the endpoint does not exists.
-    /// This function could panic if the removed endpoint is a virtual connection.
-    /// Virtual connections are emulated by the UdpListener when some remote endpoint connects to it.
-    /// These kind of connections are not registered into the network, so the endpoint do not need to free any resources.
-    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
-        self.network_controller.lock().unwrap().remove_connection(endpoint)
+    /// Request a local address of a resource.
+    /// Returns `None` if the endpoint id not exists.
+    /// Note: Udp endpoints generated by a UdpListener shared the resource.
+    pub fn local_address(&self, resource_id: usize) -> Option<SocketAddr> {
+        self.network_controller.lock().unwrap().local_address(resource_id)
     }
 
     /// Serialize and send the message thought the connection represented by the given endpoint.
@@ -158,7 +162,7 @@ impl<'a> NetworkManager {
         let result = self.network_controller.lock().unwrap().send(endpoint, &self.output_buffer);
         self.output_buffer.clear();
         if let Ok(_) = result {
-            log::trace!("Message sent to {}", endpoint.addr());
+            log::trace!("Message sent to {}", endpoint);
         }
         result
     }
@@ -174,7 +178,7 @@ impl<'a> NetworkManager {
         let mut controller = self.network_controller.lock().unwrap();
         for endpoint in endpoints {
             match controller.send(*endpoint, &self.output_buffer) {
-                Ok(_) => log::trace!("Message sent to {}", endpoint.addr()),
+                Ok(_) => log::trace!("Message sent to {}", endpoint),
                 Err(err) => errors.push((*endpoint, err))
             }
         }

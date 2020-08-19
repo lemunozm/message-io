@@ -17,7 +17,7 @@ pub fn run(name: &str) {
     let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let server_addr = "127.0.0.1:3000";
-    if let Some(server_id) = network.connect_tcp(server_addr) {
+    if let Ok(server_id) = network.connect_tcp(server_addr) {
         println!("Connect to server by TCP at {}", server_addr);
         event_queue.sender().send(Event::Greet);
 
@@ -26,7 +26,7 @@ pub fn run(name: &str) {
                 Event::Greet => {
                     let waiting_time = Duration::from_secs(2);
                     println!("Grettings every {} seconds", waiting_time.as_secs());
-                    network.send(server_id, Message::Greetings(format!("Hi, I am {}", name)));
+                    network.send(server_id, Message::Greetings(format!("Hi, I am {}", name))).unwrap();
                     event_queue.sender().send_with_timer(Event::Greet, waiting_time);
                 },
                 Event::Network(net_event) => match net_event {

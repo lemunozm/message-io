@@ -29,17 +29,19 @@ impl DiscoveryServer {
         let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         let listen_addr = "127.0.0.1:5000";
-        if let Some(_) = network.listen_tcp(listen_addr) {
-            println!("Discovery server running at {}", listen_addr);
-            Some(DiscoveryServer{
-                event_queue,
-                network,
-                participants: HashMap::new(),
-            })
-        }
-        else {
-            println!("Can not listen on {}", listen_addr);
-            None
+        match network.listen_tcp(listen_addr) {
+            Ok(_) => {
+                println!("Discovery server running at {}", listen_addr);
+                Some(DiscoveryServer{
+                    event_queue,
+                    network,
+                    participants: HashMap::new(),
+                })
+            },
+            Err(_) => {
+                println!("Can not listen on {}", listen_addr);
+                None
+            }
         }
     }
 
@@ -72,11 +74,11 @@ impl DiscoveryServer {
         if !self.participants.contains_key(name) {
             // Update the new participant with the whole participants information
             let participant_list = self.participants.iter().map(|(name, info)| (name.clone(), info.addr)).collect();
-            self.network.send(endpoint, Message::ParticipantList(participant_list));
+            self.network.send(endpoint, Message::ParticipantList(participant_list)).unwrap();
 
             // Notify other participants about this new participant
             let participant_endpoints = self.participants.values().map(|info| &info.endpoint);
-            self.network.send_all(participant_endpoints, Message::ParticipantNotificationAdded(name.to_string(), addr)).ok();
+            self.network.send_all(participant_endpoints, Message::ParticipantNotificationAdded(name.to_string(), addr)).unwrap();
 
             // Register participant
             self.participants.insert(name.to_string(), ParticipantInfo {addr, endpoint});
@@ -91,7 +93,7 @@ impl DiscoveryServer {
         if let Some(info) = self.participants.remove(name) {
             // Notify other participants about this removed participant
             let participant_endpoints = self.participants.values().map(|info| &info.endpoint);
-            self.network.send_all(participant_endpoints, Message::ParticipantNotificationRemoved(name.to_string())).ok();
+            self.network.send_all(participant_endpoints, Message::ParticipantNotificationRemoved(name.to_string())).unwrap();
             println!("Removed participant '{}' with ip {}", name, info.addr);
         }
         else {

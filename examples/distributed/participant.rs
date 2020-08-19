@@ -29,10 +29,10 @@ impl Participant {
 
         // A listener for any other participant that want to establish connection.
         let listen_addr = "127.0.0.1:0";
-        if let Some((_, addr)) = network.listen_udp(listen_addr) {
+        if let Ok((_, addr)) = network.listen_udp(listen_addr) {
             // Connection to the discovery server.
             let discovery_addr = "127.0.0.1:5000";
-            if let Some(endpoint) = network.connect_tcp(discovery_addr) {
+            if let Ok(endpoint) = network.connect_tcp(discovery_addr) {
                 Some(Participant {
                     event_queue,
                     network,
@@ -57,11 +57,10 @@ impl Participant {
 
     pub fn run(mut self) {
         // Register this participant into the discovery server
-        self.network.send(self.discovery_endpoint, Message::RegisterParticipant(self.name.clone(), self.public_addr));
+        self.network.send(self.discovery_endpoint, Message::RegisterParticipant(self.name.clone(), self.public_addr)).unwrap();
 
-        // Waiting events
         loop {
-            match self.event_queue.receive() {
+            match self.event_queue.receive() { // Waiting events
                 Event::Network(net_event) => match net_event {
                     NetEvent::Message(endpoint, message) => match message {
                         Message::ParticipantList(participants) => {
@@ -105,9 +104,9 @@ impl Participant {
     }
 
     fn discovered_participant(&mut self, name: &str, addr: SocketAddr, message: &str) {
-        if let Some(endpoint) = self.network.connect_udp(addr) {
+        if let Ok(endpoint) = self.network.connect_udp(addr) {
             let gretings = format!("Hi '{}', {}", name, message);
-            self.network.send(endpoint, Message::Gretings(self.name.clone(), gretings));
+            self.network.send(endpoint, Message::Gretings(self.name.clone(), gretings)).unwrap();
             self.talked_participants.insert(name.to_string(), endpoint);
         }
     }

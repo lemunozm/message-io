@@ -14,6 +14,8 @@
     ```
 - Modified `connect()` returned value, before `Option<(Endpoint, SocketAddr)>`, now `Option<Endpoint>`
   The socket address can extracted using the network instance or keeping the input connection address.
+- Modified several return `Option` values by `Result` in order to get a better management of the errors.
+- API change: `endpoint_local_address` to `local_address` (same with remote).
 - Removed `TransportProtocol`.
 - Free all resources in the *distributed* example.
 - Fixed sending by endpoints created by `UdpListener`.

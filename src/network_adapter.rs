@@ -147,14 +147,38 @@ impl Store {
         id
     }
 
-    pub fn remove_connection(&mut self, id: usize) -> Option<()> {
+    pub fn send_by_connection(&mut self, id: usize, data: &[u8]) -> io::Result<()> {
+        if let Some(connection) = self.connections.get_mut(&id) {
+            match connection {
+                Connection::TcpStream(stream) => stream.write(data).map(|_|()),
+                Connection::UdpSocket(socket, _) => socket.send(data).map(|_|()),
+                _ => Err(io::Error::new(ErrorKind::PermissionDenied, "Listener connections can not send data")),
+            }
+        }
+        else if let Some((addr, listener_id)) = self.virtual_socket_connections_id_addr.get(&id) {
+            match self.connections.get_mut(&listener_id) {
+                Some(Connection::UdpListener(socket)) => socket.send_to(data, *addr).map(|_|()),
+                Some(_) | None => unreachable!(),
+            }
+        }
+        else {
+            Err(io::Error::new(ErrorKind::NotFound, "Connection id not exists in the network adapter"))
+        }
+    }
+
+    pub fn remove_connection(&mut self, id: usize) -> Option<SocketAddr> {
         if let Some(ref mut connection) = self.connections.remove(&id) {
             self.registry.deregister(connection.event_source()).unwrap();
-            Some(())
+            if let Some(addr) = connection.remote_address() {
+                Some(addr)
+            }
+            else {
+                Some(connection.local_address())
+            }
         }
         else if let Some((addr, _)) = self.virtual_socket_connections_id_addr.remove(&id) {
             self.virtual_socket_connections_addr_id.remove(&addr).unwrap();
-            Some(())
+            Some(addr)
         }
         else { None }
     }
@@ -165,23 +189,6 @@ impl Store {
         }
         else if let Some((addr, _)) = self.virtual_socket_connections_id_addr.get(&id) {
             Some(*addr)
-        }
-        else { None }
-    }
-
-    pub fn send_by_connection(&mut self, id: usize, data: &[u8]) -> Option<()> {
-        if let Some(connection) = self.connections.get_mut(&id) {
-            match connection {
-                Connection::TcpStream(stream) => stream.write(data).ok().map(|_|()),
-                Connection::UdpSocket(socket, _) => socket.send(data).ok().map(|_|()),
-                _ => None,
-            }
-        }
-        else if let Some((addr, listener_id)) = self.virtual_socket_connections_id_addr.get(&id) {
-            match self.connections.get_mut(&listener_id) {
-                Some(Connection::UdpListener(socket)) => socket.send_to(data, *addr).ok().map(|_|()),
-                Some(_) | None => unreachable!(),
-            }
         }
         else { None }
     }
@@ -219,7 +226,7 @@ impl Controller {
         store.add_connection(connection)
     }
 
-    pub fn remove_connection(&mut self, id: usize) -> Option<()> {
+    pub fn remove_connection(&mut self, id: usize) -> Option<SocketAddr> {
         let mut store = self.store.lock().unwrap();
         store.remove_connection(id)
     }
@@ -234,7 +241,7 @@ impl Controller {
         store.connection_remote_address(id)
     }
 
-    pub fn send(&mut self, id: usize, data: &[u8]) -> Option<()> {
+    pub fn send(&mut self, id: usize, data: &[u8]) -> io::Result<()> {
         let mut store = self.store.lock().unwrap();
         store.send_by_connection(id, data)
     }
@@ -310,7 +317,7 @@ impl<'a> Receiver {
                                 match stream.read(&mut self.input_buffer) {
                                     Ok(0) => {
                                         callback(stream.peer_addr().unwrap(), id, Event::Disconnection);
-                                        store.remove_connection(id);
+                                        store.remove_connection(id).unwrap();
                                         break;
                                     },
                                     Ok(_) => {

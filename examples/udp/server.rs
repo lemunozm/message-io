@@ -15,8 +15,8 @@ pub fn run() {
 
     let listen_addr = "127.0.0.1:3000";
     match network.listen_udp(listen_addr) {
-        Some(_) => println!("UDP Server running at {}", listen_addr),
-        None => return println!("Can not listening at selected interface/port"),
+        Ok(_) => println!("UDP Server running at {}", listen_addr),
+        Err(_) => return println!("Can not listening at selected interface/port"),
     }
 
     loop {
@@ -24,12 +24,12 @@ pub fn run() {
             Event::Network(net_event) => match net_event {
                 NetEvent::Message(client_id, message) => match message {
                     Message::Greetings(text) => {
-                        let addr = network.endpoint_remote_address(client_id).unwrap();
+                        let addr = network.remote_address(client_id).unwrap();
                         println!("Client ({}) says: {}", addr, text);
-                        network.send(client_id, Message::Greetings("Hi, I hear you".into()));
+                        network.send(client_id, Message::Greetings("Hi, I hear you".into())).unwrap();
                     },
                 },
-                NetEvent::AddedEndpoint(_, _) => unreachable!(), // It not be generated for UDP
+                NetEvent::AddedEndpoint(_, _) => unreachable!(), // It will not be generated for UDP
                 NetEvent::RemovedEndpoint(_) => unreachable!(), // It will not be generated for UDP
             },
         }

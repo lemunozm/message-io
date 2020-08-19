@@ -85,7 +85,7 @@ impl<'a> NetworkManager {
 
     /// Creates a connection to the specific address by TCP.
     /// The endpoint, an identified of the new connection, will be returned.
-    /// If the connection can not be performed (the address is not reached) a None will be returned.
+    /// If the connection can not be performed (e.g. the address is not reached) an error is returned.
     pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_connection(Connection::new_tcp_stream(addr))
@@ -93,28 +93,28 @@ impl<'a> NetworkManager {
 
     /// Creates a connection to the specific address by UDP.
     /// The endpoint, an identified of the new connection, will be returned.
-    /// If there is an error during the socket creation, a None will be returned.
+    /// If there is an error during the socket creation, an error will be returned.
     pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_connection(Connection::new_udp_socket(addr))
     }
 
     /// Open a port to listen messages from TCP.
-    /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
+    /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
     pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_listener(Connection::new_tcp_listener(addr))
     }
 
     /// Open a port to listen messages from UDP.
-    /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
+    /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
     pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.register_listener(Connection::new_udp_listener(addr))
     }
 
     /// Open a port to listen messages from UDP in multicast.
-    /// If the port can be opened, a endpoint identifying the listener will be returned among with the local address, or a None if not.
+    /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
     pub fn listen_udp_multicast<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(Endpoint, SocketAddr)> {
         match addr.to_socket_addrs().unwrap().next().unwrap() {
             SocketAddr::V4(addr) => self.register_listener(Connection::new_udp_listener_multicast(addr)),
@@ -138,51 +138,52 @@ impl<'a> NetworkManager {
             })
     }
 
-    /// Remove the endpoint.
-    /// Returns None if the endpoint does not exists.
-    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<()> {
+    /// Remove the endpoint and returns its address.
+    /// Returns `None` if the endpoint does not exists.
+    pub fn remove_endpoint(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
         self.network_controller.remove_connection(endpoint)
     }
 
-    /// Retrieve the local address associated to an endpoint, or None if the endpoint does not exists.
-    pub fn endpoint_local_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
+    /// Retrieve the local address associated to an endpoint, or `None` if the endpoint does not exists.
+    pub fn local_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
         self.network_controller.connection_local_address(endpoint)
     }
 
-    /// Retrieve the address associated to an endpoint, or None if the endpoint does not exists or the endpoint is a listener.
-    pub fn endpoint_remote_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
+    /// Retrieve the address associated to an endpoint, or `None` if the endpoint does not exists or the endpoint is a listener.
+    pub fn remote_address(&mut self, endpoint: Endpoint) -> Option<SocketAddr> {
         self.network_controller.connection_remote_address(endpoint)
     }
 
     /// Serialize and send the message thought the connection represented by the given endpoint.
-    /// Returns None if the endpoint does not exists.
-    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> Option<()>
+    /// If the same message should be sent to different endpoints, use `send_all()` to better performance.
+    /// Returns an error if there is an error while sending the message, the endpoint does not exists, or if it is not valid.
+    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> io::Result<()>
     where OutMessage: Serialize {
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         let result = self.network_controller.send(endpoint, &self.output_buffer);
         self.output_buffer.clear();
-        if let Some(_) = result {
+        if let Ok(_) = result {
             log::trace!("Message sent to {}", self.network_controller.connection_remote_address(endpoint).unwrap());
         }
         result
     }
 
     /// Serialize and send the message thought the connections represented by the given endpoints.
-    /// When there are severals endpoints to send the data, this function is faster than several calls to `send()`,
-    /// because the serialization only is performed one time for all endpoints.
-    /// An Err with the unrecognized ids is returned.
-    pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<Endpoint>>
+    /// When there are severals endpoints to send the data, this function is faster than consecutive calls to `send()`
+    /// since the serialization is only performed one time for all endpoints.
+    /// An list of erroneous endpoints along their errors is returned if there was a problem with some message sent.
+    pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<(Endpoint, io::Error)>>
     where OutMessage: Serialize {
-        let mut unrecognized_ids = Vec::new();
+        let mut errors = Vec::new();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         for endpoint in endpoints {
             match self.network_controller.send(*endpoint, &self.output_buffer) {
-                Some(_) => log::trace!("Message sent to {}", self.network_controller.connection_remote_address(*endpoint).unwrap()),
-                None => unrecognized_ids.push(*endpoint)
+                Ok(_) => log::trace!("Message sent to {}", self.network_controller.connection_remote_address(*endpoint).unwrap()),
+                Err(err) => errors.push((*endpoint, err))
             }
         }
         self.output_buffer.clear();
-        if unrecognized_ids.is_empty() { Ok(()) } else { Err(unrecognized_ids) }
+        if errors.is_empty() { Ok(()) } else { Err(errors) }
     }
 }
 

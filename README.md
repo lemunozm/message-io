@@ -9,7 +9,7 @@ The library offers an event-based API over an abstraction network transport laye
 This library can be used but it is still growing, so if you see any bug or strange behaviour, please put an issue!
 Of course, any contribution is welcome!
 
-## For who is this project?
+## Whom is this project for?
 - People who want to make an application that needs to communicate over tcp/udp protocols.
 - People who want to make a multiplayer game (server and/or client).
 - People who don't want to deal with concurrence or socket connection problems.

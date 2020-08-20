@@ -18,7 +18,8 @@ Of course, any contribution is welcome!
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
-- TCP, UDP (with multicast option), protocols.
+- TCP and UDP (with multicast option) protocols.
+- Internal encoding layer. Manage messages not raw data streams.
 - FIFO events with internal timed and priority events.
 - Really easy API:
   - Abstraction from transport layer: Do not thinks about sockets, only thing about data messages.

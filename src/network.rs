@@ -1,4 +1,5 @@
 use crate::network_adapter::{self, Controller, Listener, Remote};
+use crate::encoding::{self, DecodingPool};
 
 use serde::{Serialize, Deserialize};
 
@@ -55,25 +56,11 @@ impl<'a> NetworkManager {
 
         let network_event_thread = thread::Builder::new().name("message-io: network".into()).spawn(move || {
             let mut input_buffer = [0; INPUT_BUFFER_SIZE];
+            let mut decoding_pool = DecodingPool::new();
             let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
             while running.load(Ordering::Relaxed) {
                 network_receiver.receive(&mut input_buffer[..], Some(timeout), |endpoint, event| {
-                    let net_event = match event {
-                        network_adapter::Event::Connection => {
-                            log::trace!("Connected endpoint {}", endpoint);
-                            NetEvent::AddedEndpoint(endpoint)
-                        },
-                        network_adapter::Event::Data(data) => {
-                            log::trace!("Message received from {}", endpoint);
-                            let message: InMessage = bincode::deserialize(&data[..]).unwrap();
-                            NetEvent::Message(endpoint, message)
-                        },
-                        network_adapter::Event::Disconnection => {
-                            log::trace!("Disconnected endpoint {}", endpoint);
-                            NetEvent::RemovedEndpoint(endpoint)
-                        },
-                    };
-                    event_callback(net_event);
+                    Self::process_network_event(&event_callback, endpoint, event, &mut decoding_pool);
                 });
             }
         }).unwrap();
@@ -82,8 +69,38 @@ impl<'a> NetworkManager {
             network_event_thread: Some(network_event_thread),
             network_thread_running,
             network_controller,
-            output_buffer: Vec::new()
+            output_buffer: Vec::with_capacity(encoding::PADDING),
         }
+    }
+
+    fn process_network_event<'c, InMessage, C>(
+        event_callback: &C,
+        endpoint: Endpoint,
+        event: network_adapter::Event<'c>,
+        decoding_pool: &mut DecodingPool<Endpoint>
+        )
+    where
+        InMessage: for<'b> Deserialize<'b> + Send + 'static,
+        C: Fn(NetEvent<InMessage>) + Send + 'static {
+
+        match event {
+            network_adapter::Event::Connection => {
+                log::trace!("Connected endpoint {}", endpoint);
+                event_callback(NetEvent::AddedEndpoint(endpoint));
+            },
+            network_adapter::Event::Data(data) => {
+                log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+                decoding_pool.decode_from(data, endpoint, |decoded_data|{
+                    log::trace!("Message received from {}, {} bytes", endpoint, decoded_data.len());
+                    let message: InMessage = bincode::deserialize(decoded_data).unwrap();
+                    event_callback(NetEvent::Message(endpoint, message));
+                });
+            },
+            network_adapter::Event::Disconnection => {
+                log::trace!("Disconnected endpoint {}", endpoint);
+                event_callback(NetEvent::RemovedEndpoint(endpoint));
+            },
+        };
     }
 
     /// Creates a connection to the specific address by TCP.
@@ -160,7 +177,7 @@ impl<'a> NetworkManager {
     /// Returns an error if there is an error while sending the message, the endpoint does not exists, or if it is not valid.
     pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> io::Result<()>
     where OutMessage: Serialize {
-        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+        self.prepare_output_message(message);
         let result = self.network_controller.lock().unwrap().send(endpoint, &self.output_buffer);
         self.output_buffer.clear();
         if let Ok(_) = result {
@@ -175,8 +192,8 @@ impl<'a> NetworkManager {
     /// An list of erroneous endpoints along their errors is returned if there was a problem with some message sent.
     pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<(Endpoint, io::Error)>>
     where OutMessage: Serialize {
+        self.prepare_output_message(message);
         let mut errors = Vec::new();
-        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         let mut controller = self.network_controller.lock().unwrap();
         for endpoint in endpoints {
             match controller.send(*endpoint, &self.output_buffer) {
@@ -186,6 +203,13 @@ impl<'a> NetworkManager {
         }
         self.output_buffer.clear();
         if errors.is_empty() { Ok(()) } else { Err(errors) }
+    }
+
+    fn prepare_output_message<OutMessage>(&mut self, message: OutMessage)
+    where OutMessage: Serialize {
+        self.output_buffer.resize(encoding::PADDING, 0);
+        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+        encoding::encode(&mut self.output_buffer);
     }
 }
 

@@ -15,6 +15,8 @@ cargo run --example distributed participant <name-2>
 cargo run --example distributed participant <name-n>
 ```
 
+Note: You can play closing the participants (ctrl-c) in order to see the removed notifications.
+
 ## Network topology
 The participant register and unregister itself in the discovery server, that will notify the rest of the participant about the new existance member.
 Then, a participant can create a direct and private communication to another participant.

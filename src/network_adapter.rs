@@ -273,12 +273,12 @@ impl<'a> Receiver {
         }
     }
 
-    pub fn receive<C>(&mut self, input_buffer: &mut[u8], timeout: Option<Duration>, callback: C)
+    pub fn receive<C>(&mut self, input_buffer: &mut[u8], timeout: Option<Duration>, event_callback: C)
     where C: for<'b> FnMut(Endpoint, Event<'b>) {
         loop {
             match self.poll.poll(&mut self.events, timeout) {
                 Ok(_) => {
-                    break self.process_event(input_buffer, callback)
+                    break self.process_event(input_buffer, event_callback)
                 },
                 Err(e) => match e.kind() {
                     ErrorKind::Interrupted => continue,
@@ -288,7 +288,7 @@ impl<'a> Receiver {
         }
     }
 
-    fn process_event<C>(&mut self, input_buffer: &mut[u8], mut callback: C)
+    fn process_event<C>(&mut self, input_buffer: &mut[u8], mut event_callback: C)
     where C: for<'b> FnMut(Endpoint, Event<'b>) {
         for mio_event in &self.events {
             let token = mio_event.token();
@@ -305,7 +305,7 @@ impl<'a> Receiver {
                             match listener.accept() {
                                 Ok((stream, _)) => {
                                     let endpoint = controller.add_remote(Remote::Tcp(stream));
-                                    callback(endpoint, Event::Connection);
+                                    event_callback(endpoint, Event::Connection);
 
                                     // Used to avoid the consecutive mutable borrows
                                     listener = match controller.resources.get_mut(&id).unwrap() {
@@ -322,7 +322,7 @@ impl<'a> Receiver {
                     Listener::Udp(socket) => {
                         loop {
                             match socket.recv_from(input_buffer) {
-                                Ok((_, addr)) => callback(Endpoint::new(id, addr), Event::Data(input_buffer)),
+                                Ok((size, addr)) => event_callback(Endpoint::new(id, addr), Event::Data(&input_buffer[..size])),
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                 Err(err) => Err(err).unwrap(),
                             }
@@ -336,12 +336,12 @@ impl<'a> Receiver {
                                 Ok(0) => {
                                     let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
                                     controller.remove_resource(endpoint.resource_id()).unwrap();
-                                    callback(endpoint, Event::Disconnection);
+                                    event_callback(endpoint, Event::Disconnection);
                                     break;
                                 },
-                                Ok(_) => {
+                                Ok(size) => {
                                     let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
-                                    callback(endpoint, Event::Data(input_buffer));
+                                    event_callback(endpoint, Event::Data(&input_buffer[..size]));
                                 },
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                 Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
@@ -352,7 +352,7 @@ impl<'a> Receiver {
                     Remote::Udp(socket, addr) => {
                         loop {
                             match socket.recv(input_buffer) {
-                                Ok(_) => callback(Endpoint::new(id, *addr), Event::Data(input_buffer)),
+                                Ok(size) => event_callback(Endpoint::new(id, *addr), Event::Data(&input_buffer[..size])),
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                                 Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => continue,
                                 Err(err) => Err(err).unwrap(),

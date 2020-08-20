@@ -1,5 +1,9 @@
 # Changelog
 
+## To be released
+- Added encoding module.
+- Added a encode layer over TCP/UDP.
+
 ## Release 0.4.0
 - Added multicast support.
 - Added multicast example.

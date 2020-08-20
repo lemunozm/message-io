@@ -1,8 +1,10 @@
 # Changelog
 
-## To be released
+## Release 0.4.1
 - Added encoding module.
 - Added a encode layer over TCP/UDP.
+- Added Basic integration end-to-end tests.
+- Added unitary tests for encoding exact messages.
 
 ## Release 0.4.0
 - Added multicast support.

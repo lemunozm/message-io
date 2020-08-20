@@ -121,3 +121,48 @@ where E: std::hash::Hash + Eq
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MESSAGE_SIZE: usize = 20;
+
+    fn encode_message() -> (Vec<u8>, Vec<u8>) {
+        let message = vec![5; MESSAGE_SIZE];
+        let mut data = vec![0; PADDING];
+        data.extend_from_slice(&message);
+        super::encode(&mut data);
+        (message, data)
+    }
+
+    #[test]
+    fn encode() {
+        let (message, encoded) = encode_message();
+
+        assert_eq!(encoded.len(), PADDING + MESSAGE_SIZE);
+        let expected_size = bincode::deserialize::<u16>(&encoded).unwrap() as usize;
+        assert_eq!(expected_size, MESSAGE_SIZE);
+        assert_eq!(&encoded[PADDING..], &message[..]);
+    }
+
+    #[test]
+    fn fast_decode_exact() {
+        let (message, encoded) = encode_message();
+
+        let (decoded_data, next_data) = Decoder::try_fast_decode(&encoded[..]).unwrap();
+        assert_eq!(next_data.len(), 0);
+        assert_eq!(decoded_data, &message[..]);
+    }
+
+    #[test]
+    fn decode_exact() {
+        let (message, encoded) = encode_message();
+
+        let mut decoder = Decoder::new();
+        let (decoded_data, next_data) = decoder.decode(&encoded[..]);
+        let decoded_data = decoded_data.unwrap();
+        assert_eq!(next_data.len(), 0);
+        assert_eq!(decoded_data, &message[..]);
+    }
+}

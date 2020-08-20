@@ -47,9 +47,9 @@ message-io = "0.4"
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
 
-### Minimal TCP/UDP server
-The following example is the simplest server that reads message from a client and respond to it.
-It is capable to manage several client connections and listen from 2 differents ports and interfaces.
+### Minimal TCP & UDP server
+The following example is the simplest server that reads messages from the clients and respond to them.
+It is capable to manage several client connections and listen from 2 differents protocols.
 
 ```rust
 use message_io::events::{EventQueue};
@@ -135,15 +135,15 @@ To reach this, the user have to connect the `NetworkManager` to the `EventQueue`
 </p>
 
 ## Test yourself!
-Clone the repository and test the `basic`example that you can found in [`examples/basic`](examples/basic):
+Clone the repository and test the `tcp`example that you can found in [`examples/tcp`](examples/tcp):
 
 Run the server:
 ```
-cargo run --example basic server [tcp/udp]
+cargo run --example tcp server
 ```
 In other terminals, run one or more clients:
 ```
-cargo run --example basic client [tcp/udp]
+cargo run --example tcp client <name>
 ```
-(By default, if no protocol is specified, `tcp` is used)
+
 

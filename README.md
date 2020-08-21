@@ -49,7 +49,7 @@ message-io = "0.4"
 
 ### Minimal TCP & UDP server
 The following example is the simplest server that reads messages from the clients and respond to them.
-It is capable to manage several client connections and listen from 2 differents protocols.
+It is capable to manage several client connections and listen from 2 differents protocols at same time.
 
 ```rust
 use message_io::events::{EventQueue};

@@ -4,7 +4,7 @@
 
 # `message-io`
 `message-io` is an asynchronous network message library for building network applications following the actor model.
-The library offers an event-based API over an abstraction network transport layer.
+The library offers an event-based API over the network transport layer.
 
 This library can be used but it is still growing, so if you see any bug or strange behaviour, please put an issue!
 Of course, any contribution is welcome!
@@ -14,6 +14,7 @@ Of course, any contribution is welcome!
 - People who want to make a multiplayer game (server and/or client).
 - People who don't want to deal with concurrence or socket connection problems.
 - People who want to push the effort in the messages among the apps, not in how to transport them.
+- People who want to follow the [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
 
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
@@ -22,13 +23,13 @@ Of course, any contribution is welcome!
 - Internal encoding layer. Manage messages not raw data streams.
 - FIFO events with internal timed and priority events.
 - Really easy API:
-  - Abstraction from transport layer: Do not thinks about sockets, only thing about data messages.
-  - Only two main entities: an extensible event-queue to manage all events.
-    and a network manager to manage the connections, and send/receive data.
+  - Abstraction from transport layer: Do not think about sockets, only think about data messages.
+  - Only two main entities: an extensible *event-queue* to manage all events,
+    and a *network manager* to manage all connections (connect, listen, remove, send, receive).
   - Forget concurrence problems: Manage thousands of active connections without any effort,
     "One thread to rule them all".
 - High performance:
-    - One thread for manage all internal connections over a OS poll.
+    - One thread for manage all internal connections over the faster OS poll.
     - Binary serialization.
     - Small runtime overhead over OS sockets.
 
@@ -129,7 +130,7 @@ that can be used to remove, send or identify input messages.
 </p>
 
 The power comes when both pieces joins together, allowing to process all actions from one thread.
-To reach this, the user have to connect the `NetworkManager` to the `EventQueue` sending `NetEvent` produced by the first one.
+To reach this, the user has to connect the `NetworkManager` to the `EventQueue` sending the `NetEvent` produced by the first one.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vT6IuBVr4mLbdNfs2yZayqqUJ04PsuqG27Ce3Vdr0ZG8ItX3slISoKVxyndybaYPIS5oFZ6N4TljrKQ/pub?w=701&h=383"/>

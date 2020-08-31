@@ -20,13 +20,13 @@ Of course, any contribution is welcome!
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - TCP and UDP (with multicast option) protocols.
-- Internal encoding layer. Manage messages not raw data streams.
+- Internal encoding layer: handle messages, not data streams.
 - FIFO events with internal timed and priority events.
 - Really easy API:
-  - Abstraction from transport layer: Do not think about sockets, only think about data messages.
+  - Abstraction from transport layer: do not think about sockets, only think about data messages.
   - Only two main entities: an extensible *event-queue* to manage all events,
     and a *network manager* to manage all connections (connect, listen, remove, send, receive).
-  - Forget concurrence problems: Manage thousands of active connections without any effort,
+  - Forget concurrence problems: handle thousands of active connections without any effort,
     "One thread to rule them all".
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.

@@ -124,7 +124,7 @@ impl<'a> NetworkManager {
     }
 
     /// Open a port to listen messages from TCP.
-    /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
+    /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
     pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         Listener::new_tcp(addr).map(|listener| {
@@ -133,7 +133,7 @@ impl<'a> NetworkManager {
     }
 
     /// Open a port to listen messages from UDP.
-    /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
+    /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
     pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         Listener::new_udp(addr).map(|listener| {
@@ -142,7 +142,7 @@ impl<'a> NetworkManager {
     }
 
     /// Open a port to listen messages from UDP in multicast.
-    /// If the port can be opened, an endpoint identifying the listener is returned along with the local address, or an error if not.
+    /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
     /// Only ipv4 addresses are allowed.
     pub fn listen_udp_multicast<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         match addr.to_socket_addrs().unwrap().next().unwrap() {

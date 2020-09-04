@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.4.2
+- Fixed multicast blocking issue
+- Fixed docs
+
 ## Release 0.4.1
 - Added encoding module.
 - Added a encode layer over TCP/UDP.

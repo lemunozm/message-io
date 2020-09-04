@@ -66,6 +66,7 @@ impl Listener {
     pub fn new_udp_multicast(addr: SocketAddrV4) -> io::Result<Listener> {
         let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
         UdpBuilder::new_v4().unwrap().reuse_address(true).unwrap().bind(listening_addr).map(|socket| {
+            socket.set_nonblocking(true).unwrap();
             socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
             Listener::Udp(UdpSocket::from_std(socket))
         })

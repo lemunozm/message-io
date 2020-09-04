@@ -36,7 +36,7 @@ Of course, any contribution is welcome!
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.4.1"
+message-io = "0.4"
 ```
 
 ### Documentation

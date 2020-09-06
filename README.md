@@ -14,7 +14,6 @@ Of course, any contribution is welcome!
 - People who want to make a multiplayer game (server and/or client).
 - People who don't want to deal with concurrence or socket connection problems.
 - People who want to push the effort in the messages among the apps, not in how to transport them.
-- People who want to follow the [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
 
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
@@ -23,10 +22,11 @@ Of course, any contribution is welcome!
 - Internal encoding layer: handle messages, not data streams.
 - FIFO events with internal timed and priority events.
 - Really easy API:
+  - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
   - Abstraction from transport layer: do not think about sockets, only think about data messages.
   - Only two main entities: an extensible *event-queue* to manage all events,
     and a *network manager* to manage all connections (connect, listen, remove, send, receive).
-  - Forget concurrence problems: handle thousands of active connections without any effort,
+  - Forget concurrence problems: handle thousands of active connections and listeners without any effort,
     "One thread to rule them all".
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.
@@ -48,6 +48,9 @@ message-io = "0.4"
   - [Basic UDP client and server](examples/udp)
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
+
+- Real examples (apps using `message-io`)
+  - [Termchat](https://github.com/lemunozm/termchat): A distributed LAN chat in the terminal.
 
 ### Minimal TCP & UDP server
 The following example is the simplest server that reads messages from the clients and respond to them.

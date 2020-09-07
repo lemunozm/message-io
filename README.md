@@ -2,12 +2,14 @@
 [![license](https://img.shields.io/crates/l/message-io)](https://www.apache.org/licenses/LICENSE-2.0.txt)
 [![downloads](https://img.shields.io/crates/d/message-io)](https://crates.io/crates/message-io)
 
-# `message-io`
-`message-io` is an asynchronous network message library for building network applications following the actor model.
-The library offers an event-based API over the network transport layer.
+# message-io
+`message-io` is an asynchronous message library to build network applications easy and fast. The library manages and processes the socket data streams in order to offer a simple event message API to the user.
 
-This library can be used but it is still growing, so if you see any bug or strange behaviour, please put an issue!
-Of course, any contribution is welcome!
+<p align="center">
+  <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=980&h=458"/>
+</p>
+
+**Any contribution is welcome!**
 
 ## Whom is this project for?
 - People who want to make an application that needs to communicate over tcp/udp protocols.
@@ -20,7 +22,7 @@ Of course, any contribution is welcome!
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - TCP and UDP (with multicast option) protocols.
 - Internal encoding layer: handle messages, not data streams.
-- FIFO events with internal timed and priority events.
+- FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
   - Abstraction from transport layer: do not think about sockets, think about data messages.
@@ -125,8 +127,10 @@ The user must be read these events in its main thread in order to dispatch actio
 It is an abstraction layer of the transport protocols that works over non-blocking sockets.
 It allows to create/remove connections, send and receive messages (defined by the user).
 
-To manage the connections the `NetworkManager` offers an *`Endpoint`* that is an unique identifier of the connection
-that can be used to remove, send or identify input messages.
+To manage the connections, the `NetworkManager` offers an *`Endpoint`*
+that is an unique identifier of the connection that can be used
+to remove, send or identify input messages.
+It can be understood as the remitter/recipient of the message.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vS3y1BKwPHjoFqtHm2pqfmvxr0JRQIzeRJim9s2UOrOIS74cGwlyqxnH4_DHVXTverziCjPzl6FtQMe/pub?w=586&h=273"/>

@@ -1,5 +1,8 @@
 # Changelog
 
+## To be released
+- Fixed endpoint docs
+
 ## Release 0.4.2
 - Fixed multicast blocking issue
 - Fixed docs

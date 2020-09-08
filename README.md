@@ -21,9 +21,9 @@ Of course, any contribution is welcome!
 - TCP and UDP (with multicast option) protocols.
 - Internal encoding layer: handle messages, not data streams.
 - FIFO events with internal timed and priority events.
-- Really easy API:
+- Easy, intuitive and consistent API:
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
-  - Abstraction from transport layer: do not think about sockets, only think about data messages.
+  - Abstraction from transport layer: do not think about sockets, think about data messages.
   - Only two main entities: an extensible *event-queue* to manage all events,
     and a *network manager* to manage all connections (connect, listen, remove, send, receive).
   - Forget concurrence problems: handle thousands of active connections and listeners without any effort,

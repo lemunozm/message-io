@@ -189,8 +189,9 @@ impl<'a> NetworkManager {
     /// Serialize and send the message thought the connections represented by the given endpoints.
     /// When there are severals endpoints to send the data, this function is faster than consecutive calls to `send()`
     /// since the serialization is only performed one time for all endpoints.
-    /// An list of erroneous endpoints along their errors is returned if there was a problem with some message sent.
-    pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item=&'b Endpoint>, message: OutMessage) -> Result<(), Vec<(Endpoint, io::Error)>>
+    /// A list of erroneous endpoints along with their errors is returned if there was a problem with some messages sent.
+    /// An error sending a message by an endpoint do not avoid sending the message to the rest of endpoints.
+    pub fn send_all<'b, OutMessage>(&mut self, endpoints: impl IntoIterator<Item = &'b Endpoint>, message: OutMessage) -> Result<(), Vec<(Endpoint, io::Error)>>
     where OutMessage: Serialize {
         self.prepare_output_message(message);
         let mut errors = Vec::new();

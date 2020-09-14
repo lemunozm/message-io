@@ -69,7 +69,7 @@ impl<'a> NetworkManager {
             network_event_thread: Some(network_event_thread),
             network_thread_running,
             network_controller,
-            output_buffer: Vec::with_capacity(encoding::PADDING),
+            output_buffer: Vec::new(),
         }
     }
 
@@ -208,9 +208,9 @@ impl<'a> NetworkManager {
 
     fn prepare_output_message<OutMessage>(&mut self, message: OutMessage)
     where OutMessage: Serialize {
-        self.output_buffer.resize(encoding::PADDING, 0);
-        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        encoding::encode(&mut self.output_buffer);
+        encoding::encode(&mut self.output_buffer, |enconding_slot| {
+            bincode::serialize_into(enconding_slot, &message).unwrap();
+        });
     }
 }
 

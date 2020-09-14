@@ -1,11 +1,15 @@
 use std::collections::{HashMap, hash_map::Entry};
 
-pub const PADDING: usize = 2;
+const PADDING: usize = 2;
 
-pub fn encode(data: &mut [u8]) {
-    assert!(data.len() >= PADDING, "It is necessary to start serializing after the 'PADDING'");
-    let data_size: u16 = (data.len() - PADDING) as u16;
-    bincode::serialize_into(data, &data_size).unwrap();
+pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
+    let start_point = buffer.len();
+    buffer.extend_from_slice(&[0; PADDING]); //Start serializing after PADDING
+    let message_point = buffer.len();
+    encode_callback(buffer);
+    assert!(buffer.len() >= message_point, "Encoding must not decrement the buffer length");
+    let data_size: u16 = (buffer.len() - message_point) as u16;
+    bincode::serialize_into(&mut buffer[start_point .. start_point + PADDING], &data_size).unwrap();
 }
 
 pub struct Decoder {
@@ -106,16 +110,18 @@ where E: std::hash::Hash + Eq
     }
 
     fn fast_decode<C: FnMut(&[u8])>(data: &[u8], mut decode_callback: C) -> Option<Decoder> {
+        let mut next_data = data;
         loop {
-            if let Some ((decoded_data, next_data)) = Decoder::try_fast_decode(data) {
+            if let Some ((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
                 decode_callback(decoded_data);
-                if next_data.len() == 0 {
+                if reminder_data.len() == 0 {
                     return None
                 }
+                next_data = reminder_data;
             }
             else {
                 let mut decoder = Decoder::new();
-                decoder.decode(data); // It will not be ready with the reminder data. We safe it and wait the next data.
+                decoder.decode(next_data); // It will not be ready with the reminder data. We safe it and wait the next data.
                 return Some(decoder)
             }
         }
@@ -126,43 +132,74 @@ where E: std::hash::Hash + Eq
 mod tests {
     use super::*;
 
+    const MESSAGE_VALUE: u8 = 5;
     const MESSAGE_SIZE: usize = 20;
+    const MESSAGE: [u8; MESSAGE_SIZE] = [MESSAGE_VALUE; MESSAGE_SIZE];
 
-    fn encode_message() -> (Vec<u8>, Vec<u8>) {
-        let message = vec![5; MESSAGE_SIZE];
-        let mut data = vec![0; PADDING];
-        data.extend_from_slice(&message);
-        super::encode(&mut data);
-        (message, data)
+    fn encode_message(buffer: &mut Vec<u8>) {
+        super::encode(buffer, |slot| {
+            slot.extend_from_slice(&MESSAGE);
+        });
     }
 
     #[test]
     fn encode() {
-        let (message, encoded) = encode_message();
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer);
 
-        assert_eq!(encoded.len(), PADDING + MESSAGE_SIZE);
-        let expected_size = bincode::deserialize::<u16>(&encoded).unwrap() as usize;
+        assert_eq!(buffer.len(), PADDING + MESSAGE_SIZE);
+        let expected_size = bincode::deserialize::<u16>(&buffer[0..]).unwrap() as usize;
         assert_eq!(expected_size, MESSAGE_SIZE);
-        assert_eq!(&encoded[PADDING..], &message[..]);
+        assert_eq!(&buffer[PADDING..], &MESSAGE);
     }
 
     #[test]
     fn fast_decode_exact() {
-        let (message, encoded) = encode_message();
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer);
 
-        let (decoded_data, next_data) = Decoder::try_fast_decode(&encoded[..]).unwrap();
+        let (decoded_data, next_data) = Decoder::try_fast_decode(&buffer).unwrap();
         assert_eq!(next_data.len(), 0);
-        assert_eq!(decoded_data, &message[..]);
+        assert_eq!(decoded_data, &MESSAGE);
     }
 
     #[test]
     fn decode_exact() {
-        let (message, encoded) = encode_message();
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer);
 
         let mut decoder = Decoder::new();
-        let (decoded_data, next_data) = decoder.decode(&encoded[..]);
+        let (decoded_data, next_data) = decoder.decode(&buffer);
         let decoded_data = decoded_data.unwrap();
         assert_eq!(next_data.len(), 0);
-        assert_eq!(decoded_data, &message[..]);
+        assert_eq!(decoded_data, &MESSAGE);
     }
+
+    #[test]
+    fn fast_decode_exact_multiple() {
+        const MESSAGES_NUMBER: usize = 3;
+
+        let mut buffer = Vec::new();
+        for _ in 0..MESSAGES_NUMBER {
+            encode_message(&mut buffer);
+        }
+
+        let mut message_index = 0;
+        let mut next_data = &buffer[..];
+        loop {
+            message_index += 1;
+            if let Some ((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
+                println!("{}", message_index);
+                assert_eq!(reminder_data.len(), (MESSAGE_SIZE + PADDING) * (MESSAGES_NUMBER - message_index));
+                assert_eq!(decoded_data, &MESSAGE);
+                if reminder_data.len() == 0 {
+                    assert_eq!(message_index, MESSAGES_NUMBER);
+                    break;
+                }
+                next_data = reminder_data;
+            }
+        }
+    }
+
+    //TODO: test DecodingPool
 }

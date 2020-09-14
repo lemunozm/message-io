@@ -1,6 +1,7 @@
 # Changelog
 
-## To be released
+## Release 0.4.3
+- Fixed deconding issue with multiple messages at once.
 - Fixed endpoint docs
 
 ## Release 0.4.2

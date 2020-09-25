@@ -6,7 +6,7 @@
 `message-io` is an asynchronous message library to build network applications easy and fast. The library manages and processes the socket data streams in order to offer a simple event message API to the user.
 
 <p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=980&h=458"/>
+  <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=653&h=305" width="653"/>
 </p>
 
 **Any contribution is welcome!**
@@ -54,7 +54,7 @@ message-io = "0.4"
 - Real examples (apps using `message-io`)
   - [Termchat](https://github.com/lemunozm/termchat): A distributed LAN chat in the terminal.
 
-### Minimal TCP & UDP server
+### TCP & UDP echo server
 The following example is the simplest server that reads messages from the clients and respond to them.
 It is capable to manage several client connections and listen from 2 differents protocols at same time.
 

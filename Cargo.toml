@@ -10,7 +10,9 @@ homepage = "https://github.com/lemunozm/message-io/"
 repository = "https://github.com/lemunozm/message-io/"
 keywords = ["network", "message", "asynchronous", "events"]
 categories = ["asynchronous", "game-development", "network-programming"]
-maintenance = "actively-developed"
+
+[badges]
+maintenance = { status = "actively-developed" }
 
 [dependencies]
 mio = { version = "0.7", features = ["os-poll", "tcp", "udp"] }

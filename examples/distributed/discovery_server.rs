@@ -26,18 +26,15 @@ impl DiscoveryServer {
         let mut event_queue = EventQueue::new();
 
         let network_sender = event_queue.sender().clone();
-        let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+        let mut network =
+            NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         let listen_addr = "127.0.0.1:5000";
         match network.listen_tcp(listen_addr) {
             Ok(_) => {
                 println!("Discovery server running at {}", listen_addr);
-                Some(DiscoveryServer{
-                    event_queue,
-                    network,
-                    participants: HashMap::new(),
-                })
-            },
+                Some(DiscoveryServer { event_queue, network, participants: HashMap::new() })
+            }
             Err(_) => {
                 println!("Can not listen on {}", listen_addr);
                 None
@@ -60,12 +57,22 @@ impl DiscoveryServer {
                     },
                     NetEvent::AddedEndpoint(_) => (),
                     NetEvent::RemovedEndpoint(endpoint) => {
-                        //Participant disconection without explict unregistration. We must remove from the registry too.
-                        if let Some(name) = self.participants.iter().find_map(|(name, info)| if info.endpoint == endpoint { Some(name.clone()) } else { None } ) {
+                        // Participant disconection without explict unregistration.
+                        // We must remove from the registry too.
+                        let participant_name = self.participants.iter().find_map(|(name, info)| {
+                            if info.endpoint == endpoint {
+                                Some(name.clone())
+                            }
+                            else {
+                                None
+                            }
+                        });
+
+                        if let Some(name) = participant_name {
                             self.unregister(&name)
                         }
                     }
-                }
+                },
             }
         }
     }
@@ -73,19 +80,24 @@ impl DiscoveryServer {
     fn register(&mut self, name: &str, addr: SocketAddr, endpoint: Endpoint) {
         if !self.participants.contains_key(name) {
             // Update the new participant with the whole participants information
-            let participant_list = self.participants.iter().map(|(name, info)| (name.clone(), info.addr)).collect();
+            let participant_list =
+                self.participants.iter().map(|(name, info)| (name.clone(), info.addr)).collect();
             self.network.send(endpoint, Message::ParticipantList(participant_list)).unwrap();
 
             // Notify other participants about this new participant
             let participant_endpoints = self.participants.values().map(|info| &info.endpoint);
-            self.network.send_all(participant_endpoints, Message::ParticipantNotificationAdded(name.to_string(), addr)).unwrap();
+            let message = Message::ParticipantNotificationAdded(name.to_string(), addr);
+            self.network.send_all(participant_endpoints, message).unwrap();
 
             // Register participant
-            self.participants.insert(name.to_string(), ParticipantInfo {addr, endpoint});
+            self.participants.insert(name.to_string(), ParticipantInfo { addr, endpoint });
             println!("Added participant '{}' with ip {}", name, addr);
         }
         else {
-            println!("Participant with name '{}' already exists, please registry with another name", name);
+            println!(
+                "Participant with name '{}' already exists, please registry with another name",
+                name
+            );
         }
     }
 
@@ -93,7 +105,8 @@ impl DiscoveryServer {
         if let Some(info) = self.participants.remove(name) {
             // Notify other participants about this removed participant
             let participant_endpoints = self.participants.values().map(|info| &info.endpoint);
-            self.network.send_all(participant_endpoints, Message::ParticipantNotificationRemoved(name.to_string())).unwrap();
+            let message = Message::ParticipantNotificationRemoved(name.to_string());
+            self.network.send_all(participant_endpoints, message).unwrap();
             println!("Removed participant '{}' with ip {}", name, info.addr);
         }
         else {

@@ -1,0 +1,12 @@
+control_brace_style = "ClosingNextLine"
+use_small_heuristics = "Max"
+reorder_impl_items = true
+reorder_imports = false
+reorder_modules = false
+trailing_semicolon = false
+use_field_init_shorthand = true
+use_try_shorthand = true
+where_single_line = true
+ignore = [
+    "examples/readme_example.rs"
+]

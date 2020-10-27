@@ -17,7 +17,8 @@ pub fn run() {
     let mut event_queue = EventQueue::new();
 
     let network_sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let mut network =
+        NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let mut clients: HashMap<Endpoint, ClientInfo> = HashMap::new();
 
@@ -34,18 +35,31 @@ pub fn run() {
                     Message::Greetings(text) => {
                         let mut client_info = clients.get_mut(&endpoint).unwrap();
                         client_info.count += 1;
-                        println!("Client ({}) says '{}' {} times", endpoint.addr(), text, client_info.count);
+                        println!(
+                            "Client ({}) says '{}' {} times",
+                            endpoint.addr(),
+                            text,
+                            client_info.count
+                        );
                         let msg = format!("Hi, I hear you for {} time", client_info.count);
                         network.send(endpoint, Message::Greetings(msg)).unwrap();
-                    },
+                    }
                 },
                 NetEvent::AddedEndpoint(endpoint) => {
                     clients.insert(endpoint, ClientInfo { count: 0 });
-                    println!("Client ({}) connected (total clients: {})", endpoint.addr(), clients.len());
-                },
+                    println!(
+                        "Client ({}) connected (total clients: {})",
+                        endpoint.addr(),
+                        clients.len()
+                    );
+                }
                 NetEvent::RemovedEndpoint(endpoint) => {
                     clients.remove(&endpoint).unwrap();
-                    println!("Client ({}) disconnected (total clients: {})", endpoint.addr(), clients.len());
+                    println!(
+                        "Client ({}) disconnected (total clients: {})",
+                        endpoint.addr(),
+                        clients.len()
+                    );
                 }
             },
         }

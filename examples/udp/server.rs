@@ -11,7 +11,8 @@ pub fn run() {
     let mut event_queue = EventQueue::new();
 
     let network_sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let mut network =
+        NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let listen_addr = "127.0.0.1:3000";
     match network.listen_udp(listen_addr) {
@@ -25,8 +26,10 @@ pub fn run() {
                 NetEvent::Message(endpoint, message) => match message {
                     Message::Greetings(text) => {
                         println!("Client ({}) says: {}", endpoint.addr(), text);
-                        network.send(endpoint, Message::Greetings("Hi, I hear you".into())).unwrap();
-                    },
+                        network
+                            .send(endpoint, Message::Greetings("Hi, I hear you".into()))
+                            .unwrap();
+                    }
                 },
                 NetEvent::AddedEndpoint(_) => unreachable!(), // It will not be generated for UDP
                 NetEvent::RemovedEndpoint(_) => unreachable!(), // It will not be generated for UDP

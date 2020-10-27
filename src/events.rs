@@ -1,6 +1,9 @@
 use crossbeam_channel::{self, Sender, Receiver, select};
 
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Duration;
 use std::thread::{self, JoinHandle};
 use std::collections::{HashMap};
@@ -14,10 +17,10 @@ pub struct EventQueue<E> {
 }
 
 impl<E> EventQueue<E>
-where E: Send + 'static {
+where E: Send + 'static
+{
     /// Creates a new event queue for generic incoming events.
-    pub fn new() -> EventQueue<E>
-    {
+    pub fn new() -> EventQueue<E> {
         let (sender, receiver) = crossbeam_channel::unbounded();
         let (priority_sender, priority_receiver) = crossbeam_channel::unbounded();
         EventQueue {
@@ -62,7 +65,6 @@ where E: Send + 'static {
     }
 }
 
-
 pub struct EventSender<E> {
     sender: Sender<E>,
     priority_sender: Sender<E>,
@@ -72,7 +74,8 @@ pub struct EventSender<E> {
 }
 
 impl<E> EventSender<E>
-where E: Send + 'static {
+where E: Send + 'static
+{
     fn new(sender: Sender<E>, priority_sender: Sender<E>) -> EventSender<E> {
         EventSender {
             sender,
@@ -103,16 +106,19 @@ where E: Send + 'static {
         let running = self.timers_running.clone();
         let mut time_acc = Duration::from_secs(0);
         let duration_step = Duration::from_millis(TIMER_SAMPLING_CHECK);
-        let timer_handle = thread::Builder::new().name("message-io: timer".into()).spawn(move || {
-            while time_acc < duration {
-                thread::sleep(duration_step);
-                time_acc += duration_step;
-                if !running.load(Ordering::Relaxed) {
-                    return;
+        let timer_handle = thread::Builder::new()
+            .name("message-io: timer".into())
+            .spawn(move || {
+                while time_acc < duration {
+                    thread::sleep(duration_step);
+                    time_acc += duration_step;
+                    if !running.load(Ordering::Relaxed) {
+                        return
+                    }
                 }
-            }
-            sender.send(event).unwrap();
-        }).unwrap();
+                sender.send(event).unwrap();
+            })
+            .unwrap();
         self.timer_registry.insert(timer_id, timer_handle);
         self.last_timer_id += 1;
     }
@@ -147,7 +153,10 @@ mod tests {
     fn waiting_timer_event() {
         let mut queue = EventQueue::new();
         queue.sender().send_with_timer("Timed", Duration::from_millis(TIMER_SAMPLING_CHECK));
-        assert_eq!(queue.receive_event_timeout(Duration::from_millis(TIMER_SAMPLING_CHECK + 1)).unwrap(), "Timed");
+        assert_eq!(
+            queue.receive_event_timeout(Duration::from_millis(TIMER_SAMPLING_CHECK + 1)).unwrap(),
+            "Timed"
+        );
     }
 
     #[test]
@@ -165,8 +174,14 @@ mod tests {
         queue.sender().send("standard");
         queue.sender().send_with_priority("priority_first");
         queue.sender().send_with_priority("priority_second");
-        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "priority_first");
-        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "priority_second");
+        assert_eq!(
+            queue.receive_event_timeout(Duration::from_millis(0)).unwrap(),
+            "priority_first"
+        );
+        assert_eq!(
+            queue.receive_event_timeout(Duration::from_millis(0)).unwrap(),
+            "priority_second"
+        );
         assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "standard");
     }
 
@@ -177,8 +192,14 @@ mod tests {
         queue.sender().send("standard_first");
         queue.sender().send("standard_second");
         std::thread::sleep(Duration::from_millis(TIMER_SAMPLING_CHECK + 1));
-        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "standard_first");
-        assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "standard_second");
+        assert_eq!(
+            queue.receive_event_timeout(Duration::from_millis(0)).unwrap(),
+            "standard_first"
+        );
+        assert_eq!(
+            queue.receive_event_timeout(Duration::from_millis(0)).unwrap(),
+            "standard_second"
+        );
         assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "timed");
     }
 

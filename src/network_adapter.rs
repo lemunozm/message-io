@@ -44,7 +44,7 @@ impl std::fmt::Display for Endpoint {
 #[derive(Debug)]
 pub enum Event<'a> {
     Connection,
-    Data(&'a[u8]),
+    Data(&'a [u8]),
     Disconnection,
 }
 
@@ -64,11 +64,13 @@ impl Listener {
 
     pub fn new_udp_multicast(addr: SocketAddrV4) -> io::Result<Listener> {
         let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
-        UdpBuilder::new_v4().unwrap().reuse_address(true).unwrap().bind(listening_addr).map(|socket| {
-            socket.set_nonblocking(true).unwrap();
-            socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
-            Listener::Udp(UdpSocket::from_std(socket))
-        })
+        UdpBuilder::new_v4().unwrap().reuse_address(true).unwrap().bind(listening_addr).map(
+            |socket| {
+                socket.set_nonblocking(true).unwrap();
+                socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
+                Listener::Udp(UdpSocket::from_std(socket))
+            },
+        )
     }
 
     pub fn local_addr(&self) -> SocketAddr {
@@ -95,7 +97,7 @@ impl Drop for Listener {
                         socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
                     }
                 }
-            },
+            }
             _ => (),
         }
     }
@@ -196,11 +198,7 @@ pub struct Controller {
 
 impl Controller {
     fn new(registry: Registry) -> Controller {
-        Controller {
-            resources: HashMap::new(),
-            last_id: 0,
-            registry,
-        }
+        Controller { resources: HashMap::new(), last_id: 0, registry }
     }
 
     fn add_resource<S: event::Source + ?Sized>(&mut self, source: &mut S) -> usize {
@@ -229,31 +227,41 @@ impl Controller {
             self.registry.deregister(resource.event_source()).unwrap();
             Some(())
         }
-        else { None }
+        else {
+            None
+        }
     }
 
     pub fn local_address(&mut self, resource_id: usize) -> Option<SocketAddr> {
         if let Some(resource) = self.resources.get(&resource_id) {
             Some(resource.local_addr())
         }
-        else { None }
+        else {
+            None
+        }
     }
 
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> io::Result<()> {
         if let Some(resource) = self.resources.get_mut(&endpoint.resource_id()) {
             match resource {
                 Resource::Listener(listener) => match listener {
-                    Listener::Udp(socket) => socket.send_to(data, endpoint.addr()).map(|_|()),
+                    Listener::Udp(socket) => socket.send_to(data, endpoint.addr()).map(|_| ()),
                     _ => unreachable!(),
                 },
                 Resource::Remote(remote) => match remote {
-                    Remote::Tcp(stream) => stream.write(data).map(|_|()),
-                    Remote::Udp(socket, _) => socket.send(data).map(|_|()),
+                    Remote::Tcp(stream) => stream.write(data).map(|_| ()),
+                    Remote::Udp(socket, _) => socket.send(data).map(|_| ()),
                 },
             }
         }
         else {
-            Err(io::Error::new(ErrorKind::NotFound, format!("Resource id '{}' not exists in the network adapter", endpoint.resource_id())))
+            Err(io::Error::new(
+                ErrorKind::NotFound,
+                format!(
+                    "Resource id '{}' not exists in the network adapter",
+                    endpoint.resource_id()
+                ),
+            ))
         }
     }
 }
@@ -266,29 +274,29 @@ pub struct Receiver {
 
 impl<'a> Receiver {
     fn new(controller: Arc<Mutex<Controller>>, poll: Poll) -> Receiver {
-        Receiver {
-            controller,
-            poll,
-            events: Events::with_capacity(EVENTS_SIZE),
-        }
+        Receiver { controller, poll, events: Events::with_capacity(EVENTS_SIZE) }
     }
 
-    pub fn receive<C>(&mut self, input_buffer: &mut[u8], timeout: Option<Duration>, event_callback: C)
-    where C: for<'b> FnMut(Endpoint, Event<'b>) {
+    pub fn receive<C>(
+        &mut self,
+        input_buffer: &mut [u8],
+        timeout: Option<Duration>,
+        event_callback: C,
+    ) where
+        C: for<'b> FnMut(Endpoint, Event<'b>),
+    {
         loop {
             match self.poll.poll(&mut self.events, timeout) {
-                Ok(_) => {
-                    break self.process_event(input_buffer, event_callback)
-                },
+                Ok(_) => break self.process_event(input_buffer, event_callback),
                 Err(e) => match e.kind() {
                     ErrorKind::Interrupted => continue,
                     _ => Err(e).unwrap(),
-                }
+                },
             }
         }
     }
 
-    fn process_event<C>(&mut self, input_buffer: &mut[u8], mut event_callback: C)
+    fn process_event<C>(&mut self, input_buffer: &mut [u8], mut event_callback: C)
     where C: for<'b> FnMut(Endpoint, Event<'b>) {
         for mio_event in &self.events {
             let token = mio_event.token();
@@ -314,54 +322,57 @@ impl<'a> Receiver {
                                     }
                                 }
                                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-                                Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                                Err(ref err) if err.kind() == io::ErrorKind::Interrupted => {
+                                    continue
+                                }
                                 Err(err) => Err(err).unwrap(),
                             }
                         }
-                    },
-                    Listener::Udp(socket) => {
-                        loop {
-                            match socket.recv_from(input_buffer) {
-                                Ok((size, addr)) => event_callback(Endpoint::new(id, addr), Event::Data(&input_buffer[..size])),
-                                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-                                Err(err) => Err(err).unwrap(),
-                            }
+                    }
+                    Listener::Udp(socket) => loop {
+                        match socket.recv_from(input_buffer) {
+                            Ok((size, addr)) => event_callback(
+                                Endpoint::new(id, addr),
+                                Event::Data(&input_buffer[..size]),
+                            ),
+                            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                            Err(err) => Err(err).unwrap(),
                         }
                     },
-                }
+                },
                 Resource::Remote(remote) => match remote {
-                    Remote::Tcp(stream) => {
-                        loop {
-                            match stream.read(input_buffer) {
-                                Ok(0) => {
-                                    let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
-                                    controller.remove_resource(endpoint.resource_id()).unwrap();
-                                    event_callback(endpoint, Event::Disconnection);
-                                    break;
-                                },
-                                Ok(size) => {
-                                    let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
-                                    event_callback(endpoint, Event::Data(&input_buffer[..size]));
-                                },
-                                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-                                Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
-                                Err(err) => Err(err).unwrap(),
+                    Remote::Tcp(stream) => loop {
+                        match stream.read(input_buffer) {
+                            Ok(0) => {
+                                let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
+                                controller.remove_resource(endpoint.resource_id()).unwrap();
+                                event_callback(endpoint, Event::Disconnection);
+                                break
                             }
+                            Ok(size) => {
+                                let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
+                                event_callback(endpoint, Event::Data(&input_buffer[..size]));
+                            }
+                            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                            Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                            Err(err) => Err(err).unwrap(),
                         }
                     },
-                    Remote::Udp(socket, addr) => {
-                        loop {
-                            match socket.recv(input_buffer) {
-                                Ok(size) => event_callback(Endpoint::new(id, *addr), Event::Data(&input_buffer[..size])),
-                                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-                                Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => continue,
-                                Err(err) => Err(err).unwrap(),
+                    Remote::Udp(socket, addr) => loop {
+                        match socket.recv(input_buffer) {
+                            Ok(size) => event_callback(
+                                Endpoint::new(id, *addr),
+                                Event::Data(&input_buffer[..size]),
+                            ),
+                            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                            Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => {
+                                continue
                             }
+                            Err(err) => Err(err).unwrap(),
                         }
                     },
                 },
             }
-        };
+        }
     }
 }
-

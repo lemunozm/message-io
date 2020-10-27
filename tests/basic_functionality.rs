@@ -18,7 +18,8 @@ enum Event {
 fn simple_connection_data_disconnection_by_tcp() {
     let mut event_queue = EventQueue::new();
     let network_sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let mut network =
+        NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let mut client_endpoint = None;
 
@@ -38,11 +39,11 @@ fn simple_connection_data_disconnection_by_tcp() {
                     NetEvent::AddedEndpoint(endpoint) => {
                         assert!(client_endpoint.is_none());
                         client_endpoint = Some(endpoint);
-                    },
+                    }
                     NetEvent::RemovedEndpoint(endpoint) => {
                         assert_eq!(client_endpoint.unwrap(), endpoint);
                         break //Exit from thread, the connection will be automatically close
-                    },
+                    }
                 },
             }
         }
@@ -51,7 +52,8 @@ fn simple_connection_data_disconnection_by_tcp() {
     let client_handle = std::thread::spawn(move || {
         let mut event_queue = EventQueue::new();
         let network_sender = event_queue.sender().clone();
-        let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+        let mut network =
+            NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         let server_endpoint = network.connect_tcp(server_addr).unwrap();
         network.send(server_endpoint, Message::Data(MESSAGE_DATA.into())).unwrap();
@@ -68,8 +70,8 @@ fn simple_connection_data_disconnection_by_tcp() {
                     },
                     NetEvent::AddedEndpoint(endpoint) => {
                         assert_eq!(server_endpoint, endpoint);
-                    },
-                    NetEvent::RemovedEndpoint(_) => unreachable!()
+                    }
+                    NetEvent::RemovedEndpoint(_) => unreachable!(),
                 },
             }
         }
@@ -85,7 +87,8 @@ fn simple_connection_data_disconnection_by_tcp() {
 fn simple_data_by_udp() {
     let mut event_queue = EventQueue::new();
     let network_sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let mut network =
+        NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let (upd_listen_resource_id, server_addr) = network.listen_udp("127.0.0.1:0").unwrap();
 
@@ -99,10 +102,10 @@ fn simple_data_by_udp() {
                             assert_eq!(text, MESSAGE_DATA);
                             network.send(endpoint, Message::Data(text)).unwrap();
                             println!("server off");
-                            break; //Exit from thread
+                            break //Exit from thread
                         }
                     },
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 },
             }
         }
@@ -111,7 +114,8 @@ fn simple_data_by_udp() {
     let client_handle = std::thread::spawn(move || {
         let mut event_queue = EventQueue::new();
         let network_sender = event_queue.sender().clone();
-        let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+        let mut network =
+            NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         let server_endpoint = network.connect_udp(server_addr).unwrap();
         network.send(server_endpoint, Message::Data(MESSAGE_DATA.into())).unwrap();
@@ -126,7 +130,7 @@ fn simple_data_by_udp() {
                             break //Exit from thread
                         }
                     },
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 },
             }
         }

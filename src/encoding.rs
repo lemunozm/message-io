@@ -9,7 +9,7 @@ pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
     encode_callback(buffer);
     assert!(buffer.len() >= message_point, "Encoding must not decrement the buffer length");
     let data_size: u16 = (buffer.len() - message_point) as u16;
-    bincode::serialize_into(&mut buffer[start_point .. start_point + PADDING], &data_size).unwrap();
+    bincode::serialize_into(&mut buffer[start_point..start_point + PADDING], &data_size).unwrap();
 }
 
 pub struct Decoder {
@@ -19,28 +19,24 @@ pub struct Decoder {
 
 impl Decoder {
     pub fn new() -> Decoder {
-        Decoder {
-            decoded_data: Vec::new(),
-            expected_size: None,
-        }
+        Decoder { decoded_data: Vec::new(), expected_size: None }
     }
 
-    pub fn try_fast_decode<'a>(data: &'a[u8]) -> Option<(&'a[u8], &'a[u8])> {
+    pub fn try_fast_decode<'a>(data: &'a [u8]) -> Option<(&'a [u8], &'a [u8])> {
         if data.len() >= PADDING {
             let expected_size = bincode::deserialize::<u16>(data).unwrap() as usize;
             if data[PADDING..].len() >= expected_size {
                 return Some((
-                    &data[PADDING .. PADDING + expected_size], // decoded data
-                    &data[PADDING + expected_size ..] // next undecoded data
+                    &data[PADDING..PADDING + expected_size], // decoded data
+                    &data[PADDING + expected_size..],        // next undecoded data
                 ))
             }
         }
         None
     }
 
-    pub fn decode<'a>(&mut self, data: &'a[u8]) -> (Option<&[u8]>, &'a[u8]) {
-        let next_data =
-        if let Some(expected_size) = self.expected_size {
+    pub fn decode<'a>(&mut self, data: &'a [u8]) -> (Option<&[u8]>, &'a [u8]) {
+        let next_data = if let Some(expected_size) = self.expected_size {
             let pos = std::cmp::min(expected_size, data.len());
             self.decoded_data.extend_from_slice(&data[..pos]);
             &data[pos..]
@@ -49,7 +45,8 @@ impl Decoder {
             if data.len() >= PADDING {
                 let size_pos = std::cmp::min(PADDING - self.decoded_data.len(), PADDING);
                 self.decoded_data.extend_from_slice(&data[..size_pos]);
-                let expected_size = bincode::deserialize::<u16>(&self.decoded_data).unwrap() as usize;
+                let expected_size =
+                    bincode::deserialize::<u16>(&self.decoded_data).unwrap() as usize;
                 self.expected_size = Some(expected_size);
 
                 let data = &data[size_pos..];
@@ -89,7 +86,13 @@ where E: std::hash::Hash + Eq
         DecodingPool { decoders: HashMap::new() }
     }
 
-    pub fn decode_from<C: FnMut(&[u8])>(&mut self, data: &[u8], identifier: E, mut decode_callback: C) {
+    pub fn decode_from<C: FnMut(&[u8])>(
+        &mut self,
+        data: &[u8],
+        identifier: E,
+        mut decode_callback: C,
+    )
+    {
         match self.decoders.entry(identifier) {
             Entry::Vacant(entry) => {
                 if let Some(decoder) = Self::fast_decode(data, decode_callback) {
@@ -105,14 +108,14 @@ where E: std::hash::Hash + Eq
                         None => entry.remove(),
                     };
                 }
-            },
+            }
         }
     }
 
     fn fast_decode<C: FnMut(&[u8])>(data: &[u8], mut decode_callback: C) -> Option<Decoder> {
         let mut next_data = data;
         loop {
-            if let Some ((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
+            if let Some((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
                 decode_callback(decoded_data);
                 if reminder_data.len() == 0 {
                     return None
@@ -188,13 +191,16 @@ mod tests {
         let mut next_data = &buffer[..];
         loop {
             message_index += 1;
-            if let Some ((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
+            if let Some((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
                 println!("{}", message_index);
-                assert_eq!(reminder_data.len(), (MESSAGE_SIZE + PADDING) * (MESSAGES_NUMBER - message_index));
+                assert_eq!(
+                    reminder_data.len(),
+                    (MESSAGE_SIZE + PADDING) * (MESSAGES_NUMBER - message_index)
+                );
                 assert_eq!(decoded_data, &MESSAGE);
                 if reminder_data.len() == 0 {
                     assert_eq!(message_index, MESSAGES_NUMBER);
-                    break;
+                    break
                 }
                 next_data = reminder_data;
             }

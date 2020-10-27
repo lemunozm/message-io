@@ -24,7 +24,8 @@ impl Participant {
         let mut event_queue = EventQueue::new();
 
         let network_sender = event_queue.sender().clone();
-        let mut network = NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+        let mut network =
+            NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         // A listener for any other participant that want to establish connection.
         let listen_addr = "127.0.0.1:0";
@@ -50,27 +51,39 @@ impl Participant {
             println!("Can not listen on {}", listen_addr);
             None
         }
-
     }
 
     pub fn run(mut self) {
         // Register this participant into the discovery server
-        self.network.send(self.discovery_endpoint, Message::RegisterParticipant(self.name.clone(), self.public_addr)).unwrap();
+        self.network
+            .send(
+                self.discovery_endpoint,
+                Message::RegisterParticipant(self.name.clone(), self.public_addr),
+            )
+            .unwrap();
 
         loop {
-            match self.event_queue.receive() { // Waiting events
+            match self.event_queue.receive() {
+                // Waiting events
                 Event::Network(net_event) => match net_event {
                     NetEvent::Message(_, message) => match message {
                         Message::ParticipantList(participants) => {
-                            println!("Participant list received ({} participants)", participants.len());
+                            println!(
+                                "Participant list received ({} participants)",
+                                participants.len()
+                            );
                             for (name, addr) in participants {
-                                self.discovered_participant(&name, addr, "I see you in the participant list");
+                                self.discovered_participant(
+                                    &name,
+                                    addr,
+                                    "I see you in the participant list",
+                                );
                             }
-                        },
+                        }
                         Message::ParticipantNotificationAdded(name, addr) => {
                             println!("New participant '{}' in the network", name);
                             self.discovered_participant(&name, addr, "welcome to the network!");
-                        },
+                        }
                         Message::ParticipantNotificationRemoved(name) => {
                             println!("Removed participant '{}' from the network", name);
 
@@ -80,7 +93,7 @@ impl Participant {
                             if let Some(endpoint) = self.known_participants.remove(&name) {
                                 self.network.remove_resource(endpoint.resource_id()).unwrap();
                             }
-                        },
+                        }
                         Message::Gretings(name, gretings) => {
                             println!("'{}' says: {}", name, gretings);
                         }
@@ -89,10 +102,10 @@ impl Participant {
                     NetEvent::AddedEndpoint(_) => (),
                     NetEvent::RemovedEndpoint(endpoint) => {
                         if endpoint == self.discovery_endpoint {
-                            return println!("Discovery server disconnected, closing");
+                            return println!("Discovery server disconnected, closing")
                         }
-                    },
-                }
+                    }
+                },
             }
         }
     }

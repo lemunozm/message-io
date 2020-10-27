@@ -17,4 +17,3 @@ pub enum Message {
     // From Participant to Participant
     Gretings(String, String), //name and grettings
 }
-

@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.4.4
+- Added support for message greater than 2^15.
+- Added minnor encoding test.
+
 ## Release 0.4.3
 - Fixed deconding issue with multiple messages at once.
 - Fixed endpoint docs

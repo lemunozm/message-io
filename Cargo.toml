@@ -1,6 +1,6 @@
 [package]
 name = "message-io"
-version = "0.4.3"
+version = "0.4.4"
 authors = ["lemunozm <lemunozm@gmail.com>"]
 edition = "2018"
 readme = "README.md"

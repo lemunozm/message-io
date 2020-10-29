@@ -1,6 +1,6 @@
 use std::collections::{HashMap, hash_map::Entry};
 
-const PADDING: usize = 2;
+const PADDING: usize = 4;
 
 pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
     let start_point = buffer.len();

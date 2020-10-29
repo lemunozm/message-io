@@ -1,14 +1,17 @@
 use std::collections::{HashMap, hash_map::Entry};
 
-const PADDING: usize = 4;
+type Padding = u32;
+const PADDING: usize = std::mem::size_of::<Padding>();
 
+/// Prepare the buffer to encode data.
+/// The user should copy the data to the callback buffer in order to encode it.
 pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
     let start_point = buffer.len();
     buffer.extend_from_slice(&[0; PADDING]); //Start serializing after PADDING
     let message_point = buffer.len();
     encode_callback(buffer);
     assert!(buffer.len() >= message_point, "Encoding must not decrement the buffer length");
-    let data_size: u16 = (buffer.len() - message_point) as u16;
+    let data_size = (buffer.len() - message_point) as Padding;
     bincode::serialize_into(&mut buffer[start_point..start_point + PADDING], &data_size).unwrap();
 }
 
@@ -22,9 +25,13 @@ impl Decoder {
         Decoder { decoded_data: Vec::new(), expected_size: None }
     }
 
+    /// Tries to decode the data without reserve any memory.
+    /// The function returns the decoded data and the remaining data or `None`
+    /// if more data is necessary to decode it.
+    /// If this function returns None, a call to `decode()` is needed.
     pub fn try_fast_decode<'a>(data: &'a [u8]) -> Option<(&'a [u8], &'a [u8])> {
         if data.len() >= PADDING {
-            let expected_size = bincode::deserialize::<u16>(data).unwrap() as usize;
+            let expected_size = bincode::deserialize::<Padding>(data).unwrap() as usize;
             if data[PADDING..].len() >= expected_size {
                 return Some((
                     &data[PADDING..PADDING + expected_size], // decoded data
@@ -35,34 +42,37 @@ impl Decoder {
         None
     }
 
+    /// Given data, it tries to decode it grouping several data slots if necessary.
+    /// The function returns a tuple.
+    /// In the first place it returns the decoded data or `None`
+    /// if it can not be decoded yet because it needs more data.
+    /// In second place it retuns the remaing data.
     pub fn decode<'a>(&mut self, data: &'a [u8]) -> (Option<&[u8]>, &'a [u8]) {
         let next_data = if let Some(expected_size) = self.expected_size {
             let pos = std::cmp::min(expected_size, data.len());
             self.decoded_data.extend_from_slice(&data[..pos]);
             &data[pos..]
         }
-        else {
-            if data.len() >= PADDING {
-                let size_pos = std::cmp::min(PADDING - self.decoded_data.len(), PADDING);
-                self.decoded_data.extend_from_slice(&data[..size_pos]);
-                let expected_size =
-                    bincode::deserialize::<u16>(&self.decoded_data).unwrap() as usize;
-                self.expected_size = Some(expected_size);
+        else if data.len() >= PADDING {
+            let size_pos = std::cmp::min(PADDING - self.decoded_data.len(), PADDING);
+            self.decoded_data.extend_from_slice(&data[..size_pos]);
+            let expected_size =
+                bincode::deserialize::<Padding>(&self.decoded_data).unwrap() as usize;
+            self.expected_size = Some(expected_size);
 
-                let data = &data[size_pos..];
-                if data.len() < expected_size {
-                    self.decoded_data.extend_from_slice(data);
-                    &data[data.len()..]
-                }
-                else {
-                    self.decoded_data.extend_from_slice(&data[..expected_size]);
-                    &data[expected_size..]
-                }
-            }
-            else {
+            let data = &data[size_pos..];
+            if data.len() < expected_size {
                 self.decoded_data.extend_from_slice(data);
                 &data[data.len()..]
             }
+            else {
+                self.decoded_data.extend_from_slice(&data[..expected_size]);
+                &data[expected_size..]
+            }
+        }
+        else {
+            self.decoded_data.extend_from_slice(data);
+            &data[data.len()..]
         };
 
         if let Some(expected_size) = self.expected_size {
@@ -136,7 +146,7 @@ mod tests {
     use super::*;
 
     const MESSAGE_VALUE: u8 = 5;
-    const MESSAGE_SIZE: usize = 20;
+    const MESSAGE_SIZE: usize = 20; // only works for pair numbers
     const MESSAGE: [u8; MESSAGE_SIZE] = [MESSAGE_VALUE; MESSAGE_SIZE];
 
     fn encode_message(buffer: &mut Vec<u8>) {
@@ -151,7 +161,7 @@ mod tests {
         encode_message(&mut buffer);
 
         assert_eq!(buffer.len(), PADDING + MESSAGE_SIZE);
-        let expected_size = bincode::deserialize::<u16>(&buffer[0..]).unwrap() as usize;
+        let expected_size = bincode::deserialize::<Padding>(&buffer[0..]).unwrap() as usize;
         assert_eq!(expected_size, MESSAGE_SIZE);
         assert_eq!(&buffer[PADDING..], &MESSAGE);
     }
@@ -205,6 +215,24 @@ mod tests {
                 next_data = reminder_data;
             }
         }
+    }
+
+    #[test]
+    fn decode_in_parts() {
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer);
+
+        let mut decoder = Decoder::new();
+        let (first, second) = buffer.split_at(MESSAGE_SIZE / 2);
+
+        let (decoded_data, next_data) = decoder.decode(&first);
+        assert!(decoded_data.is_none());
+        assert_eq!(next_data.len(), 0);
+
+        let (decoded_data, next_data) = decoder.decode(&second);
+        let decoded_data = decoded_data.unwrap();
+        assert_eq!(next_data.len(), 0);
+        assert_eq!(decoded_data, &MESSAGE);
     }
 
     //TODO: test DecodingPool

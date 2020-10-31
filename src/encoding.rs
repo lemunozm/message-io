@@ -29,7 +29,7 @@ impl Decoder {
     /// The function returns the decoded data and the remaining data or `None`
     /// if more data is necessary to decode it.
     /// If this function returns None, a call to `decode()` is needed.
-    pub fn try_fast_decode<'a>(data: &'a [u8]) -> Option<(&'a [u8], &'a [u8])> {
+    pub fn try_fast_decode(data: &[u8]) -> Option<(&[u8], &[u8])> {
         if data.len() >= PADDING {
             let expected_size = bincode::deserialize::<Padding>(data).unwrap() as usize;
             if data[PADDING..].len() >= expected_size {
@@ -127,7 +127,7 @@ where E: std::hash::Hash + Eq
         loop {
             if let Some((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
                 decode_callback(decoded_data);
-                if reminder_data.len() == 0 {
+                if reminder_data.is_empty() {
                     return None
                 }
                 next_data = reminder_data;

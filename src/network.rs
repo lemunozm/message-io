@@ -194,7 +194,7 @@ impl<'a> NetworkManager {
         self.prepare_output_message(message);
         let result = self.network_controller.lock().unwrap().send(endpoint, &self.output_buffer);
         self.output_buffer.clear();
-        if let Ok(_) = result {
+        if result.is_ok() {
             log::trace!("Message sent to {}", endpoint);
         }
         result

@@ -55,11 +55,11 @@ pub enum Listener {
 
 impl Listener {
     pub fn new_tcp(addr: SocketAddr) -> io::Result<Listener> {
-        TcpListener::bind(addr).map(|listener| Listener::Tcp(listener))
+        TcpListener::bind(addr).map(Listener::Tcp)
     }
 
     pub fn new_udp(addr: SocketAddr) -> io::Result<Listener> {
-        UdpSocket::bind(addr).map(|socket| Listener::Udp(socket))
+        UdpSocket::bind(addr).map(Listener::Udp)
     }
 
     pub fn new_udp_multicast(addr: SocketAddrV4) -> io::Result<Listener> {
@@ -90,15 +90,12 @@ impl Listener {
 
 impl Drop for Listener {
     fn drop(&mut self) {
-        match self {
-            Listener::Udp(socket) => {
-                if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
-                    if addr.ip().is_multicast() {
-                        socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
-                    }
+        if let Listener::Udp(socket) = self {
+            if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
+                if addr.ip().is_multicast() {
+                    socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
                 }
             }
-            _ => (),
         }
     }
 }

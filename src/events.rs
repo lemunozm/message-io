@@ -65,6 +65,14 @@ where E: Send + 'static
     }
 }
 
+impl<E> Default for EventQueue<E>
+where E: Send + 'static
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct EventSender<E> {
     sender: Sender<E>,
     priority_sender: Sender<E>,
@@ -149,12 +157,16 @@ impl<E> Clone for EventSender<E> {
 mod tests {
     use super::*;
 
+    const OFFSET_MS: u64 = 10;
+
     #[test]
     fn waiting_timer_event() {
         let mut queue = EventQueue::new();
         queue.sender().send_with_timer("Timed", Duration::from_millis(TIMER_SAMPLING_CHECK));
         assert_eq!(
-            queue.receive_event_timeout(Duration::from_millis(TIMER_SAMPLING_CHECK + 1)).unwrap(),
+            queue
+                .receive_event_timeout(Duration::from_millis(TIMER_SAMPLING_CHECK + OFFSET_MS))
+                .unwrap(),
             "Timed"
         );
     }
@@ -191,7 +203,7 @@ mod tests {
         queue.sender().send_with_timer("timed", Duration::from_millis(TIMER_SAMPLING_CHECK));
         queue.sender().send("standard_first");
         queue.sender().send("standard_second");
-        std::thread::sleep(Duration::from_millis(TIMER_SAMPLING_CHECK + 1));
+        std::thread::sleep(Duration::from_millis(TIMER_SAMPLING_CHECK + OFFSET_MS));
         assert_eq!(
             queue.receive_event_timeout(Duration::from_millis(0)).unwrap(),
             "standard_first"
@@ -208,7 +220,7 @@ mod tests {
         let mut queue = EventQueue::new();
         queue.sender().send_with_timer("timed", Duration::from_millis(TIMER_SAMPLING_CHECK));
         queue.sender().send_with_priority("priority");
-        std::thread::sleep(Duration::from_millis(TIMER_SAMPLING_CHECK + 1));
+        std::thread::sleep(Duration::from_millis(TIMER_SAMPLING_CHECK + OFFSET_MS));
         assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "priority");
         assert_eq!(queue.receive_event_timeout(Duration::from_millis(0)).unwrap(), "timed");
     }

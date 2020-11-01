@@ -43,7 +43,7 @@ jobs:
         rustup --version
         cargo --version
     - name: Check Formatting
-      if: matrix.rust == 'stable'
+      if: matrix.rust == 'nightly'
       run: cargo fmt --all -- --check
       continue-on-error: ${{ matrix.can-fail }}
     - name: Clippy

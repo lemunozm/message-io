@@ -1,5 +1,6 @@
 [![](https://img.shields.io/crates/v/message-io)](https://crates.io/crates/message-io)
 [![](https://img.shields.io/crates/l/message-io)](https://www.apache.org/licenses/LICENSE-2.0.txt)
+[![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
 
 # message-io
 `message-io` is an asynchronous message library to build network applications easy and fast. The library manages and processes the socket data streams in order to offer a simple event message API to the user.

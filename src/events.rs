@@ -157,7 +157,7 @@ impl<E> Clone for EventSender<E> {
 mod tests {
     use super::*;
 
-    const OFFSET_MS: u64 = 10;
+    const OFFSET_MS: u64 = 1;
 
     #[test]
     fn waiting_timer_event() {

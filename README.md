@@ -1,5 +1,6 @@
 [![](https://img.shields.io/crates/v/message-io)](https://crates.io/crates/message-io)
 [![](https://img.shields.io/crates/l/message-io)](https://www.apache.org/licenses/LICENSE-2.0.txt)
+[![](https://img.shields.io/crates/d/message-io)](https://crates.io/crates/message-io)
 [![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
 
 # message-io
@@ -11,7 +12,7 @@
 
 **Any contribution is welcome!**
 
-## Whom is this project for?
+## Who is this project for?
 - People who want to make an application that needs to communicate over tcp/udp protocols.
 - People who want to make a multiplayer game (server and/or client).
 - People who don't want to deal with concurrence or socket connection problems.

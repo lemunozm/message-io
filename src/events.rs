@@ -157,7 +157,10 @@ impl<E> Clone for EventSender<E> {
 mod tests {
     use super::*;
 
-    const OFFSET_MS: u64 = 1;
+    // This high delay is necessary to test it in CI machines that offers really slow resources.
+    // Could be some waitings that make this test to fail.
+    // For a estandar execution, a value of 1ms is enough for the 99% of cases.
+    const OFFSET_MS: u64 = 1000; //ms
 
     #[test]
     fn waiting_timer_event() {

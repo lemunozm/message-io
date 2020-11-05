@@ -25,7 +25,7 @@ pub fn run() {
     let listen_addr = "127.0.0.1:3000";
     match network.listen_tcp(listen_addr) {
         Ok(_) => println!("TCP Server running at {}", listen_addr),
-        Err(_) => return println!("Can not listening at selected interface/port"),
+        Err(_) => return println!("Can not listening at {}", listen_addr),
     }
 
     loop {

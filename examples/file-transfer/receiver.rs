@@ -31,7 +31,7 @@ pub fn run() {
         Err(_) => return println!("Can not listening by TCP at {}", listen_addr),
     }
 
-    let mut transfer_files: HashMap<Endpoint, Transfer> = HashMap::new();
+    let mut transfers: HashMap<Endpoint, Transfer> = HashMap::new();
 
     loop {
         match event_queue.receive() {
@@ -47,7 +47,7 @@ pub fn run() {
                                     current_size: 0,
                                     expected_size: size
                                 };
-                                transfer_files.insert(endpoint, transfer);
+                                transfers.insert(endpoint, transfer);
                                 true
                             }
                             Err(_) => {
@@ -59,7 +59,7 @@ pub fn run() {
                         network.send(endpoint, ReceiverMsg::CanReceive(able)).unwrap();
                     }
                     SenderMsg::Chunk(data) => {
-                        let transfer = transfer_files.get_mut(&endpoint).unwrap();
+                        let transfer = transfers.get_mut(&endpoint).unwrap();
                         transfer.file.write(&data).unwrap();
                         transfer.current_size += data.len();
 
@@ -70,16 +70,16 @@ pub fn run() {
 
                         if transfer.expected_size == transfer.current_size {
                             println!("\nFile '{}' received!", transfer.name);
-                            transfer_files.remove(&endpoint).unwrap();
+                            transfers.remove(&endpoint).unwrap();
                         }
                     }
                 },
                 NetEvent::AddedEndpoint(_) => {}
                 NetEvent::RemovedEndpoint(endpoint) => {
                     // Unexpected sender disconnection. Cleaninig.
-                    if transfer_files.contains_key(&endpoint) {
+                    if transfers.contains_key(&endpoint) {
                         println!("\nUnexpected Sender disconnected");
-                        transfer_files.remove(&endpoint);
+                        transfers.remove(&endpoint);
                     }
                 }
             },

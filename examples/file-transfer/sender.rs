@@ -24,9 +24,7 @@ pub fn run(file_path: &str) {
             println!("Connect to receiver by TCP at {}", server_addr);
             server_id
         }
-        Err(_) => {
-            return println!("Can not connect to the receiver by TCP to {}", server_addr)
-        }
+        Err(_) => return println!("Can not connect to the receiver by TCP to {}", server_addr),
     };
 
     let file_size = fs::metadata(&file_path).unwrap().len() as usize;

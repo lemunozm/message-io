@@ -4,7 +4,7 @@ use serde::{Serialize, Deserialize};
 pub enum SenderMsg {
     //From sender to receiver
     FileRequest(String, usize), // name, size
-    Chunk(Vec<u8>), // data
+    Chunk(Vec<u8>),             // data
 }
 
 #[derive(Serialize, Deserialize)]

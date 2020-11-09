@@ -15,6 +15,7 @@ pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
     bincode::serialize_into(&mut buffer[start_point..start_point + PADDING], &data_size).unwrap();
 }
 
+/// Used to decoded one message from several/partial data chunks
 pub struct Decoder {
     decoded_data: Vec<u8>,
     expected_size: Option<usize>,

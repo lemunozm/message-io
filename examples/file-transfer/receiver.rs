@@ -41,12 +41,8 @@ pub fn run() {
                         let able = match File::create(format!("{}.recv", name)) {
                             Ok(file) => {
                                 println!("Accept file: '{}' with {} bytes", name, size);
-                                let transfer = Transfer {
-                                    file,
-                                    name,
-                                    current_size: 0,
-                                    expected_size: size
-                                };
+                                let transfer =
+                                    Transfer { file, name, current_size: 0, expected_size: size };
                                 transfers.insert(endpoint, transfer);
                                 true
                             }

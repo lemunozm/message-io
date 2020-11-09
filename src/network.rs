@@ -17,6 +17,20 @@ pub use crate::network_adapter::{Endpoint, MAX_UDP_LEN};
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 const INPUT_BUFFER_SIZE: usize = 65536;
 
+#[derive(Debug)]
+pub enum Error {
+    Deserialization
+    // Could be more...
+}
+
+#[derive(Debug)]
+pub enum RemovedReason {
+    Error(Error),
+    Disconnection,
+    Reset,
+    // Could be more...
+}
+
 /// Input network events.
 #[derive(Debug)]
 pub enum NetEvent<InMessage>
@@ -35,7 +49,13 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static
     /// After this event, the resource is considered removed.
     /// A Message event will never be generated after this event.
     /// This event will be sent only in TCP. Because UDP is not connection oriented, the event can no be detected.
-    RemovedEndpoint(Endpoint),
+    /// RemovedReason contains the reason about why the endpoint has been removed
+    RemovedEndpoint(Endpoint, RemovedReason),
+
+    /// Internal error.
+    /// This event refers to an error that allows to continue using the endpoint.
+    /// Usually this error is dispatched for non-connection oriented protocols as UDP.
+    Error(Endpoint, Error),
 }
 
 /// Network allows to manage the network easier.

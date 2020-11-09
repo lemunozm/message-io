@@ -101,7 +101,6 @@ fn simple_data_by_udp() {
                             assert_eq!(upd_listen_resource_id, endpoint.resource_id());
                             assert_eq!(text, MESSAGE_DATA);
                             network.send(endpoint, Message::Data(text)).unwrap();
-                            println!("server off");
                             break //Exit from thread
                         }
                     },
@@ -126,7 +125,6 @@ fn simple_data_by_udp() {
                         Message::Data(text) => {
                             assert_eq!(server_endpoint, endpoint);
                             assert_eq!(text, MESSAGE_DATA);
-                            println!("client off");
                             break //Exit from thread
                         }
                     },

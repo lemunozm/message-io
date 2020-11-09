@@ -1,5 +1,10 @@
 # Changelog
 
+## Release 0.4.5
+- Fixed enconding issue related several messages in the same data chunk.
+- Added `file-transfer` example.
+- Added minnor encoding test.
+
 ## Release 0.4.4
 - Added support for message greater than 2^15.
 - Added minnor encoding test.

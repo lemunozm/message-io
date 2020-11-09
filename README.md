@@ -51,6 +51,7 @@ message-io = "0.4"
   - [Basic UDP client and server](examples/udp)
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
+  - [File transfer](examples/file-transfer)
 
 - Real examples (apps using `message-io`)
   - [Termchat](https://github.com/lemunozm/termchat): A distributed LAN chat in the terminal.

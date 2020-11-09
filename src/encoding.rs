@@ -15,6 +15,7 @@ pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
     bincode::serialize_into(&mut buffer[start_point..start_point + PADDING], &data_size).unwrap();
 }
 
+/// Used to decoded one message from several/partial data chunks
 pub struct Decoder {
     decoded_data: Vec<u8>,
     expected_size: Option<usize>,
@@ -23,6 +24,10 @@ pub struct Decoder {
 impl Decoder {
     pub fn new() -> Decoder {
         Decoder { decoded_data: Vec::new(), expected_size: None }
+    }
+
+    pub fn decoded_len(&self) -> usize {
+        self.decoded_data.len() - PADDING
     }
 
     /// Tries to decode the data without reserve any memory.
@@ -42,17 +47,20 @@ impl Decoder {
         None
     }
 
-    /// Given data, it tries to decode it grouping several data slots if necessary.
+    /// Given data, it tries to decode a message grouping data if necessary.
     /// The function returns a tuple.
     /// In the first place it returns the decoded data or `None`
     /// if it can not be decoded yet because it needs more data.
-    /// In second place it retuns the remaing data.
+    /// In second place it returns the remaing data.
+    /// If decode returns decoded data, this decoded is no longer usable.
     pub fn decode<'a>(&mut self, data: &'a [u8]) -> (Option<&[u8]>, &'a [u8]) {
+        // There is decoded data into the decoder
         let next_data = if let Some(expected_size) = self.expected_size {
-            let pos = std::cmp::min(expected_size, data.len());
+            let pos = std::cmp::min(expected_size - self.decoded_len(), data.len());
             self.decoded_data.extend_from_slice(&data[..pos]);
             &data[pos..]
         }
+        // No decoded data into decoder, first time data arrives.
         else if data.len() >= PADDING {
             let size_pos = std::cmp::min(PADDING - self.decoded_data.len(), PADDING);
             self.decoded_data.extend_from_slice(&data[..size_pos]);
@@ -70,13 +78,14 @@ impl Decoder {
                 &data[expected_size..]
             }
         }
+        // No decoded data into decoder. First time data arrives. Not enough data to know about size.
         else {
             self.decoded_data.extend_from_slice(data);
             &data[data.len()..]
         };
 
         if let Some(expected_size) = self.expected_size {
-            if self.decoded_data.len() == expected_size + PADDING {
+            if self.decoded_len() == expected_size {
                 return (Some(&self.decoded_data[PADDING..]), next_data)
             }
         }
@@ -146,7 +155,8 @@ mod tests {
     use super::*;
 
     const MESSAGE_VALUE: u8 = 5;
-    const MESSAGE_SIZE: usize = 20; // only works for pair numbers
+    const MESSAGE_SIZE: usize = 20; // only works if (X + PADDING ) % 6 == 0
+    const ENCODED_MESSAGE_SIZE: usize = PADDING + MESSAGE_SIZE;
     const MESSAGE: [u8; MESSAGE_SIZE] = [MESSAGE_VALUE; MESSAGE_SIZE];
 
     fn encode_message(buffer: &mut Vec<u8>) {
@@ -156,18 +166,20 @@ mod tests {
     }
 
     #[test]
-    fn encode() {
+    fn encode_one_message() {
         let mut buffer = Vec::new();
         encode_message(&mut buffer);
 
-        assert_eq!(buffer.len(), PADDING + MESSAGE_SIZE);
+        assert_eq!(buffer.len(), ENCODED_MESSAGE_SIZE);
         let expected_size = bincode::deserialize::<Padding>(&buffer[0..]).unwrap() as usize;
         assert_eq!(expected_size, MESSAGE_SIZE);
         assert_eq!(&buffer[PADDING..], &MESSAGE);
     }
 
     #[test]
-    fn fast_decode_exact() {
+    // [ data  ]
+    // [message]
+    fn fast_decode_one_message() {
         let mut buffer = Vec::new();
         encode_message(&mut buffer);
 
@@ -177,19 +189,22 @@ mod tests {
     }
 
     #[test]
-    fn decode_exact() {
+    // [ data  ]
+    // [message]
+    fn decode_one_message() {
         let mut buffer = Vec::new();
         encode_message(&mut buffer);
 
         let mut decoder = Decoder::new();
         let (decoded_data, next_data) = decoder.decode(&buffer);
-        let decoded_data = decoded_data.unwrap();
         assert_eq!(next_data.len(), 0);
-        assert_eq!(decoded_data, &MESSAGE);
+        assert_eq!(decoded_data.unwrap(), &MESSAGE);
     }
 
     #[test]
-    fn fast_decode_exact_multiple() {
+    // [          data           ]
+    // [message][message][message]
+    fn fast_decode_multiple_messages() {
         const MESSAGES_NUMBER: usize = 3;
 
         let mut buffer = Vec::new();
@@ -202,10 +217,9 @@ mod tests {
         loop {
             message_index += 1;
             if let Some((decoded_data, reminder_data)) = Decoder::try_fast_decode(next_data) {
-                println!("{}", message_index);
                 assert_eq!(
                     reminder_data.len(),
-                    (MESSAGE_SIZE + PADDING) * (MESSAGES_NUMBER - message_index)
+                    (ENCODED_MESSAGE_SIZE) * (MESSAGES_NUMBER - message_index)
                 );
                 assert_eq!(decoded_data, &MESSAGE);
                 if reminder_data.len() == 0 {
@@ -218,21 +232,47 @@ mod tests {
     }
 
     #[test]
-    fn decode_in_parts() {
+    // [ data ][ data ]
+    // [    message   ]
+    fn decode_one_message_in_two_parts() {
         let mut buffer = Vec::new();
         encode_message(&mut buffer);
 
         let mut decoder = Decoder::new();
-        let (first, second) = buffer.split_at(MESSAGE_SIZE / 2);
+        let (first, second) = buffer.split_at(ENCODED_MESSAGE_SIZE / 2);
 
         let (decoded_data, next_data) = decoder.decode(&first);
         assert!(decoded_data.is_none());
         assert_eq!(next_data.len(), 0);
 
         let (decoded_data, next_data) = decoder.decode(&second);
-        let decoded_data = decoded_data.unwrap();
         assert_eq!(next_data.len(), 0);
-        assert_eq!(decoded_data, &MESSAGE);
+        assert_eq!(decoded_data.unwrap(), &MESSAGE);
+    }
+
+    #[test]
+    // [ data ][        data        ]
+    // [   message   ][   message   ]
+    fn decode_two_messages_in_two_parts() {
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer);
+        encode_message(&mut buffer);
+
+        let mut decoder = Decoder::new();
+        let (first, second) = buffer.split_at(ENCODED_MESSAGE_SIZE * 2 / 3);
+
+        let (decoded_data, next_data) = decoder.decode(&first);
+        assert!(decoded_data.is_none());
+        assert_eq!(next_data.len(), 0);
+
+        let (decoded_data, next_data) = decoder.decode(&second);
+        assert_eq!(next_data.len(), ENCODED_MESSAGE_SIZE);
+        assert_eq!(decoded_data.unwrap(), &MESSAGE);
+
+        let mut decoder = Decoder::new();
+        let (decoded_data, next_data) = decoder.decode(next_data);
+        assert_eq!(next_data.len(), 0);
+        assert_eq!(decoded_data.unwrap(), &MESSAGE);
     }
 
     //TODO: test DecodingPool

@@ -38,14 +38,22 @@ where E: Send + 'static
 
     /// Blocks the current thread until an event is received by this queue.
     pub fn receive(&mut self) -> E {
-        if !self.priority_receiver.is_empty() {
-            self.priority_receiver.recv().unwrap()
+        let event = if !self.priority_receiver.is_empty() {
+            self.priority_receiver.recv()
         }
         else {
             select! {
-                recv(self.receiver) -> event => event.unwrap(),
-                recv(self.priority_receiver) -> event => event.unwrap(),
+                recv(self.receiver) -> event => event,
+                recv(self.priority_receiver) -> event => event,
             }
+        };
+
+        match event {
+            Ok(event) => event,
+            // Since EventQueue always has a sender attribute,
+            // any call to receive() always has a living sender in that time
+            // and the channel never can be considered disconnected.
+            Err(_) => unreachable!(),
         }
     }
 
@@ -96,18 +104,22 @@ where E: Send + 'static
 
     /// Send instantly an event to the event queue.
     pub fn send(&self, event: E) {
-        self.sender.send(event).unwrap();
+        self.sender
+            .send(event)
+            .expect("The associated EventQueue must be live for sending an event");
     }
 
     /// Send instantly an event that would be process before any other event sent by the send() method.
     /// Successive calls to send_with_priority will maintain the order of arrival.
     pub fn send_with_priority(&self, event: E) {
-        self.priority_sender.send(event).unwrap();
+        self.priority_sender
+            .send(event)
+            .expect("The associated EventQueue must be live for sending an event");
     }
 
     /// Send a timed event to the [EventQueue].
-    /// The event only will be sent after the specific duration,
-    /// never before, even it the [EventSender] is dropped.
+    /// The event only will be sent after the specific duration, never before.
+    /// If the [EventSender] is dropped, the event will not be sent.
     pub fn send_with_timer(&mut self, event: E, duration: Duration) {
         let sender = self.sender.clone();
         let timer_id = self.last_timer_id;
@@ -124,7 +136,9 @@ where E: Send + 'static
                         return
                     }
                 }
-                sender.send(event).unwrap();
+                sender
+                    .send(event)
+                    .expect("The associated event queue must be live for sending an event");
             })
             .unwrap();
         self.timer_registry.insert(timer_id, timer_handle);

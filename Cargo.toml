@@ -9,7 +9,7 @@ description = "Easy asynchronous network message library"
 homepage = "https://github.com/lemunozm/message-io/"
 repository = "https://github.com/lemunozm/message-io/"
 keywords = ["network", "message", "asynchronous", "events"]
-categories = ["asynchronous", "game-development", "network-programming"]
+categories = ["asynchronous", "game-development", "network-programming", "rust-patterns", "encoding"]
 
 [badges]
 maintenance = { status = "actively-developed" }

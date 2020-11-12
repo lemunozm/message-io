@@ -53,8 +53,10 @@ message-io = "0.4"
   - [Distributed network with discovery server](examples/distributed)
   - [File transfer](examples/file-transfer)
 
-- Real examples (apps using `message-io`)
-  - [Termchat](https://github.com/lemunozm/termchat): A distributed LAN chat in the terminal.
+- Applications using `message-io`:
+  - [Termchat](https://github.com/lemunozm/termchat): Distributed LAN chat in the terminal.
+  - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game.
+    (under development, but the communication part using `message-io` is almost complete).
 
 ### TCP & UDP echo server
 The following example is the simplest server that reads messages from the clients and respond to them.

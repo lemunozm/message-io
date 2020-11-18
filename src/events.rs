@@ -11,9 +11,9 @@ use std::collections::{HashMap};
 const TIMER_SAMPLING_CHECK: u64 = 50; //ms
 
 pub struct EventQueue<E> {
+    event_sender: EventSender<E>, // Should be before receiver in order to drop first.
     receiver: Receiver<E>,
     priority_receiver: Receiver<E>,
-    event_sender: EventSender<E>,
 }
 
 impl<E> EventQueue<E>
@@ -31,7 +31,8 @@ where E: Send + 'static
     }
 
     /// Returns the internal sender reference to this queue.
-    /// This reference can be safety cloned and shared to other threads in order to make several senders to the same queue.
+    /// This reference can be safety cloned and shared to other threads
+    /// in order to make several senders to the same queue.
     pub fn sender(&mut self) -> &mut EventSender<E> {
         &mut self.event_sender
     }

@@ -91,8 +91,10 @@ pub struct EventSender<E> {
 }
 
 impl<E> EventSender<E>
-where E: Send + 'static
-{
+where E: Send + 'static {
+    const EVENT_SENDING_ERROR: &'static str =
+        "The associated EventQueue must be alive for sending an event";
+
     fn new(sender: Sender<E>, priority_sender: Sender<E>) -> EventSender<E> {
         EventSender {
             sender,
@@ -107,7 +109,7 @@ where E: Send + 'static
     pub fn send(&self, event: E) {
         self.sender
             .send(event)
-            .expect("The associated EventQueue must be live for sending an event");
+            .expect(Self::EVENT_SENDING_ERROR);
     }
 
     /// Send instantly an event that would be process before any other event sent by the send() method.
@@ -115,7 +117,7 @@ where E: Send + 'static
     pub fn send_with_priority(&self, event: E) {
         self.priority_sender
             .send(event)
-            .expect("The associated EventQueue must be live for sending an event");
+            .expect(Self::EVENT_SENDING_ERROR);
     }
 
     /// Send a timed event to the [EventQueue].
@@ -139,7 +141,7 @@ where E: Send + 'static
                 }
                 sender
                     .send(event)
-                    .expect("The associated event queue must be live for sending an event");
+                    .expect(Self::EVENT_SENDING_ERROR);
             })
             .unwrap();
         self.timer_registry.insert(timer_id, timer_handle);

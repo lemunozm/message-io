@@ -367,17 +367,14 @@ impl<'a> Receiver {
                                     event_callback(endpoint, Event::Connection);
 
                                     // Used to avoid the consecutive mutable borrows
-                                    listener = match controller.resources
-                                        .get_mut(&id)
-                                        .expect("Exists") {
-                                        Resource::Listener(Listener::Tcp(listener)) => listener,
-                                        _ => unreachable!(),
-                                    }
+                                    listener =
+                                        match controller.resources.get_mut(&id).expect("Exists") {
+                                            Resource::Listener(Listener::Tcp(listener)) => listener,
+                                            _ => unreachable!(),
+                                        }
                                 }
                                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                                Err(ref err) if err.kind() == ErrorKind::Interrupted => {
-                                    continue
-                                }
+                                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                                 Err(err) => Err(err).unwrap(),
                             }
                         }
@@ -398,9 +395,7 @@ impl<'a> Receiver {
                         let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
                         match stream.read(input_buffer) {
                             Ok(0) => {
-                                controller
-                                    .remove_resource(endpoint.resource_id())
-                                    .expect("Exists");
+                                controller.remove_resource(endpoint.resource_id()).expect("Exists");
                                 event_callback(endpoint, Event::Disconnection);
                                 break
                             }
@@ -408,12 +403,10 @@ impl<'a> Receiver {
                                 event_callback(endpoint, Event::Data(&input_buffer[..size]));
                             }
                             Err(ref err) if err.kind() == ErrorKind::ConnectionReset => {
-                                controller
-                                    .remove_resource(endpoint.resource_id())
-                                    .expect("Exists");
+                                controller.remove_resource(endpoint.resource_id()).expect("Exists");
                                 event_callback(endpoint, Event::Disconnection);
                                 break
-                            },
+                            }
                             Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                             Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                             Err(err) => Err(err).unwrap(),
@@ -426,9 +419,7 @@ impl<'a> Receiver {
                                 Event::Data(&input_buffer[..size]),
                             ),
                             Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                            Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
-                                continue
-                            }
+                            Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => continue,
                             Err(err) => Err(err).unwrap(),
                         }
                     },

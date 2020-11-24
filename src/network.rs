@@ -20,7 +20,8 @@ const INPUT_BUFFER_SIZE: usize = 65536;
 /// Input network events.
 #[derive(Debug)]
 pub enum NetEvent<InMessage>
-where InMessage: for<'b> Deserialize<'b> + Send + 'static {
+where InMessage: for<'b> Deserialize<'b> + Send + 'static
+{
     /// Input message received by the network.
     Message(Endpoint, InMessage),
 
@@ -60,7 +61,8 @@ pub struct Network {
 impl<'a> Network {
     const POISONED_LOCK: &'static str = "This error is shown because other thread has panicked";
     /// Creates a new [Network].
-    /// The user must register an event_callback that can be called each time the network generate and [NetEvent]
+    /// The user must register an event_callback that can be called
+    /// each time the network generate and [NetEvent]
     pub fn new<InMessage, C>(event_callback: C) -> Network
     where
         InMessage: for<'b> Deserialize<'b> + Send + 'static,
@@ -122,7 +124,7 @@ impl<'a> Network {
                     log::trace!("Message received from {}, {} bytes", endpoint, decoded_data.len());
                     match bincode::deserialize::<InMessage>(decoded_data) {
                         Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
-                        Err(_) => event_callback(NetEvent::DeserializationError(endpoint))
+                        Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
                     }
                 });
             }
@@ -139,11 +141,9 @@ impl<'a> Network {
     /// If the connection can not be performed (e.g. the address is not reached) an error is returned.
     pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Remote::new_tcp(addr)
-            .map(|remote| self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK)
-            .add_remote(remote))
+        Remote::new_tcp(addr).map(|remote| {
+            self.network_controller.lock().expect(Self::POISONED_LOCK).add_remote(remote)
+        })
     }
 
     /// Creates a connection to the specific address by UDP.
@@ -151,33 +151,27 @@ impl<'a> Network {
     /// If there is an error during the socket creation, an error will be returned.
     pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Remote::new_udp(addr)
-            .map(|remote| self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK)
-            .add_remote(remote))
+        Remote::new_udp(addr).map(|remote| {
+            self.network_controller.lock().expect(Self::POISONED_LOCK).add_remote(remote)
+        })
     }
 
     /// Open a port to listen messages from TCP.
     /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
     pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Listener::new_tcp(addr)
-            .map(|listener| self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK)
-            .add_listener(listener))
+        Listener::new_tcp(addr).map(|listener| {
+            self.network_controller.lock().expect(Self::POISONED_LOCK).add_listener(listener)
+        })
     }
 
     /// Open a port to listen messages from UDP.
     /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
     pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Listener::new_udp(addr)
-            .map(|listener| self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK)
-            .add_listener(listener))
+        Listener::new_udp(addr).map(|listener| {
+            self.network_controller.lock().expect(Self::POISONED_LOCK).add_listener(listener)
+        })
     }
 
     /// Open a port to listen messages from UDP in multicast.
@@ -189,12 +183,9 @@ impl<'a> Network {
     ) -> io::Result<(usize, SocketAddr)>
     {
         match addr.to_socket_addrs().unwrap().next().unwrap() {
-            SocketAddr::V4(addr) => Listener::new_udp_multicast(addr)
-                .map(|listener| self.network_controller
-                    .lock()
-                    .expect(Self::POISONED_LOCK)
-                    .add_listener(listener)
-                ),
+            SocketAddr::V4(addr) => Listener::new_udp_multicast(addr).map(|listener| {
+                self.network_controller.lock().expect(Self::POISONED_LOCK).add_listener(listener)
+            }),
             _ => panic!("Listening for udp multicast is only supported for ipv4 addresses"),
         }
     }
@@ -206,20 +197,14 @@ impl<'a> Network {
     /// Note: Udp endpoints generated by a UdpListener shared the resource, the own UdpListener.
     /// This means that there is no resource to remove as the TCP case.
     pub fn remove_resource(&mut self, resource_id: usize) -> Option<()> {
-        self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK)
-            .remove_resource(resource_id)
+        self.network_controller.lock().expect(Self::POISONED_LOCK).remove_resource(resource_id)
     }
 
     /// Request a local address of a resource.
     /// Returns `None` if the endpoint id not exists.
     /// Note: Udp endpoints generated by a UdpListener shared the resource.
     pub fn local_address(&self, resource_id: usize) -> Option<SocketAddr> {
-        self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK)
-            .local_address(resource_id)
+        self.network_controller.lock().expect(Self::POISONED_LOCK).local_address(resource_id)
     }
 
     /// Serialize and send the message thought the connection represented by the given endpoint.
@@ -228,7 +213,8 @@ impl<'a> Network {
     pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> io::Result<()>
     where OutMessage: Serialize {
         self.prepare_output_message(message);
-        let sending_result = self.network_controller
+        let sending_result = self
+            .network_controller
             .lock()
             .expect(Self::POISONED_LOCK)
             .send(endpoint, &self.output_buffer);
@@ -255,9 +241,7 @@ impl<'a> Network {
     {
         self.prepare_output_message(message);
         let mut errors = Vec::new();
-        let mut controller = self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK);
+        let mut controller = self.network_controller.lock().expect(Self::POISONED_LOCK);
 
         for endpoint in endpoints {
             match controller.send(*endpoint, &self.output_buffer) {

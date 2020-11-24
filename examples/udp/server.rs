@@ -30,8 +30,9 @@ pub fn run() {
                             .unwrap();
                     }
                 },
-                NetEvent::AddedEndpoint(_) => unreachable!(), // It will not be generated for UDP
-                NetEvent::RemovedEndpoint(_) => unreachable!(), // It will not be generated for UDP
+                NetEvent::AddedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                NetEvent::RemovedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                NetEvent::DeserializationError(_) => (),
             },
         }
     }

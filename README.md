@@ -109,6 +109,7 @@ fn main() {
                 },
                 NetEvent::AddedEndpoint(_endpoint) => println!("TCP Client connected"),
                 NetEvent::RemovedEndpoint(_endpoint) => println!("TCP Client disconnected"),
+                NetEvent::DeserializationError(_) => (),
             },
             // Other events here
         }

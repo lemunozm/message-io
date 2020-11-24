@@ -60,6 +60,7 @@ pub fn run() {
                         clients.len()
                     );
                 }
+                NetEvent::DeserializationError(_) => (),
             },
         }
     }

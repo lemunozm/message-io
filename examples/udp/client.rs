@@ -33,8 +33,9 @@ pub fn run(name: &str) {
                     NetEvent::Message(_, message) => match message {
                         Message::Greetings(text) => println!("Server says: {}", text),
                     },
-                    NetEvent::AddedEndpoint(_) => unreachable!(), // It will not be generated for UDP
-                    NetEvent::RemovedEndpoint(_) => unreachable!(), // It will not be generated for UDP
+                    NetEvent::AddedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                    NetEvent::RemovedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                    NetEvent::DeserializationError(_) => (),
                 },
             }
         }

@@ -42,6 +42,7 @@ fn main() {
                 },
                 NetEvent::AddedEndpoint(_) => (),
                 NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::DeserializationError(_) => (),
             },
             // Other events here
         }

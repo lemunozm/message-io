@@ -77,6 +77,7 @@ pub fn run() {
                         transfers.remove(&endpoint);
                     }
                 }
+                NetEvent::DeserializationError(_) => (),
             },
         }
     }

@@ -28,6 +28,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                     assert_eq!(client_endpoint.take().unwrap(), endpoint);
                     break //Exit from thread, the connection will be automatically close
                 }
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
         assert!(client_endpoint.is_none());
@@ -52,6 +53,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                     assert_eq!(server_endpoint, endpoint);
                 }
                 NetEvent::RemovedEndpoint(_) => unreachable!(),
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
     });
@@ -127,6 +129,7 @@ fn long_tcp_message() {
                 }
                 NetEvent::AddedEndpoint(_) => (),
                 NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
     });
@@ -164,6 +167,7 @@ fn max_udp_size_message() {
                 }
                 NetEvent::AddedEndpoint(_) => (),
                 NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
     });

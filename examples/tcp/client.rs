@@ -38,6 +38,7 @@ pub fn run(name: &str) {
                         println!("Server is disconnected");
                         return
                     }
+                    NetEvent::DeserializationError(_) => (),
                 },
             }
         }

@@ -50,6 +50,7 @@ pub fn run(file_path: &str) {
                 },
                 NetEvent::AddedEndpoint(_) => unreachable!(),
                 NetEvent::RemovedEndpoint(_) => return println!("\nReceiver disconnected"),
+                NetEvent::DeserializationError(_) => (),
             },
             Event::SendChunk => {
                 let mut data = [0; CHUNK_SIZE];

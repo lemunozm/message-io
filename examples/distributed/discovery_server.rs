@@ -72,6 +72,7 @@ impl DiscoveryServer {
                             self.unregister(&name)
                         }
                     }
+                    NetEvent::DeserializationError(_) => (),
                 },
             }
         }
@@ -80,14 +81,15 @@ impl DiscoveryServer {
     fn register(&mut self, name: &str, addr: SocketAddr, endpoint: Endpoint) {
         if !self.participants.contains_key(name) {
             // Update the new participant with the whole participants information
-            let participant_list =
+            let list =
                 self.participants.iter().map(|(name, info)| (name.clone(), info.addr)).collect();
-            self.network.send(endpoint, Message::ParticipantList(participant_list)).unwrap();
+
+            self.network.send(endpoint, Message::ParticipantList(list)).unwrap();
 
             // Notify other participants about this new participant
-            let participant_endpoints = self.participants.values().map(|info| &info.endpoint);
+            let endpoints = self.participants.values().map(|info| &info.endpoint);
             let message = Message::ParticipantNotificationAdded(name.to_string(), addr);
-            self.network.send_all(participant_endpoints, message).unwrap();
+            self.network.send_all(endpoints, message).unwrap();
 
             // Register participant
             self.participants.insert(name.to_string(), ParticipantInfo { addr, endpoint });
@@ -104,9 +106,9 @@ impl DiscoveryServer {
     fn unregister(&mut self, name: &str) {
         if let Some(info) = self.participants.remove(name) {
             // Notify other participants about this removed participant
-            let participant_endpoints = self.participants.values().map(|info| &info.endpoint);
+            let endpoints = self.participants.values().map(|info| &info.endpoint);
             let message = Message::ParticipantNotificationRemoved(name.to_string());
-            self.network.send_all(participant_endpoints, message).unwrap();
+            self.network.send_all(endpoints, message).unwrap();
             println!("Removed participant '{}' with ip {}", name, info.addr);
         }
         else {

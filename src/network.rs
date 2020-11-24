@@ -270,6 +270,10 @@ impl<'a> Network {
 impl Drop for Network {
     fn drop(&mut self) {
         self.network_thread_running.store(false, Ordering::Relaxed);
-        self.network_event_thread.take().unwrap().join().unwrap();
+        self.network_event_thread
+            .take()
+            .expect("Always exists")
+            .join()
+            .expect("This error is shown because other thread has panicked");
     }
 }

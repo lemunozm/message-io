@@ -1,7 +1,7 @@
 use std::collections::{HashMap, hash_map::Entry};
 
 type Padding = u32;
-const PADDING: usize = std::mem::size_of::<Padding>();
+pub const PADDING: usize = std::mem::size_of::<Padding>();
 
 /// Prepare the buffer to encode data.
 /// The user should copy the data to the callback buffer in order to encode it.

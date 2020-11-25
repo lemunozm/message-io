@@ -56,7 +56,7 @@ message-io = "0.4"
 - Applications using `message-io`:
   - [Termchat](https://github.com/lemunozm/termchat): Distributed LAN chat in the terminal.
   - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game.
-    (under development, but the communication part using `message-io` is almost complete).
+    (under development, but the communication part using `message-io` is almost complete for reference).
 
 ### TCP & UDP echo server
 The following example is the simplest server that reads messages from the clients and respond to them.

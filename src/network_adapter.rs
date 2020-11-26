@@ -42,9 +42,15 @@ impl std::fmt::Display for Endpoint {
 }
 
 #[derive(Debug)]
+pub enum FlowType {
+    Datagram,
+    Stream,
+}
+
+#[derive(Debug)]
 pub enum Event<'a> {
     Connection,
-    Data(&'a [u8]),
+    Data(&'a [u8], FlowType),
     Disconnection,
 }
 
@@ -84,6 +90,13 @@ impl Listener {
         match self {
             Listener::Tcp(listener) => listener,
             Listener::Udp(socket) => socket,
+        }
+    }
+
+    pub fn flow_type(&self) -> FlowType {
+        match self {
+            Listener::Tcp(_) => FlowType::Stream,
+            Listener::Udp(_) => FlowType::Datagram,
         }
     }
 }
@@ -141,6 +154,13 @@ impl Remote {
             Remote::Udp(socket, _) => socket,
         }
     }
+
+    pub fn flow_type(&self) -> FlowType {
+        match self {
+            Remote::Tcp(_) => FlowType::Stream,
+            Remote::Udp(..) => FlowType::Datagram,
+        }
+    }
 }
 
 enum Resource {
@@ -160,6 +180,13 @@ impl Resource {
         match self {
             Resource::Listener(listener) => listener.local_addr(),
             Resource::Remote(remote) => remote.local_addr(),
+        }
+    }
+
+    pub fn flow_type(&self) -> FlowType {
+        match self {
+            Resource::Listener(listener) => listener.flow_type(),
+            Resource::Remote(remote) => remote.flow_type(),
         }
     }
 }
@@ -193,6 +220,8 @@ pub struct Controller {
     registry: Registry,
 }
 
+//TODO: The Resources tree seemed to fit well but in practice there are too many accesses
+// to get the internal stuffs. Offering the socket to the upper layer is better.
 impl Controller {
     fn new(registry: Registry) -> Controller {
         Controller { resources: HashMap::new(), last_id: 0, registry }
@@ -232,6 +261,15 @@ impl Controller {
     pub fn local_address(&mut self, resource_id: usize) -> Option<SocketAddr> {
         if let Some(resource) = self.resources.get(&resource_id) {
             Some(resource.local_addr())
+        }
+        else {
+            None
+        }
+    }
+
+    pub fn flow_type(&mut self, resource_id: usize) -> Option<FlowType> {
+        if let Some(resource) = self.resources.get(&resource_id) {
+            Some(resource.flow_type())
         }
         else {
             None
@@ -330,7 +368,7 @@ impl<'a> Receiver {
                         match socket.recv_from(input_buffer) {
                             Ok((size, addr)) => event_callback(
                                 Endpoint::new(id, addr),
-                                Event::Data(&input_buffer[..size]),
+                                Event::Data(&input_buffer[..size], FlowType::Datagram),
                             ),
                             Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                             Err(err) => Err(err).unwrap(),
@@ -348,7 +386,10 @@ impl<'a> Receiver {
                             }
                             Ok(size) => {
                                 let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
-                                event_callback(endpoint, Event::Data(&input_buffer[..size]));
+                                event_callback(
+                                    endpoint,
+                                    Event::Data(&input_buffer[..size], FlowType::Stream),
+                                );
                             }
                             Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                             Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
@@ -359,7 +400,7 @@ impl<'a> Receiver {
                         match socket.recv(input_buffer) {
                             Ok(size) => event_callback(
                                 Endpoint::new(id, *addr),
-                                Event::Data(&input_buffer[..size]),
+                                Event::Data(&input_buffer[..size], FlowType::Datagram),
                             ),
                             Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
                             Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => {

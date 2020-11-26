@@ -1,4 +1,4 @@
-use crate::network_adapter::{self, Controller, Listener, Remote};
+use crate::network_adapter::{self, Controller, Listener, Remote, FlowType};
 use crate::encoding::{self, DecodingPool};
 
 use serde::{Serialize, Deserialize};
@@ -105,13 +105,23 @@ impl<'a> NetworkManager {
                 log::trace!("Connected endpoint {}", endpoint);
                 event_callback(NetEvent::AddedEndpoint(endpoint));
             }
-            network_adapter::Event::Data(data) => {
+            network_adapter::Event::Data(data, flow_type) => {
                 log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                decoding_pool.decode_from(data, endpoint, |decoded_data| {
-                    log::trace!("Message received from {}, {} bytes", endpoint, decoded_data.len());
-                    let message: InMessage = bincode::deserialize(decoded_data).unwrap();
-                    event_callback(NetEvent::Message(endpoint, message));
-                });
+                match flow_type {
+                    FlowType::Stream => decoding_pool.decode_from(data, endpoint, |decoded_data| {
+                        log::trace!(
+                            "Message received from {}, {} bytes",
+                            endpoint,
+                            decoded_data.len()
+                        );
+                        let message: InMessage = bincode::deserialize(decoded_data).unwrap();
+                        event_callback(NetEvent::Message(endpoint, message));
+                    }),
+                    FlowType::Datagram => {
+                        let message: InMessage = bincode::deserialize(data).unwrap();
+                        event_callback(NetEvent::Message(endpoint, message));
+                    }
+                }
             }
             network_adapter::Event::Disconnection => {
                 log::trace!("Disconnected endpoint {}", endpoint);
@@ -193,7 +203,13 @@ impl<'a> NetworkManager {
     pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> io::Result<()>
     where OutMessage: Serialize {
         self.prepare_output_message(message);
-        let result = self.network_controller.lock().unwrap().send(endpoint, &self.output_buffer);
+        let mut controller = self.network_controller.lock().unwrap();
+        let start = match controller.flow_type(endpoint.resource_id()) {
+            Some(FlowType::Stream) => 0,
+            Some(FlowType::Datagram) => encoding::PADDING, //TODO: avoid this usage explicitelly
+            None => panic!("Resource for {:?} not found", endpoint)
+        };
+        let result = controller.send(endpoint, &self.output_buffer[start..]);
         self.output_buffer.clear();
         if result.is_ok() {
             log::trace!("Message sent to {}", endpoint);
@@ -218,7 +234,12 @@ impl<'a> NetworkManager {
         let mut errors = Vec::new();
         let mut controller = self.network_controller.lock().unwrap();
         for endpoint in endpoints {
-            match controller.send(*endpoint, &self.output_buffer) {
+            let start = match controller.flow_type(endpoint.resource_id()) {
+                Some(FlowType::Stream) => 0,
+                Some(FlowType::Datagram) => encoding::PADDING, //TODO: avoid this usage explicitelly
+                None => panic!("Resource for {:?} not found", endpoint)
+            };
+            match controller.send(*endpoint, &self.output_buffer[start..]) {
                 Ok(_) => log::trace!("Message sent to {}", endpoint),
                 Err(err) => errors.push((*endpoint, err)),
             }

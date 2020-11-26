@@ -12,7 +12,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration};
 use std::io::{self};
 
-pub use crate::network_adapter::{Endpoint};
+pub use crate::network_adapter::{Endpoint, MAX_UDP_LEN};
 
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 const INPUT_BUFFER_SIZE: usize = 65536;

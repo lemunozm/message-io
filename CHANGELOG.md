@@ -2,6 +2,9 @@
 
 ## Current
 - Fixed lost decoding memory at disconnection.
+- Fixed issue in send methods where sometimes data is lost.
+- Fixed lost fragmented UDP.
+  Before this change, a huge UDP message could be sent without respect the MTU size, now it panics.
 
 ## Release 0.4.5
 - Fixed enconding issue related several messages in the same data chunk.

@@ -9,7 +9,7 @@ use std::collections::{HashMap};
 use std::io::{self, prelude::*, ErrorKind};
 
 const EVENTS_SIZE: usize = 1024;
-pub const MAX_UDP_LEN: usize = 1500;
+pub const MAX_UDP_LEN: usize = 1488;
 
 /// Information to identify the remote endpoint.
 /// The endpoint is used mainly as a connection identified.
@@ -240,7 +240,7 @@ impl Controller {
     }
 
     fn send_stream(stream: &mut TcpStream, data: &[u8]) {
-        // TODO: The current implementation implies an active wating,
+        // TODO: The current implementation implies an active waiting,
         // improve it using POLLIN instead to avoid active waiting.
         let mut total_bytes_sent = 0;
         loop {
@@ -250,40 +250,39 @@ impl Controller {
                     if total_bytes_sent == data.len() {
                         break
                     }
-                    // We get send to data, but not the totality.
+                    // We get sending to data, but not the totality.
                     // We start waiting actively.
                 }
                 // If WouldBlock is received in this non-blocking socket means that
-                // the sending buffer is full and it should be wait to send more data.
+                // the sending buffer is full and it should wait to send more data.
                 // This occurs when huge amounts of data are sent and It could be
                 // intensified if the remote endpoint reads slower than this enpoint sends.
-                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => (),
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
                 // Skipping. Others errors will be considered fatal for the connection.
                 // We skip here their handling because if the connection brokes,
-                // a Event::Disconnection will be generated later.
-                Err(_) => (), //Err(err).unwrap()
+                // an Event::Disconnection will be generated later.
+                Err(_) => break, // Err(err).unwrap()
             }
         }
     }
 
-    fn send_datagram(socket: &mut UdpSocket, endpoint: Endpoint, data: &[u8]) {
-        if data.len() > MAX_UDP_LEN {
+    fn send_datagram(data_len: usize, mut send: impl FnMut() -> io::Result<usize>) {
+        if data_len > MAX_UDP_LEN {
             panic!(
                 "The datagram max size is {}, your message data takes {}. \
                 Split the message in several messages or use an stream protocol as TCP",
                 MAX_UDP_LEN,
-                data.len()
+                data_len
             );
         }
 
-        match socket.send_to(data, endpoint.addr()) {
-            Ok(_) => (), // The datagram always fit in the MTU
-            // In this context, Other(code: 90) means that UDP packet that exceeds MTU size.
+        match send() {
+            // The datagram always fit in the MTU
+            Ok(_) => (),
+            // In this context means that UDP packet that exceeds MTU size.
             // Since this is managing by MAX_UDP_LEN. It should not ocurr.
-            Err(ref err) if err.kind() == io::ErrorKind::Other => {
-                Err(err).unwrap_or_else(|_| panic!("UDP MTU <= {}", MAX_UDP_LEN))
-            }
-            // No more errors should happens in UDP.
+            // Always can means in that send method is called without knowing
+            // the remote addr.
             Err(err) => Err(err).expect("To not occur"),
         }
     }
@@ -292,12 +291,16 @@ impl Controller {
         if let Some(resource) = self.resources.get_mut(&endpoint.resource_id()) {
             match resource {
                 Resource::Listener(listener) => match listener {
-                    Listener::Udp(socket) => Self::send_datagram(socket, endpoint, data),
+                    Listener::Udp(socket) => Self::send_datagram(data.len(), || {
+                        socket.send_to(data, endpoint.addr())
+                    }),
                     _ => unreachable!(),
                 },
                 Resource::Remote(remote) => match remote {
                     Remote::Tcp(stream) => Self::send_stream(stream, data),
-                    Remote::Udp(socket, _) => Self::send_datagram(socket, endpoint, data),
+                    Remote::Udp(socket, _) => Self::send_datagram(data.len(), || {
+                        socket.send(data)
+                    }),
                 },
             }
             Ok(())

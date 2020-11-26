@@ -1,5 +1,8 @@
 # Changelog
 
+## Current
+- Fixed lost decoding memory at disconnection.
+
 ## Release 0.4.5
 - Fixed enconding issue related several messages in the same data chunk.
 - Added `file-transfer` example.

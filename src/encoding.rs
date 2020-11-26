@@ -105,14 +105,8 @@ where E: std::hash::Hash + Eq
         DecodingPool { decoders: HashMap::new() }
     }
 
-    pub fn decode_from<C: FnMut(&[u8])>(
-        &mut self,
-        data: &[u8],
-        identifier: E,
-        mut decode_callback: C,
-    )
-    {
-        match self.decoders.entry(identifier) {
+    pub fn decode_from<C: FnMut(&[u8])>(&mut self, data: &[u8], id: E, mut decode_callback: C) {
+        match self.decoders.entry(id) {
             Entry::Vacant(entry) => {
                 if let Some(decoder) = Self::fast_decode(data, decode_callback) {
                     entry.insert(decoder);
@@ -147,6 +141,10 @@ where E: std::hash::Hash + Eq
                 return Some(decoder)
             }
         }
+    }
+
+    pub fn remove_if_exists(&mut self, id: E) {
+        self.decoders.remove(&id);
     }
 }
 

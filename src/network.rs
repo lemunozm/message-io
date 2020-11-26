@@ -115,6 +115,7 @@ impl<'a> NetworkManager {
             }
             network_adapter::Event::Disconnection => {
                 log::trace!("Disconnected endpoint {}", endpoint);
+                decoding_pool.remove_if_exists(endpoint);
                 event_callback(NetEvent::RemovedEndpoint(endpoint));
             }
         };

@@ -19,7 +19,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                     assert_eq!(*client_endpoint.as_ref().unwrap(), endpoint);
                     assert_eq!(message, MESSAGE_DATA);
                     network.send(endpoint, message).unwrap();
-                },
+                }
                 NetEvent::AddedEndpoint(endpoint) => {
                     assert!(client_endpoint.is_none());
                     client_endpoint = Some(endpoint);
@@ -47,7 +47,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                     assert_eq!(message, MESSAGE_DATA);
                     network.send(endpoint, message).unwrap();
                     break //Exit from thread, the connection will be automatically close
-                },
+                }
                 NetEvent::AddedEndpoint(endpoint) => {
                     assert_eq!(server_endpoint, endpoint);
                 }
@@ -76,7 +76,7 @@ fn simple_data_by_udp() {
                     assert_eq!(message, MESSAGE_DATA);
                     network.send(endpoint, message).unwrap();
                     break //Exit from thread
-                },
+                }
                 _ => unreachable!(),
             }
         }
@@ -95,7 +95,7 @@ fn simple_data_by_udp() {
                     assert_eq!(server_endpoint, endpoint);
                     assert_eq!(message, MESSAGE_DATA);
                     break //Exit from thread
-                },
+                }
                 _ => unreachable!(),
             }
         }
@@ -104,5 +104,3 @@ fn simple_data_by_udp() {
     server_handle.join().unwrap();
     client_handle.join().unwrap();
 }
-
-

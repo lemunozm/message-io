@@ -281,7 +281,7 @@ impl Controller {
             // In this context, Other(code: 90) means that UDP packet that exceeds MTU size.
             // Since this is managing by MAX_UDP_LEN. It should not ocurr.
             Err(ref err) if err.kind() == io::ErrorKind::Other => {
-                Err(err).expect(&format!("UDP MTU <= {}", MAX_UDP_LEN))
+                Err(err).unwrap_or_else(|_| panic!("UDP MTU <= {}", MAX_UDP_LEN))
             }
             // No more errors should happens in UDP.
             Err(err) => Err(err).expect("To not occur"),

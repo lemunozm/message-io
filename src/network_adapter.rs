@@ -9,6 +9,7 @@ use std::collections::{HashMap};
 use std::io::{self, prelude::*, ErrorKind};
 
 const EVENTS_SIZE: usize = 1024;
+pub const MAX_UDP_LEN: usize = 1488;
 
 /// Information to identify the remote endpoint.
 /// The endpoint is used mainly as a connection identified.
@@ -238,20 +239,74 @@ impl Controller {
         }
     }
 
+    fn send_stream(stream: &mut TcpStream, data: &[u8]) {
+        // TODO: The current implementation implies an active waiting,
+        // improve it using POLLIN instead to avoid active waiting.
+        let mut total_bytes_sent = 0;
+        loop {
+            match stream.write(&data[total_bytes_sent..]) {
+                Ok(bytes_sent) => {
+                    total_bytes_sent += bytes_sent;
+                    if total_bytes_sent == data.len() {
+                        break
+                    }
+                    // We get sending to data, but not the totality.
+                    // We start waiting actively.
+                }
+                // If WouldBlock is received in this non-blocking socket means that
+                // the sending buffer is full and it should wait to send more data.
+                // This occurs when huge amounts of data are sent and It could be
+                // intensified if the remote endpoint reads slower than this enpoint sends.
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+                // Skipping. Others errors will be considered fatal for the connection.
+                // We skip here their handling because if the connection brokes,
+                // an Event::Disconnection will be generated later.
+                Err(_) => break, // Err(err).unwrap()
+            }
+        }
+    }
+
+    fn send_datagram(data_len: usize, mut send: impl FnMut() -> io::Result<usize>) {
+        if data_len > MAX_UDP_LEN {
+            panic!(
+                "The datagram max size is {}, your message data takes {}. \
+                Split the message in several messages or use an stream protocol as TCP",
+                MAX_UDP_LEN,
+                data_len
+            );
+        }
+
+        match send() {
+            // The datagram always fit in the MTU
+            Ok(_) => (),
+            // In this context means that UDP packet that exceeds MTU size.
+            // Since this is managing by MAX_UDP_LEN. It should not ocurr.
+            // Always can means in that send method is called without knowing
+            // the remote addr.
+            Err(err) => Err(err).expect("To not occur"),
+        }
+    }
+
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> io::Result<()> {
         if let Some(resource) = self.resources.get_mut(&endpoint.resource_id()) {
             match resource {
                 Resource::Listener(listener) => match listener {
-                    Listener::Udp(socket) => socket.send_to(data, endpoint.addr()).map(|_| ()),
+                    Listener::Udp(socket) => Self::send_datagram(data.len(), || {
+                        socket.send_to(data, endpoint.addr())
+                    }),
                     _ => unreachable!(),
                 },
                 Resource::Remote(remote) => match remote {
-                    Remote::Tcp(stream) => stream.write(data).map(|_| ()),
-                    Remote::Udp(socket, _) => socket.send(data).map(|_| ()),
+                    Remote::Tcp(stream) => Self::send_stream(stream, data),
+                    Remote::Udp(socket, _) => Self::send_datagram(data.len(), || {
+                        socket.send(data)
+                    }),
                 },
             }
+            Ok(())
         }
         else {
+            //TODO: should panics
             Err(io::Error::new(
                 ErrorKind::NotFound,
                 format!(

@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent, Endpoint};
+use message_io::network::{Network, NetEvent, Endpoint};
 
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
@@ -17,7 +17,7 @@ struct ParticipantInfo {
 
 pub struct DiscoveryServer {
     event_queue: EventQueue<Event>,
-    network: NetworkManager,
+    network: Network,
     participants: HashMap<String, ParticipantInfo>,
 }
 
@@ -27,7 +27,7 @@ impl DiscoveryServer {
 
         let network_sender = event_queue.sender().clone();
         let mut network =
-            NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+            Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         let listen_addr = "127.0.0.1:5000";
         match network.listen_tcp(listen_addr) {

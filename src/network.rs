@@ -38,19 +38,19 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static
     RemovedEndpoint(Endpoint),
 }
 
-/// NetworkManager allows to manage the network easier.
+/// Network allows to manage the network easier.
 /// It is in mainly in charge to transform raw data from the network into message events and vice versa.
-pub struct NetworkManager {
+pub struct Network {
     network_event_thread: Option<JoinHandle<()>>,
     network_thread_running: Arc<AtomicBool>,
     network_controller: Arc<Mutex<Controller>>,
     output_buffer: Vec<u8>,
 }
 
-impl<'a> NetworkManager {
-    /// Creates a new [NetworkManager].
+impl<'a> Network {
+    /// Creates a new [Network].
     /// The user must register an event_callback that can be called each time the network generate and [NetEvent]
-    pub fn new<InMessage, C>(event_callback: C) -> NetworkManager
+    pub fn new<InMessage, C>(event_callback: C) -> Network
     where
         InMessage: for<'b> Deserialize<'b> + Send + 'static,
         C: Fn(NetEvent<InMessage>) + Send + 'static,
@@ -83,7 +83,7 @@ impl<'a> NetworkManager {
             })
             .unwrap();
 
-        NetworkManager {
+        Network {
             network_event_thread: Some(network_event_thread),
             network_thread_running,
             network_controller,
@@ -240,7 +240,7 @@ impl<'a> NetworkManager {
     }
 }
 
-impl Drop for NetworkManager {
+impl Drop for Network {
     fn drop(&mut self) {
         self.network_thread_running.store(false, Ordering::Relaxed);
         self.network_event_thread.take().unwrap().join().unwrap();

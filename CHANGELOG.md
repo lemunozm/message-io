@@ -2,6 +2,7 @@
 
 ## Current
 - Renamed: `receive_event_timeout` to `receive_timeout`.
+- Renaded: `NetworkManager` to `Network`.
 
 ## Release 0.4.6
 - Fixed lost decoding memory at disconnection.

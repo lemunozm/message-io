@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent, Endpoint};
+use message_io::network::{Network, NetEvent, Endpoint};
 
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
@@ -12,7 +12,7 @@ enum Event {
 
 pub struct Participant {
     event_queue: EventQueue<Event>,
-    network: NetworkManager,
+    network: Network,
     name: String,
     discovery_endpoint: Endpoint,
     public_addr: SocketAddr,
@@ -25,7 +25,7 @@ impl Participant {
 
         let network_sender = event_queue.sender().clone();
         let mut network =
-            NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+            Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         // A listener for any other participant that want to establish connection.
         let listen_addr = "127.0.0.1:0";

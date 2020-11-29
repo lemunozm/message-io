@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent};
+use message_io::network::{Network, NetEvent};
 
 use serde::{Serialize, Deserialize};
 
@@ -22,7 +22,7 @@ fn main() {
     let mut event_queue = EventQueue::new();
 
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(Event::Network(net_event)));
+    let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
 
     let addr = "239.255.0.1:3010";
     network

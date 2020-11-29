@@ -64,7 +64,7 @@ It is capable to manage several client connections and listen from 2 differents 
 
 ```rust
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent};
+use message_io::network::{Network, NetEvent};
 
 use serde::{Serialize, Deserialize};
 
@@ -88,9 +88,9 @@ enum Event {
 fn main() {
     let mut event_queue = EventQueue::new();
 
-    // Create NetworkManager, the callback will push the network event into the event queue
+    // Create Network, the callback will push the network event into the event queue
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(Event::Network(net_event)));
+    let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
 
     // Listen from TCP and UDP messages on ports 3005.
     let addr = "0.0.0.0:3005";
@@ -127,11 +127,11 @@ The user must be read these events in its main thread in order to dispatch actio
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vQr06OL40IWagXWHoyytUIlR1SHoahYE0Pkj6r0HmokaUMW4ojC5MV2OViFO9m-2jDqrDokPJ62oSzg/pub?w=837&h=313"/>
 </p>
 
-- **`NetworkManager`**:
+- **`Network`**:
 It is an abstraction layer of the transport protocols that works over non-blocking sockets.
 It allows to create/remove connections, send and receive messages (defined by the user).
 
-To manage the connections, the `NetworkManager` offers an *`Endpoint`*
+To manage the connections, the `Network` offers an *`Endpoint`*
 that is an unique identifier of the connection that can be used
 to remove, send or identify input messages.
 It can be understood as the remitter/recipient of the message.
@@ -141,7 +141,7 @@ It can be understood as the remitter/recipient of the message.
 </p>
 
 The power comes when both pieces joins together, allowing to process all actions from one thread.
-To reach this, the user has to connect the `NetworkManager` to the `EventQueue` sending the `NetEvent` produced by the first one.
+To reach this, the user has to connect the `Network` to the `EventQueue` sending the `NetEvent` produced by the first one.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vT6IuBVr4mLbdNfs2yZayqqUJ04PsuqG27Ce3Vdr0ZG8ItX3slISoKVxyndybaYPIS5oFZ6N4TljrKQ/pub?w=701&h=383"/>

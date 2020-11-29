@@ -269,10 +269,9 @@ impl Controller {
     fn send_datagram(data_len: usize, mut send: impl FnMut() -> io::Result<usize>) {
         if data_len > MAX_UDP_LEN {
             panic!(
-                "The datagram max size is {}, your message data takes {}. \
+                "The datagram max size is {} bytes, but your message data takes {} bytes. \
                 Split the message in several messages or use an stream protocol as TCP",
-                MAX_UDP_LEN,
-                data_len
+                MAX_UDP_LEN, data_len
             );
         }
 
@@ -291,16 +290,14 @@ impl Controller {
         if let Some(resource) = self.resources.get_mut(&endpoint.resource_id()) {
             match resource {
                 Resource::Listener(listener) => match listener {
-                    Listener::Udp(socket) => Self::send_datagram(data.len(), || {
-                        socket.send_to(data, endpoint.addr())
-                    }),
+                    Listener::Udp(socket) => {
+                        Self::send_datagram(data.len(), || socket.send_to(data, endpoint.addr()))
+                    }
                     _ => unreachable!(),
                 },
                 Resource::Remote(remote) => match remote {
                     Remote::Tcp(stream) => Self::send_stream(stream, data),
-                    Remote::Udp(socket, _) => Self::send_datagram(data.len(), || {
-                        socket.send(data)
-                    }),
+                    Remote::Udp(socket, _) => Self::send_datagram(data.len(), || socket.send(data)),
                 },
             }
             Ok(())

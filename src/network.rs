@@ -210,6 +210,7 @@ impl<'a> Network {
     /// Serialize and send the message thought the connection represented by the given endpoint.
     /// If the same message should be sent to different endpoints, use `send_all()` to better performance.
     /// The funcion panics if some of endpoints do not exists.
+    /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
     pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage)
     where OutMessage: Serialize {
         self.prepare_output_message(message);
@@ -227,6 +228,7 @@ impl<'a> Network {
     /// since the serialization is only performed one time for all endpoints.
     /// The funcion panics if some of endpoints do not exists.
     /// If the protocol is UDP, the function panics if the message size is higher than MTU.
+    /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
     pub fn send_all<'b, OutMessage>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,

@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 extern crate serde_big_array;
 big_array! { BigArray; }
 
-use std::net::{TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream, UdpSocket};
 use std::io::prelude::*;
 
 const SMALL_SIZE: usize = 16;
@@ -40,10 +40,10 @@ enum Transport {
     Udp,
 }
 
-fn send_message_base<M>(c: &mut Criterion, message: M, transport: Transport)
+fn send_message_base_tcp<M>(c: &mut Criterion, message: M)
 where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+    let addr = listener.local_addr().unwrap();
 
     std::thread::spawn(move || {
         let mut receiver_stream = listener.incoming().next().unwrap().unwrap();
@@ -54,15 +54,34 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
         }
     });
 
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let stream = TcpStream::connect(addr).unwrap();
     let mut buffer = Vec::with_capacity(std::mem::size_of::<M>());
 
-    let msg = format!("Sending {} bytes by {:?} (base)", std::mem::size_of::<M>(), transport);
+    let msg = format!("Sending {} bytes by Tcp (base)", std::mem::size_of::<M>());
     c.bench_function(&msg, |b| {
         b.iter(|| {
             buffer.clear();
             bincode::serialize_into(&mut buffer, &message).unwrap();
-            stream.write(&buffer).unwrap();
+            (&stream).write(&buffer).unwrap();
+        });
+    });
+}
+
+fn send_message_base_udp<M>(c: &mut Criterion, message: M)
+where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
+    let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+    let addr = receiver.local_addr().unwrap();
+
+    let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+    socket.connect(addr).unwrap();
+    let mut buffer = Vec::with_capacity(std::mem::size_of::<M>());
+
+    let msg = format!("Sending {} bytes by Udp (base)", std::mem::size_of::<M>());
+    c.bench_function(&msg, |b| {
+        b.iter(|| {
+            buffer.clear();
+            bincode::serialize_into(&mut buffer, &message).unwrap();
+            socket.send(&buffer).unwrap();
         });
     });
 }
@@ -121,11 +140,11 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
 }
 
 fn send_message_base_size_transport(c: &mut Criterion) {
-    send_message_base(c, SMALL_MESSAGE, Transport::Tcp);
-    send_message_base(c, MEDIUM_MESSAGE, Transport::Tcp);
-    send_message_base(c, BIG_MESSAGE, Transport::Tcp);
-    //send_message_base(c, SMALL_MESSAGE, Transport::Udp);
-    //send_message_base(c, MEDIUM_MESSAGE, Transport::Udp);
+    send_message_base_tcp(c, SMALL_MESSAGE);
+    send_message_base_tcp(c, MEDIUM_MESSAGE);
+    send_message_base_tcp(c, BIG_MESSAGE);
+    send_message_base_udp(c, SMALL_MESSAGE);
+    send_message_base_udp(c, MEDIUM_MESSAGE);
 }
 
 fn send_message_size_transport(c: &mut Criterion) {

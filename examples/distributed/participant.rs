@@ -58,7 +58,7 @@ impl Participant {
     pub fn run(mut self) {
         // Register this participant into the discovery server
         let message = Message::RegisterParticipant(self.name.clone(), self.public_addr);
-        self.network.send(self.discovery_endpoint, message).unwrap();
+        self.network.send(self.discovery_endpoint, message);
 
         loop {
             match self.event_queue.receive() {
@@ -115,7 +115,7 @@ impl Participant {
         if let Ok(endpoint) = self.network.connect_udp(addr) {
             let gretings = format!("Hi '{}', {}", name, message);
             let message = Message::Gretings(self.name.clone(), gretings);
-            self.network.send(endpoint, message).unwrap();
+            self.network.send(endpoint, message);
             self.known_participants.insert(name.to_string(), endpoint);
         }
     }

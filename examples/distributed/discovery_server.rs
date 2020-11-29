@@ -84,12 +84,12 @@ impl DiscoveryServer {
             let list =
                 self.participants.iter().map(|(name, info)| (name.clone(), info.addr)).collect();
 
-            self.network.send(endpoint, Message::ParticipantList(list)).unwrap();
+            self.network.send(endpoint, Message::ParticipantList(list));
 
             // Notify other participants about this new participant
             let endpoints = self.participants.values().map(|info| &info.endpoint);
             let message = Message::ParticipantNotificationAdded(name.to_string(), addr);
-            self.network.send_all(endpoints, message).unwrap();
+            self.network.send_all(endpoints, message);
 
             // Register participant
             self.participants.insert(name.to_string(), ParticipantInfo { addr, endpoint });
@@ -108,7 +108,7 @@ impl DiscoveryServer {
             // Notify other participants about this removed participant
             let endpoints = self.participants.values().map(|info| &info.endpoint);
             let message = Message::ParticipantNotificationRemoved(name.to_string());
-            self.network.send_all(endpoints, message).unwrap();
+            self.network.send_all(endpoints, message);
             println!("Removed participant '{}' with ip {}", name, info.addr);
         }
         else {

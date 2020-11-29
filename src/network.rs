@@ -209,54 +209,40 @@ impl<'a> Network {
 
     /// Serialize and send the message thought the connection represented by the given endpoint.
     /// If the same message should be sent to different endpoints, use `send_all()` to better performance.
-    /// Returns an error if there is an error while sending the message, the endpoint does not exists, or if it is not valid.
-    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage) -> io::Result<()>
+    /// The funcion panics if some of endpoints do not exists.
+    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage)
     where OutMessage: Serialize {
         self.prepare_output_message(message);
-        let sending_result = self
-            .network_controller
+        self.network_controller
             .lock()
             .expect(Self::POISONED_LOCK)
             .send(endpoint, &self.output_buffer);
 
         self.output_buffer.clear();
-        if sending_result.is_ok() {
-            log::trace!("Message sent to {}", endpoint);
-        }
-        sending_result
+        log::trace!("Message sent to {}", endpoint);
     }
 
     /// Serialize and send the message thought the connections represented by the given endpoints.
     /// When there are severals endpoints to send the data, this function is faster than consecutive calls to `send()`
     /// since the serialization is only performed one time for all endpoints.
-    /// A list of erroneous endpoints along with their errors is returned if there was a problem with some messages sent.
-    /// An error sending a message by an endpoint do not avoid sending the message to the rest of endpoints.
+    /// The funcion panics if some of endpoints do not exists.
+    /// If the protocol is UDP, the function panics if the message size is higher than MTU.
     pub fn send_all<'b, OutMessage>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,
         message: OutMessage,
-    ) -> Result<(), Vec<(Endpoint, io::Error)>>
-    where
+    ) where
         OutMessage: Serialize,
     {
         self.prepare_output_message(message);
-        let mut errors = Vec::new();
         let mut controller = self.network_controller.lock().expect(Self::POISONED_LOCK);
 
         for endpoint in endpoints {
-            match controller.send(*endpoint, &self.output_buffer) {
-                Ok(_) => log::trace!("Message sent to {}", endpoint),
-                Err(err) => errors.push((*endpoint, err)),
-            }
+            controller.send(*endpoint, &self.output_buffer);
+            log::trace!("Message sent to {}", endpoint);
         }
 
         self.output_buffer.clear();
-        if errors.is_empty() {
-            Ok(())
-        }
-        else {
-            Err(errors)
-        }
     }
 
     fn prepare_output_message<OutMessage>(&mut self, message: OutMessage)

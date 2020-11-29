@@ -20,7 +20,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                 NetEvent::Message(endpoint, message) => {
                     assert_eq!(*client_endpoint.as_ref().unwrap(), endpoint);
                     assert_eq!(message, SMALL_MESSAGE);
-                    network.send(endpoint, message).unwrap();
+                    network.send(endpoint, message);
                 }
                 NetEvent::AddedEndpoint(endpoint) => {
                     assert!(client_endpoint.is_none());
@@ -42,13 +42,13 @@ fn simple_connection_data_disconnection_by_tcp() {
         let mut network = Network::new(move |net_event| sender.send(net_event));
 
         let server_endpoint = network.connect_tcp(server_addr).unwrap();
-        network.send(server_endpoint, SMALL_MESSAGE.to_string()).unwrap();
+        network.send(server_endpoint, SMALL_MESSAGE.to_string());
         loop {
             match event_queue.receive() {
                 NetEvent::Message(endpoint, message) => {
                     assert_eq!(server_endpoint, endpoint);
                     assert_eq!(message, SMALL_MESSAGE);
-                    network.send(endpoint, message).unwrap();
+                    network.send(endpoint, message);
                     break //Exit from thread, the connection will be automatically close
                 }
                 NetEvent::AddedEndpoint(endpoint) => {
@@ -78,7 +78,7 @@ fn simple_data_by_udp() {
                 NetEvent::Message(endpoint, message) => {
                     assert_eq!(upd_listen_resource_id, endpoint.resource_id());
                     assert_eq!(message, SMALL_MESSAGE);
-                    network.send(endpoint, message).unwrap();
+                    network.send(endpoint, message);
                     break //Exit from thread
                 }
                 _ => unreachable!(),
@@ -92,7 +92,7 @@ fn simple_data_by_udp() {
         let mut network = Network::new(move |net_event| sender.send(net_event));
 
         let server_endpoint = network.connect_udp(server_addr).unwrap();
-        network.send(server_endpoint, SMALL_MESSAGE.to_string()).unwrap();
+        network.send(server_endpoint, SMALL_MESSAGE.to_string());
         loop {
             match event_queue.receive() {
                 NetEvent::Message(endpoint, message) => {
@@ -142,7 +142,7 @@ fn long_tcp_message() {
 
     let receiver = network.connect_tcp(receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
-    network.send(receiver, message.clone()).unwrap(); // Blocks until the message is sent
+    network.send(receiver, message.clone()); // Blocks until the message is sent
 
     receiver_handle.join().unwrap();
 }
@@ -180,7 +180,7 @@ fn max_udp_size_message() {
 
     let receiver = network.connect_udp(receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
-    network.send(receiver, message).unwrap(); // Blocks until the message is sent
+    network.send(receiver, message); // Blocks until the message is sent
 
     receiver_handle.join().unwrap();
 }

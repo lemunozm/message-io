@@ -25,13 +25,14 @@ fn main() {
     let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
 
     let addr = "239.255.0.1:3010";
-    network
-        .connect_udp(addr)
-        .map(|endpoint| {
+    match network.connect_udp(addr) {
+        Ok(endpoint) => {
             println!("Notifying on the network");
-            network.send(endpoint, Message::HelloLan(my_name.into())).unwrap();
-        })
-        .unwrap();
+            network.send(endpoint, Message::HelloLan(my_name.into()));
+        }
+        Err(_) => return eprintln!("Could not connecto to {}", addr),
+    }
+
     network.listen_udp_multicast(addr).unwrap();
 
     loop {

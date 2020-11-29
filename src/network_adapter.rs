@@ -286,7 +286,7 @@ impl Controller {
         }
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> io::Result<()> {
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
         if let Some(resource) = self.resources.get_mut(&endpoint.resource_id()) {
             match resource {
                 Resource::Listener(listener) => match listener {
@@ -300,17 +300,9 @@ impl Controller {
                     Remote::Udp(socket, _) => Self::send_datagram(data.len(), || socket.send(data)),
                 },
             }
-            Ok(())
         }
         else {
-            //TODO: should panics
-            Err(io::Error::new(
-                ErrorKind::NotFound,
-                format!(
-                    "Resource id '{}' not exists in the network adapter",
-                    endpoint.resource_id()
-                ),
-            ))
+            panic!("Resource id '{}' not exists in the network adapter", endpoint.resource_id())
         }
     }
 }

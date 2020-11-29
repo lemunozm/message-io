@@ -6,6 +6,8 @@
 - Fixed Reset-by-peer errors.
   Now it generates a RemoveEndpoint event.
 - Added DeserializationError Event that is generated when there is a problem at deserializing.
+- Removed Result from `send()` and `send_all()` functions.
+  Now if some error happens during sending, a RemovedEndpoint will be generated (only in Tcp).
 
 ## Release 0.4.6
 - Fixed lost decoding memory at disconnection.

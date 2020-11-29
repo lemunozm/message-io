@@ -33,7 +33,7 @@ pub fn run(file_path: &str) {
 
     let file_name = file_path.rsplit('/').into_iter().next().unwrap_or(file_path);
     let request = SenderMsg::FileRequest(file_name.into(), file_size);
-    network.send(server_id, request).unwrap();
+    network.send(server_id, request);
 
     loop {
         match event_queue.receive() {
@@ -57,7 +57,7 @@ pub fn run(file_path: &str) {
                 let bytes_read = file.read(&mut data).unwrap();
                 if bytes_read > 0 {
                     let chunk = SenderMsg::Chunk(Vec::from(&data[0..bytes_read]));
-                    network.send(server_id, chunk).unwrap();
+                    network.send(server_id, chunk);
                     file_bytes_sent += bytes_read;
                     event_queue.sender().send(Event::SendChunk);
 

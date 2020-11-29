@@ -31,6 +31,8 @@
     and a *network manager* to manage all connections (connect, listen, remove, send, receive).
   - Forget concurrence problems: handle thousands of active connections and listeners without any effort,
     "One thread to rule them all".
+  - Easy error handling.
+    Do not manage internals `std::io::Error` when send/receive from network.
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.
     - Binary serialization.
@@ -103,7 +105,7 @@ fn main() {
                 NetEvent::Message(endpoint, message) => match message {
                     InputMessage::HelloServer(msg) => {
                         println!("Received: {}", msg);
-                        network.send(endpoint, OutputMessage::HelloClient(msg)).unwrap();
+                        network.send(endpoint, OutputMessage::HelloClient(msg));
                     },
                     //Other input messages here
                 },

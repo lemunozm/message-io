@@ -1,6 +1,8 @@
 use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, MAX_UDP_LEN};
 
+use std::net::{TcpStream, Shutdown};
+
 const SMALL_MESSAGE: &'static str = "Small message";
 
 #[test]
@@ -179,6 +181,37 @@ fn max_udp_size_message() {
     let receiver = network.connect_udp(receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
     network.send(receiver, message).unwrap(); // Blocks until the message is sent
+
+    receiver_handle.join().unwrap();
+}
+
+#[test]
+fn disconnection() {
+    let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
+    let sender = event_queue.sender().clone();
+    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+
+    let (_, receiver_addr) = network.listen_tcp("127.0.0.1:0").unwrap();
+
+    let receiver_handle = std::thread::spawn(move || {
+        // Pass the network to the thread. The network should be destroyed before event queue.
+        let _ = network;
+        let mut connected = false;
+        loop {
+            match event_queue.receive() {
+                NetEvent::Message(..) => unreachable!(),
+                NetEvent::AddedEndpoint(_) => connected = true,
+                NetEvent::RemovedEndpoint(_) => {
+                    assert_eq!(connected, true);
+                    break;
+                },
+                NetEvent::DeserializationError(_) => unreachable!(),
+            }
+        }
+    });
+
+    let stream = TcpStream::connect(receiver_addr).unwrap();
+    stream.shutdown(Shutdown::Both).unwrap();
 
     receiver_handle.join().unwrap();
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Current
+## Release 0.5.0
 - Renamed: `receive_event_timeout` to `receive_timeout`.
 - Renaded: `NetworkManager` to `Network`.
 

@@ -203,8 +203,8 @@ fn disconnection() {
                 NetEvent::AddedEndpoint(_) => connected = true,
                 NetEvent::RemovedEndpoint(_) => {
                     assert_eq!(connected, true);
-                    break;
-                },
+                    break
+                }
                 NetEvent::DeserializationError(_) => unreachable!(),
             }
         }

@@ -1,5 +1,8 @@
 # Changelog
 
+## Current
+- Renamed: `receive_event_timeout` to `receive_timeout`.
+
 ## Release 0.4.6
 - Fixed lost decoding memory at disconnection.
 - Fixed issue in send methods where sometimes data is lost.

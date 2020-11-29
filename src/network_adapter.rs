@@ -102,7 +102,7 @@ impl Drop for Listener {
 }
 
 pub enum Remote {
-    Tcp(TcpStream),
+    Tcp(TcpStream, SocketAddr),
     Udp(UdpSocket, SocketAddr),
 }
 
@@ -111,7 +111,11 @@ impl Remote {
         // Create a standard TcpStream to blocking until the connection is reached.
         StdTcpStream::connect(addr).map(|stream| {
             stream.set_nonblocking(true).unwrap();
-            Remote::Tcp(TcpStream::from_std(stream))
+
+            // We store the addr because in some case we will need it
+            // when the stream is disconnected.
+            let addr = stream.peer_addr().unwrap();
+            Remote::Tcp(TcpStream::from_std(stream), addr)
         })
     }
 
@@ -124,21 +128,21 @@ impl Remote {
 
     pub fn local_addr(&self) -> SocketAddr {
         match self {
-            Remote::Tcp(stream) => stream.local_addr().unwrap(),
+            Remote::Tcp(stream, _) => stream.local_addr().unwrap(),
             Remote::Udp(socket, _) => socket.local_addr().unwrap(),
         }
     }
 
     pub fn peer_addr(&self) -> SocketAddr {
         match self {
-            Remote::Tcp(stream) => stream.peer_addr().unwrap(),
+            Remote::Tcp(_, addr) => *addr,
             Remote::Udp(_, addr) => *addr,
         }
     }
 
     pub fn event_source(&mut self) -> &mut dyn event::Source {
         match self {
-            Remote::Tcp(stream) => stream,
+            Remote::Tcp(stream, _) => stream,
             Remote::Udp(socket, _) => socket,
         }
     }
@@ -173,8 +177,8 @@ impl std::fmt::Display for Resource {
                 Listener::Udp(_) => "Listener::Udp",
             },
             Resource::Remote(remote) => match remote {
-                Remote::Tcp(_) => "Remote::Tcp",
-                Remote::Udp(_, _) => "Remote::Udp",
+                Remote::Tcp(..) => "Remote::Tcp",
+                Remote::Udp(..) => "Remote::Udp",
             },
         };
         write!(f, "{}", resource)
@@ -296,7 +300,7 @@ impl Controller {
                     _ => unreachable!(),
                 },
                 Resource::Remote(remote) => match remote {
-                    Remote::Tcp(stream) => Self::send_stream(stream, data),
+                    Remote::Tcp(stream, _) => Self::send_stream(stream, data),
                     Remote::Udp(socket, _) => Self::send_datagram(data.len(), || socket.send(data)),
                 },
             }
@@ -354,8 +358,8 @@ impl<'a> Receiver {
                         let mut listener = listener;
                         loop {
                             match listener.accept() {
-                                Ok((stream, _)) => {
-                                    let endpoint = controller.add_remote(Remote::Tcp(stream));
+                                Ok((stream, addr)) => {
+                                    let endpoint = controller.add_remote(Remote::Tcp(stream, addr));
                                     event_callback(endpoint, Event::Connection);
 
                                     // Used to avoid the consecutive mutable borrows
@@ -383,8 +387,8 @@ impl<'a> Receiver {
                     },
                 },
                 Resource::Remote(remote) => match remote {
-                    Remote::Tcp(stream) => loop {
-                        let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
+                    Remote::Tcp(stream, addr) => loop {
+                        let endpoint = Endpoint::new(id, *addr);
                         match stream.read(input_buffer) {
                             Ok(0) => {
                                 controller.remove_resource(endpoint.resource_id()).expect("Exists");

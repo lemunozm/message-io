@@ -8,6 +8,9 @@ use serde::{Serialize, Deserialize};
 extern crate serde_big_array;
 big_array! { BigArray; }
 
+use std::net::{TcpListener, TcpStream};
+use std::io::prelude::*;
+
 const SMALL_SIZE: usize = 16;
 #[derive(Serialize, Deserialize, Clone, Copy)]
 struct SmallMessage {
@@ -35,6 +38,33 @@ const BIG_MESSAGE: BigMessage = BigMessage { data: [0xFF; BIG_SIZE] };
 enum Transport {
     Tcp,
     Udp,
+}
+
+fn send_message_base<M>(c: &mut Criterion, message: M, transport: Transport)
+where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    std::thread::spawn(move || {
+        let mut receiver_stream = listener.incoming().next().unwrap().unwrap();
+        loop {
+            if let Ok(0) = receiver_stream.read(&mut [0; BIG_SIZE]) {
+                break
+            }
+        }
+    });
+
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+    let mut buffer = Vec::with_capacity(std::mem::size_of::<M>());
+
+    let msg = format!("Sending {} bytes by {:?} (base)", std::mem::size_of::<M>(), transport);
+    c.bench_function(&msg, |b| {
+        b.iter(|| {
+            buffer.clear();
+            bincode::serialize_into(&mut buffer, &message).unwrap();
+            stream.write(&buffer).unwrap();
+        });
+    });
 }
 
 fn send_message<M>(c: &mut Criterion, message: M, transport: Transport)
@@ -90,6 +120,14 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
     });
 }
 
+fn send_message_base_size_transport(c: &mut Criterion) {
+    send_message_base(c, SMALL_MESSAGE, Transport::Tcp);
+    send_message_base(c, MEDIUM_MESSAGE, Transport::Tcp);
+    send_message_base(c, BIG_MESSAGE, Transport::Tcp);
+    //send_message_base(c, SMALL_MESSAGE, Transport::Udp);
+    //send_message_base(c, MEDIUM_MESSAGE, Transport::Udp);
+}
+
 fn send_message_size_transport(c: &mut Criterion) {
     send_message(c, SMALL_MESSAGE, Transport::Tcp);
     send_message(c, MEDIUM_MESSAGE, Transport::Tcp);
@@ -106,6 +144,11 @@ fn send_message_while_recv_size_transport(c: &mut Criterion) {
     send_while_recv_message(c, MEDIUM_MESSAGE, Transport::Udp);
 }
 
-criterion_group!(benches, send_message_size_transport, send_message_while_recv_size_transport);
+criterion_group!(
+    benches,
+    send_message_base_size_transport,
+    send_message_size_transport,
+    send_message_while_recv_size_transport
+);
 
 criterion_main!(benches);

@@ -24,17 +24,16 @@ pub fn run(name: &str) {
         loop {
             match event_queue.receive() {
                 Event::Greet => {
-                    network
-                        .send(server_id, Message::Greetings(format!("Hi, I am {}", name)))
-                        .unwrap();
+                    network.send(server_id, Message::Greetings(format!("Hi, I am {}", name)));
                     event_queue.sender().send_with_timer(Event::Greet, Duration::from_secs(1));
                 }
                 Event::Network(net_event) => match net_event {
                     NetEvent::Message(_, message) => match message {
                         Message::Greetings(text) => println!("Server says: {}", text),
                     },
-                    NetEvent::AddedEndpoint(_) => unreachable!(), // It will not be generated for UDP
-                    NetEvent::RemovedEndpoint(_) => unreachable!(), // It will not be generated for UDP
+                    NetEvent::AddedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                    NetEvent::RemovedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                    NetEvent::DeserializationError(_) => (),
                 },
             }
         }

@@ -24,9 +24,7 @@ pub fn run(name: &str) {
         loop {
             match event_queue.receive() {
                 Event::Greet => {
-                    network
-                        .send(server_id, Message::Greetings(format!("Hi, I am {}", name)))
-                        .unwrap();
+                    network.send(server_id, Message::Greetings(format!("Hi, I am {}", name)));
                     event_queue.sender().send_with_timer(Event::Greet, Duration::from_secs(1));
                 }
                 Event::Network(net_event) => match net_event {
@@ -38,6 +36,7 @@ pub fn run(name: &str) {
                         println!("Server is disconnected");
                         return
                     }
+                    NetEvent::DeserializationError(_) => (),
                 },
             }
         }

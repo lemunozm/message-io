@@ -102,7 +102,7 @@ impl Drop for Listener {
 }
 
 pub enum Remote {
-    Tcp(TcpStream),
+    Tcp(TcpStream, SocketAddr),
     Udp(UdpSocket, SocketAddr),
 }
 
@@ -111,7 +111,11 @@ impl Remote {
         // Create a standard TcpStream to blocking until the connection is reached.
         StdTcpStream::connect(addr).map(|stream| {
             stream.set_nonblocking(true).unwrap();
-            Remote::Tcp(TcpStream::from_std(stream))
+
+            // We store the addr because in some case we will need it
+            // when the stream is disconnected.
+            let addr = stream.peer_addr().unwrap();
+            Remote::Tcp(TcpStream::from_std(stream), addr)
         })
     }
 
@@ -124,21 +128,21 @@ impl Remote {
 
     pub fn local_addr(&self) -> SocketAddr {
         match self {
-            Remote::Tcp(stream) => stream.local_addr().unwrap(),
+            Remote::Tcp(stream, _) => stream.local_addr().unwrap(),
             Remote::Udp(socket, _) => socket.local_addr().unwrap(),
         }
     }
 
     pub fn peer_addr(&self) -> SocketAddr {
         match self {
-            Remote::Tcp(stream) => stream.peer_addr().unwrap(),
+            Remote::Tcp(_, addr) => *addr,
             Remote::Udp(_, addr) => *addr,
         }
     }
 
     pub fn event_source(&mut self) -> &mut dyn event::Source {
         match self {
-            Remote::Tcp(stream) => stream,
+            Remote::Tcp(stream, _) => stream,
             Remote::Udp(socket, _) => socket,
         }
     }
@@ -173,8 +177,8 @@ impl std::fmt::Display for Resource {
                 Listener::Udp(_) => "Listener::Udp",
             },
             Resource::Remote(remote) => match remote {
-                Remote::Tcp(_) => "Remote::Tcp",
-                Remote::Udp(_, _) => "Remote::Udp",
+                Remote::Tcp(..) => "Remote::Tcp",
+                Remote::Udp(..) => "Remote::Udp",
             },
         };
         write!(f, "{}", resource)
@@ -286,7 +290,7 @@ impl Controller {
         }
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> io::Result<()> {
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
         if let Some(resource) = self.resources.get_mut(&endpoint.resource_id()) {
             match resource {
                 Resource::Listener(listener) => match listener {
@@ -296,21 +300,13 @@ impl Controller {
                     _ => unreachable!(),
                 },
                 Resource::Remote(remote) => match remote {
-                    Remote::Tcp(stream) => Self::send_stream(stream, data),
+                    Remote::Tcp(stream, _) => Self::send_stream(stream, data),
                     Remote::Udp(socket, _) => Self::send_datagram(data.len(), || socket.send(data)),
                 },
             }
-            Ok(())
         }
         else {
-            //TODO: should panics
-            Err(io::Error::new(
-                ErrorKind::NotFound,
-                format!(
-                    "Resource id '{}' not exists in the network adapter",
-                    endpoint.resource_id()
-                ),
-            ))
+            panic!("Resource id '{}' not exists in the network adapter", endpoint.resource_id())
         }
     }
 }
@@ -322,6 +318,8 @@ pub struct Receiver {
 }
 
 impl<'a> Receiver {
+    const POISONED_LOCK: &'static str = "This error is shown because other thread has panicked";
+
     fn new(controller: Arc<Mutex<Controller>>, poll: Poll) -> Receiver {
         Receiver { controller, poll, events: Events::with_capacity(EVENTS_SIZE) }
     }
@@ -350,9 +348,9 @@ impl<'a> Receiver {
         for mio_event in &self.events {
             let token = mio_event.token();
             let id = token.0;
-            let mut controller = self.controller.lock().unwrap();
+            let mut controller = self.controller.lock().expect(Self::POISONED_LOCK);
 
-            let resource = controller.resources.get_mut(&id).unwrap();
+            let resource = controller.resources.get_mut(&id).expect("Exists");
             log::trace!("Wake from poll for endpoint {}. Resource: {}", id, resource);
             match resource {
                 Resource::Listener(listener) => match listener {
@@ -360,20 +358,19 @@ impl<'a> Receiver {
                         let mut listener = listener;
                         loop {
                             match listener.accept() {
-                                Ok((stream, _)) => {
-                                    let endpoint = controller.add_remote(Remote::Tcp(stream));
+                                Ok((stream, addr)) => {
+                                    let endpoint = controller.add_remote(Remote::Tcp(stream, addr));
                                     event_callback(endpoint, Event::Connection);
 
                                     // Used to avoid the consecutive mutable borrows
-                                    listener = match controller.resources.get_mut(&id).unwrap() {
-                                        Resource::Listener(Listener::Tcp(listener)) => listener,
-                                        _ => unreachable!(),
-                                    }
+                                    listener =
+                                        match controller.resources.get_mut(&id).expect("Exists") {
+                                            Resource::Listener(Listener::Tcp(listener)) => listener,
+                                            _ => unreachable!(),
+                                        }
                                 }
-                                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-                                Err(ref err) if err.kind() == io::ErrorKind::Interrupted => {
-                                    continue
-                                }
+                                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                                 Err(err) => Err(err).unwrap(),
                             }
                         }
@@ -384,26 +381,30 @@ impl<'a> Receiver {
                                 Endpoint::new(id, addr),
                                 Event::Data(&input_buffer[..size]),
                             ),
-                            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
+                            Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                             Err(err) => Err(err).unwrap(),
                         }
                     },
                 },
                 Resource::Remote(remote) => match remote {
-                    Remote::Tcp(stream) => loop {
+                    Remote::Tcp(stream, addr) => loop {
+                        let endpoint = Endpoint::new(id, *addr);
                         match stream.read(input_buffer) {
                             Ok(0) => {
-                                let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
-                                controller.remove_resource(endpoint.resource_id()).unwrap();
+                                controller.remove_resource(endpoint.resource_id()).expect("Exists");
                                 event_callback(endpoint, Event::Disconnection);
                                 break
                             }
                             Ok(size) => {
-                                let endpoint = Endpoint::new(id, stream.peer_addr().unwrap());
                                 event_callback(endpoint, Event::Data(&input_buffer[..size]));
                             }
-                            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-                            Err(ref err) if err.kind() == io::ErrorKind::Interrupted => continue,
+                            Err(ref err) if err.kind() == ErrorKind::ConnectionReset => {
+                                controller.remove_resource(endpoint.resource_id()).expect("Exists");
+                                event_callback(endpoint, Event::Disconnection);
+                                break
+                            }
+                            Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                            Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                             Err(err) => Err(err).unwrap(),
                         }
                     },
@@ -413,10 +414,8 @@ impl<'a> Receiver {
                                 Endpoint::new(id, *addr),
                                 Event::Data(&input_buffer[..size]),
                             ),
-                            Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => break,
-                            Err(ref err) if err.kind() == io::ErrorKind::ConnectionRefused => {
-                                continue
-                            }
+                            Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                            Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => continue,
                             Err(err) => Err(err).unwrap(),
                         }
                     },

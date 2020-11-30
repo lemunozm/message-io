@@ -51,7 +51,7 @@ pub fn run() {
                             }
                         };
 
-                        network.send(endpoint, ReceiverMsg::CanReceive(able)).unwrap();
+                        network.send(endpoint, ReceiverMsg::CanReceive(able));
                     }
                     SenderMsg::Chunk(data) => {
                         let transfer = transfers.get_mut(&endpoint).unwrap();
@@ -77,6 +77,7 @@ pub fn run() {
                         transfers.remove(&endpoint);
                     }
                 }
+                NetEvent::DeserializationError(_) => (),
             },
         }
     }

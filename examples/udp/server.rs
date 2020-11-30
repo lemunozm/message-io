@@ -25,13 +25,12 @@ pub fn run() {
                 NetEvent::Message(endpoint, message) => match message {
                     Message::Greetings(text) => {
                         println!("Client ({}) says: {}", endpoint.addr(), text);
-                        network
-                            .send(endpoint, Message::Greetings("Hi, I hear you".into()))
-                            .unwrap();
+                        network.send(endpoint, Message::Greetings("Hi, I hear you".into()));
                     }
                 },
-                NetEvent::AddedEndpoint(_) => unreachable!(), // It will not be generated for UDP
-                NetEvent::RemovedEndpoint(_) => unreachable!(), // It will not be generated for UDP
+                NetEvent::AddedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                NetEvent::RemovedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                NetEvent::DeserializationError(_) => (),
             },
         }
     }

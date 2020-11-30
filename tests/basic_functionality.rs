@@ -1,6 +1,8 @@
 use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, MAX_UDP_LEN};
 
+use std::net::{TcpStream, Shutdown};
+
 const SMALL_MESSAGE: &'static str = "Small message";
 
 #[test]
@@ -18,7 +20,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                 NetEvent::Message(endpoint, message) => {
                     assert_eq!(*client_endpoint.as_ref().unwrap(), endpoint);
                     assert_eq!(message, SMALL_MESSAGE);
-                    network.send(endpoint, message).unwrap();
+                    network.send(endpoint, message);
                 }
                 NetEvent::AddedEndpoint(endpoint) => {
                     assert!(client_endpoint.is_none());
@@ -28,6 +30,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                     assert_eq!(client_endpoint.take().unwrap(), endpoint);
                     break //Exit from thread, the connection will be automatically close
                 }
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
         assert!(client_endpoint.is_none());
@@ -39,19 +42,20 @@ fn simple_connection_data_disconnection_by_tcp() {
         let mut network = Network::new(move |net_event| sender.send(net_event));
 
         let server_endpoint = network.connect_tcp(server_addr).unwrap();
-        network.send(server_endpoint, SMALL_MESSAGE.to_string()).unwrap();
+        network.send(server_endpoint, SMALL_MESSAGE.to_string());
         loop {
             match event_queue.receive() {
                 NetEvent::Message(endpoint, message) => {
                     assert_eq!(server_endpoint, endpoint);
                     assert_eq!(message, SMALL_MESSAGE);
-                    network.send(endpoint, message).unwrap();
+                    network.send(endpoint, message);
                     break //Exit from thread, the connection will be automatically close
                 }
                 NetEvent::AddedEndpoint(endpoint) => {
                     assert_eq!(server_endpoint, endpoint);
                 }
                 NetEvent::RemovedEndpoint(_) => unreachable!(),
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
     });
@@ -74,7 +78,7 @@ fn simple_data_by_udp() {
                 NetEvent::Message(endpoint, message) => {
                     assert_eq!(upd_listen_resource_id, endpoint.resource_id());
                     assert_eq!(message, SMALL_MESSAGE);
-                    network.send(endpoint, message).unwrap();
+                    network.send(endpoint, message);
                     break //Exit from thread
                 }
                 _ => unreachable!(),
@@ -88,7 +92,7 @@ fn simple_data_by_udp() {
         let mut network = Network::new(move |net_event| sender.send(net_event));
 
         let server_endpoint = network.connect_udp(server_addr).unwrap();
-        network.send(server_endpoint, SMALL_MESSAGE.to_string()).unwrap();
+        network.send(server_endpoint, SMALL_MESSAGE.to_string());
         loop {
             match event_queue.receive() {
                 NetEvent::Message(endpoint, message) => {
@@ -127,6 +131,7 @@ fn long_tcp_message() {
                 }
                 NetEvent::AddedEndpoint(_) => (),
                 NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
     });
@@ -137,7 +142,7 @@ fn long_tcp_message() {
 
     let receiver = network.connect_tcp(receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
-    network.send(receiver, message.clone()).unwrap(); // Blocks until the message is sent
+    network.send(receiver, message.clone()); // Blocks until the message is sent
 
     receiver_handle.join().unwrap();
 }
@@ -164,6 +169,7 @@ fn max_udp_size_message() {
                 }
                 NetEvent::AddedEndpoint(_) => (),
                 NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
     });
@@ -174,7 +180,38 @@ fn max_udp_size_message() {
 
     let receiver = network.connect_udp(receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
-    network.send(receiver, message).unwrap(); // Blocks until the message is sent
+    network.send(receiver, message); // Blocks until the message is sent
+
+    receiver_handle.join().unwrap();
+}
+
+#[test]
+fn disconnection() {
+    let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
+    let sender = event_queue.sender().clone();
+    let mut network = Network::new(move |net_event| sender.send(net_event));
+
+    let (_, receiver_addr) = network.listen_tcp("127.0.0.1:0").unwrap();
+
+    let receiver_handle = std::thread::spawn(move || {
+        // Pass the network to the thread. The network should be destroyed before event queue.
+        let _ = network;
+        let mut connected = false;
+        loop {
+            match event_queue.receive() {
+                NetEvent::Message(..) => unreachable!(),
+                NetEvent::AddedEndpoint(_) => connected = true,
+                NetEvent::RemovedEndpoint(_) => {
+                    assert_eq!(connected, true);
+                    break
+                }
+                NetEvent::DeserializationError(_) => unreachable!(),
+            }
+        }
+    });
+
+    let stream = TcpStream::connect(receiver_addr).unwrap();
+    stream.shutdown(Shutdown::Both).unwrap();
 
     receiver_handle.join().unwrap();
 }

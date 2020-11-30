@@ -41,14 +41,14 @@ enum Transport {
     Udp,
 }
 
-//======================================================================
+//######################################################################
 //                     std benches (used as reference)
-//======================================================================
+//######################################################################
 
 /// Measure the cost of sending a message using std::net::UdpSocket
 fn std_send_udp<M>(c: &mut Criterion, message: M)
 where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
-    let msg = format!("std-ref: Sending {} bytes by Udp", std::mem::size_of::<M>());
+    let msg = format!("STD-REF: Sending {} bytes by Udp", std::mem::size_of::<M>());
     c.bench_function(&msg, |b| {
         let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
         let addr = receiver.local_addr().unwrap();
@@ -68,7 +68,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
 /// Measure the cost of sending a message using std::net::TcpStream
 fn std_send_tcp<M>(c: &mut Criterion, message: M)
 where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
-    let msg = format!("std-ref: Sending {} bytes by Tcp", std::mem::size_of::<M>());
+    let msg = format!("STD-REF: Sending {} bytes by Tcp", std::mem::size_of::<M>());
     c.bench_function(&msg, |b| {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap();
@@ -104,7 +104,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
 fn std_send_recv_tcp_one_direction<M>(c: &mut Criterion, message: M)
 where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
     let msg = format!(
-        "std-ref: Sending and receiving one direction. {} bytes by Tcp",
+        "STD-REF: Sending and receiving one direction. {} bytes by Tcp",
         std::mem::size_of::<M>()
     );
     c.bench_function(&msg, |b| {
@@ -141,9 +141,9 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
     });
 }
 
-//======================================================================
+//######################################################################
 //                         message-io benches
-//======================================================================
+//######################################################################
 
 /// Measure the cost of sending a message by message-io
 fn send_message<M>(c: &mut Criterion, message: M, transport: Transport)
@@ -167,7 +167,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
 
         b.iter(|| {
             // The following process encodes, serializes and sends:
-            send_network.send(receiver, message).unwrap();
+            send_network.send(receiver, message);
         });
     });
 }
@@ -195,7 +195,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
 
         b.iter(|| {
             // The following process encodes, serializes and sends:
-            network.send(receiver, message).unwrap();
+            network.send(receiver, message);
         });
     });
 }
@@ -236,7 +236,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
             });
 
             for _ in 0..iters {
-                send_network.send(receiver, message).unwrap();
+                send_network.send(receiver, message);
             }
 
             receiver_handle.join().unwrap();

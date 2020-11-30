@@ -38,12 +38,13 @@ fn main() {
                 NetEvent::Message(endpoint, message) => match message {
                     InputMessage::HelloServer(msg) => {
                         println!("Received: {}", msg);
-                        network.send(endpoint, OutputMessage::HelloClient(msg)).unwrap();
+                        network.send(endpoint, OutputMessage::HelloClient(msg));
                     },
                     //Other input messages here
                 },
                 NetEvent::AddedEndpoint(_endpoint) => println!("TCP Client connected"),
                 NetEvent::RemovedEndpoint(_endpoint) => println!("TCP Client disconnected"),
+                NetEvent::DeserializationError(_) => (),
             },
             // Other events here
         }

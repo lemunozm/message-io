@@ -41,7 +41,7 @@ pub fn run() {
                             client_info.count
                         );
                         let msg = format!("Hi, I hear you for {} time", client_info.count);
-                        network.send(endpoint, Message::Greetings(msg)).unwrap();
+                        network.send(endpoint, Message::Greetings(msg));
                     }
                 },
                 NetEvent::AddedEndpoint(endpoint) => {
@@ -60,6 +60,7 @@ pub fn run() {
                         clients.len()
                     );
                 }
+                NetEvent::DeserializationError(_) => (),
             },
         }
     }

@@ -189,7 +189,7 @@ fn max_udp_size_message() {
 fn disconnection() {
     let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+    let mut network = Network::new(move |net_event| sender.send(net_event));
 
     let (_, receiver_addr) = network.listen_tcp("127.0.0.1:0").unwrap();
 

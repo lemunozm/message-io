@@ -60,6 +60,7 @@ pub struct Network {
 
 impl<'a> Network {
     const POISONED_LOCK: &'static str = "This error is shown because other thread has panicked";
+
     /// Creates a new [Network].
     /// The user must register an event_callback that can be called
     /// each time the network generate and [NetEvent]

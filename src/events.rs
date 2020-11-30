@@ -60,7 +60,7 @@ where E: Send + 'static
 
     /// Blocks the current thread until an event is received by this queue or timeout is exceeded.
     /// If timeout is reached a None is returned, otherwise the event is returned.
-    pub fn receive_event_timeout(&mut self, timeout: Duration) -> Option<E> {
+    pub fn receive_timeout(&mut self, timeout: Duration) -> Option<E> {
         if !self.priority_receiver.is_empty() {
             Some(self.priority_receiver.recv().unwrap())
         }
@@ -186,7 +186,7 @@ mod tests {
     fn waiting_timer_event() {
         let mut queue = EventQueue::new();
         queue.sender().send_with_timer("Timed", *TIMER_TIME);
-        assert_eq!(queue.receive_event_timeout(*TIMEOUT).unwrap(), "Timed");
+        assert_eq!(queue.receive_timeout(*TIMEOUT).unwrap(), "Timed");
     }
 
     #[test]
@@ -194,8 +194,8 @@ mod tests {
         let mut queue = EventQueue::new();
         queue.sender().send("first");
         queue.sender().send("second");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "first");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "second");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "first");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "second");
     }
 
     #[test]
@@ -204,9 +204,9 @@ mod tests {
         queue.sender().send("standard");
         queue.sender().send_with_priority("priority_first");
         queue.sender().send_with_priority("priority_second");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "priority_first");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "priority_second");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "standard");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "priority_first");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "priority_second");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "standard");
     }
 
     #[test]
@@ -219,9 +219,9 @@ mod tests {
         std::thread::sleep(*TIMEOUT);
         // The timed event has been received at this point
 
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "standard_first");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "standard_second");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "timed");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "standard_first");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "standard_second");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "timed");
     }
 
     #[test]
@@ -233,7 +233,7 @@ mod tests {
         std::thread::sleep(*TIMEOUT);
         // The timed event has been received at this point
 
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "priority");
-        assert_eq!(queue.receive_event_timeout(*ZERO_MS).unwrap(), "timed");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "priority");
+        assert_eq!(queue.receive_timeout(*ZERO_MS).unwrap(), "timed");
     }
 }

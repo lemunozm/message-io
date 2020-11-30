@@ -1,7 +1,7 @@
 use super::common::{SenderMsg, ReceiverMsg};
 
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent};
+use message_io::network::{Network, NetEvent};
 
 use std::fs::{self, File};
 use std::io::{Read};
@@ -15,8 +15,7 @@ pub fn run(file_path: &str) {
     let mut event_queue = EventQueue::new();
 
     let network_sender = event_queue.sender().clone();
-    let mut network =
-        NetworkManager::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let mut network = Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let server_addr = "127.0.0.1:3005";
     let server_id = match network.connect_tcp(server_addr) {

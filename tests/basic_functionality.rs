@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent, MAX_UDP_LEN};
+use message_io::network::{Network, NetEvent, MAX_UDP_LEN};
 
 const SMALL_MESSAGE: &'static str = "Small message";
 
@@ -7,7 +7,7 @@ const SMALL_MESSAGE: &'static str = "Small message";
 fn simple_connection_data_disconnection_by_tcp() {
     let mut event_queue = EventQueue::<NetEvent<String>>::new();
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+    let mut network = Network::new(move |net_event| sender.send(net_event));
 
     let (_, server_addr) = network.listen_tcp("127.0.0.1:0").unwrap();
 
@@ -36,7 +36,7 @@ fn simple_connection_data_disconnection_by_tcp() {
     let client_handle = std::thread::spawn(move || {
         let mut event_queue = EventQueue::<NetEvent<String>>::new();
         let sender = event_queue.sender().clone();
-        let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+        let mut network = Network::new(move |net_event| sender.send(net_event));
 
         let server_endpoint = network.connect_tcp(server_addr).unwrap();
         network.send(server_endpoint, SMALL_MESSAGE.to_string()).unwrap();
@@ -64,7 +64,7 @@ fn simple_connection_data_disconnection_by_tcp() {
 fn simple_data_by_udp() {
     let mut event_queue = EventQueue::<NetEvent<String>>::new();
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+    let mut network = Network::new(move |net_event| sender.send(net_event));
 
     let (upd_listen_resource_id, server_addr) = network.listen_udp("127.0.0.1:0").unwrap();
 
@@ -85,7 +85,7 @@ fn simple_data_by_udp() {
     let client_handle = std::thread::spawn(move || {
         let mut event_queue = EventQueue::<NetEvent<String>>::new();
         let sender = event_queue.sender().clone();
-        let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+        let mut network = Network::new(move |net_event| sender.send(net_event));
 
         let server_endpoint = network.connect_udp(server_addr).unwrap();
         network.send(server_endpoint, SMALL_MESSAGE.to_string()).unwrap();
@@ -109,7 +109,7 @@ fn simple_data_by_udp() {
 fn long_tcp_message() {
     let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+    let mut network = Network::new(move |net_event| sender.send(net_event));
 
     const MESSAGE_SIZE: usize = 1_000_000; // Arround 1MB
     const VALUE: u8 = 0xAA;
@@ -133,7 +133,7 @@ fn long_tcp_message() {
 
     let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+    let mut network = Network::new(move |net_event| sender.send(net_event));
 
     let receiver = network.connect_tcp(receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
@@ -146,7 +146,7 @@ fn long_tcp_message() {
 fn max_udp_size_message() {
     let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+    let mut network = Network::new(move |net_event| sender.send(net_event));
 
     const MESSAGE_SIZE: usize = MAX_UDP_LEN - (8 + 4); // Vec<u8> header + encoding header
     const VALUE: u8 = 0xFF;
@@ -170,7 +170,7 @@ fn max_udp_size_message() {
 
     let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(net_event));
+    let mut network = Network::new(move |net_event| sender.send(net_event));
 
     let receiver = network.connect_udp(receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();

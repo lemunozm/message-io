@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent};
+use message_io::network::{Network, NetEvent};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -151,14 +151,14 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
     let msg = format!("Sending {} bytes by {:?}", std::mem::size_of::<M>(), transport);
     c.bench_function(&msg, |b| {
         // We need the internal network thread running while sending messages
-        let mut recv_network = NetworkManager::new(|_: NetEvent<M>| ());
+        let mut recv_network = Network::new(|_: NetEvent<M>| ());
 
         let receiver_addr = match transport {
             Transport::Tcp => recv_network.listen_tcp("127.0.0.1:0").unwrap().1,
             Transport::Udp => recv_network.listen_udp("127.0.0.1:0").unwrap().1,
         };
 
-        let mut send_network = NetworkManager::new(|_: NetEvent<M>| ());
+        let mut send_network = Network::new(|_: NetEvent<M>| ());
 
         let receiver = match transport {
             Transport::Tcp => send_network.connect_tcp(receiver_addr).unwrap(),
@@ -181,7 +181,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
         // The sender will send to a listener in the same network.
         // This emulates the process of sending messages while
         // other instace are sending also to the first one.
-        let mut network = NetworkManager::new(|_: NetEvent<M>| ());
+        let mut network = Network::new(|_: NetEvent<M>| ());
 
         let receiver_addr = match transport {
             Transport::Tcp => network.listen_tcp("127.0.0.1:0").unwrap().1,
@@ -209,13 +209,13 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
         b.iter_custom(|iters| {
             let mut recv_event_queue = EventQueue::<NetEvent<M>>::new();
             let sender = recv_event_queue.sender().clone();
-            let mut recv_network = NetworkManager::new(move |net_event| sender.send(net_event));
+            let mut recv_network = Network::new(move |net_event| sender.send(net_event));
 
             let (_, receiver_addr) = recv_network.listen_tcp("127.0.0.1:0").unwrap();
 
             let mut send_event_queue = EventQueue::<NetEvent<M>>::new();
             let sender = send_event_queue.sender().clone();
-            let mut send_network = NetworkManager::new(move |net_event| sender.send(net_event));
+            let mut send_network = Network::new(move |net_event| sender.send(net_event));
 
             let receiver = send_network.connect_tcp(receiver_addr).unwrap();
 

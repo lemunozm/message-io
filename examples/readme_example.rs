@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{NetworkManager, NetEvent};
+use message_io::network::{Network, NetEvent};
 
 use serde::{Serialize, Deserialize};
 
@@ -23,9 +23,9 @@ enum Event {
 fn main() {
     let mut event_queue = EventQueue::new();
 
-    // Create NetworkManager, the callback will push the network event into the event queue
+    // Create Network, the callback will push the network event into the event queue
     let sender = event_queue.sender().clone();
-    let mut network = NetworkManager::new(move |net_event| sender.send(Event::Network(net_event)));
+    let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
 
     // Listen from TCP and UDP messages on ports 3005.
     let addr = "0.0.0.0:3005";

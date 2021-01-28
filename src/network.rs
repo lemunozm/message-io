@@ -112,7 +112,7 @@ impl<'a> Network {
         decoding_pool: &mut DecodingPool<Endpoint>,
     ) where
         InMessage: for<'b> Deserialize<'b> + Send + 'static,
-        C: Fn(NetEvent<InMessage>) + Send + 'static,
+        C: Fn(NetEvent<InMessage>),
     {
         match event {
             network_adapter::Event::Connection => {

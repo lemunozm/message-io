@@ -64,28 +64,25 @@ impl TcpAdapter {
         }
     }
 
+    pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
+        let stream = StdTcpStream::connect(addr)?;
+        stream.set_nonblocking(true)?;
+        let mut stream = TcpStream::from_std(stream);
+
+        let id = self.store.id_generator.generate(ResourceType::Remote);
+        self.store.registry.register(&mut stream, Token(id.raw()), Interest::READABLE).unwrap();
+        self.store.streams.write().expect(OTHER_THREAD_ERR).insert(id, (Arc::new(stream), addr));
+        Ok(Endpoint::new(id, addr))
+    }
+
     pub fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         let mut listener = TcpListener::bind(addr)?;
 
         let id = self.store.id_generator.generate(ResourceType::Listener);
-        let addr = listener.local_addr().unwrap();
+        let real_addr = listener.local_addr().unwrap();
         self.store.registry.register(&mut listener, Token(id.raw()), Interest::READABLE).unwrap();
         self.store.listeners.write().expect(OTHER_THREAD_ERR).insert(id, listener);
-        Ok((id, addr))
-    }
-
-    pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
-        let mut stream = StdTcpStream::connect(addr).map(|stream| {
-            stream.set_nonblocking(true).unwrap();
-            TcpStream::from_std(stream)
-        })?;
-
-        let id = self.store.id_generator.generate(ResourceType::Remote);
-        // We store the addr because we will need it when the stream crash.
-        let addr = stream.peer_addr().unwrap();
-        self.store.registry.register(&mut stream, Token(id.raw()), Interest::READABLE).unwrap();
-        self.store.streams.write().expect(OTHER_THREAD_ERR).insert(id, (Arc::new(stream), addr));
-        Ok(Endpoint::new(id, addr))
+        Ok((id, real_addr))
     }
 
     pub fn remove(&mut self, id: ResourceId) -> Option<()> {
@@ -110,14 +107,16 @@ impl TcpAdapter {
                 self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id)
                     .map(|listener| listener.local_addr().unwrap()),
             ResourceType::Remote =>
-                self.store.streams.read().expect(OTHER_THREAD_ERR).get(&id).map(|(_, addr)| *addr),
+                self.store.streams.read().expect(OTHER_THREAD_ERR).get(&id)
+                    .map(|(stream, _)| stream.local_addr().unwrap()),
         }
     }
 
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
         let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
         let (stream, _) = streams.get(&endpoint.resource_id())
-            .expect("Resource id '{}' not exists in the network adapter");
+            .expect("Resource id '{}' doesn't exists in the tcp adapter \
+                or is not a remote resource");
 
         // TODO: The current implementation implies an active waiting,
         // improve it using POLLIN instead to avoid active waiting.
@@ -160,6 +159,8 @@ impl Drop for TcpAdapter {
 }
 
 struct Store {
+    // We store the addr because we will need it when the stream crash.
+    // When a stream crash by an error (i.e. reset) peer_addr no longer returns the addr.
     streams: RwLock<HashMap<ResourceId, (Arc<TcpStream>, SocketAddr)>>,
     listeners: RwLock<HashMap<ResourceId, TcpListener>>,
     id_generator: ResourceIdGenerator,
@@ -191,7 +192,7 @@ impl<'a> TcpEventProcessor<'a> {
         timeout: Option<Duration>,
         poll: Poll,
     ) -> TcpEventProcessor<'a> {
-        TcpEventProcessor {
+        Self {
             resource_processor: TcpResourceProcessor::new(store, input_buffer),
             timeout,
             poll,
@@ -237,8 +238,8 @@ struct TcpResourceProcessor<'a> {
 }
 
 impl<'a> TcpResourceProcessor<'a> {
-    fn new(store: Arc<Store>, input_buffer: &'a mut [u8]) -> TcpResourceProcessor {
-        TcpResourceProcessor { store, input_buffer, }
+    fn new(store: Arc<Store>, input_buffer: &'a mut [u8]) -> Self {
+        Self { store, input_buffer, }
     }
 
     fn process_listener<C>(&mut self, id: ResourceId, event_callback: &mut C)
@@ -249,8 +250,12 @@ impl<'a> TcpResourceProcessor<'a> {
             let mut streams = self.store.streams.write().expect(OTHER_THREAD_ERR);
             loop {
                 match listener.accept() {
-                    Ok((stream, addr)) => {
+                    Ok((mut stream, addr)) => {
                         let id = self.store.id_generator.generate(ResourceType::Remote);
+                        self.store.registry
+                            .register(&mut stream, Token(id.raw()), Interest::READABLE)
+                            .unwrap();
+
                         streams.insert(id, (Arc::new(stream), addr));
 
                         let endpoint = Endpoint::new(id, addr);
@@ -293,7 +298,12 @@ impl<'a> TcpResourceProcessor<'a> {
 
         // Here the read lock has been dropped and it's safe to perform the write lock
         if must_be_removed {
-            self.store.streams.write().expect(OTHER_THREAD_ERR).remove(&id).unwrap();
+            self.store.streams.write().expect(OTHER_THREAD_ERR).remove(&id)
+                .map(|(stream, _)|{
+                    let source = &mut Arc::try_unwrap(stream).unwrap();
+                    self.store.registry.deregister(source).unwrap();
+                })
+                .unwrap();
         }
     }
 }

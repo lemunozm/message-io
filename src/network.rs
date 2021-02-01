@@ -1,5 +1,6 @@
 pub use crate::resource_id::{ResourceId};
 pub use crate::endpoint::{Endpoint};
+pub use crate::transports::udp::MAX_UDP_LEN;
 
 use crate::transports::{
     tcp::{TcpAdapter, TcpEvent},
@@ -17,7 +18,6 @@ use std::convert::Into;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::io::{self};
 
-
 #[derive(IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 #[derive(Debug)]
@@ -28,11 +28,11 @@ enum Transport {
 
 /// Input network events.
 #[derive(Debug)]
-pub enum NetEvent<InMessage>
-where InMessage: for<'b> Deserialize<'b> + Send + 'static
+pub enum NetEvent<M>
+where M: for<'b> Deserialize<'b> + Send + 'static
 {
     /// Input message received by the network.
-    Message(Endpoint, InMessage),
+    Message(Endpoint, M),
 
     /// New endpoint added to a listener.
     /// It is sent when a new connection is accepted by the listener.
@@ -70,10 +70,10 @@ impl<'a> Network {
     /// Creates a new [Network].
     /// The user must register an event_callback that can be called
     /// each time the network generate and [NetEvent]
-    pub fn new<InMessage, C>(event_callback: C) -> Network
+    pub fn new<M, C>(event_callback: C) -> Network
     where
-        InMessage: for<'b> Deserialize<'b> + Send + 'static,
-        C: Fn(NetEvent<InMessage>) + Send + Sync + 'static,
+        M: for<'b> Deserialize<'b> + Send + 'static,
+        C: Fn(NetEvent<M>) + Send + Copy + 'static,
     {
         let mut decoding_pool = DecodingPool::new();
 
@@ -91,7 +91,7 @@ impl<'a> Network {
                                 "Message received from {}, {} bytes",
                                 endpoint, decoded_data.len()
                             );
-                            match bincode::deserialize::<InMessage>(decoded_data) {
+                            match bincode::deserialize::<M>(decoded_data) {
                                 Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
                                 Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
                             }
@@ -104,8 +104,15 @@ impl<'a> Network {
                     }
                 };
             }),
-            udp_adapter: UdpAdapter::init(Transport::Udp.into(), |endpoint, data| {
+
+            udp_adapter: UdpAdapter::init(Transport::Udp.into(), move |endpoint, data| {
+                log::trace!("Message received from {}, {} bytes", endpoint, data.len());
+                match bincode::deserialize::<M>(data) {
+                    Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
+                    Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
+                }
             }),
+
             output_buffer: Vec::new(),
         }
     }
@@ -148,17 +155,12 @@ impl<'a> Network {
     pub fn listen_udp_multicast<A: ToSocketAddrs>(
         &mut self,
         addr: A,
-    ) -> io::Result<(usize, SocketAddr)>
+    ) -> io::Result<(ResourceId, SocketAddr)>
     {
-        /*
         match addr.to_socket_addrs().unwrap().next().unwrap() {
-            SocketAddr::V4(addr) => Listener::new_udp_multicast(addr).map(|listener| {
-                self.network_controller.lock().expect(Self::POISONED_LOCK).add_listener(listener)
-            }),
+            SocketAddr::V4(addr) => self.udp_adapter.listen_multicast(addr),
             _ => panic!("Listening for udp multicast is only supported for ipv4 addresses"),
         }
-        */
-        todo!()
     }
 
     /// Remove a network resource.
@@ -188,41 +190,50 @@ impl<'a> Network {
     /// If the same message should be sent to different endpoints, use `send_all()` to better performance.
     /// The funcion panics if some of endpoints do not exists.
     /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
-    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage)
-    where OutMessage: Serialize {
-        self.prepare_output_message(message);
-        match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
-            Transport::Tcp =>  self.tcp_adapter.send(endpoint, &self.output_buffer),
-            Transport::Udp =>  self.udp_adapter.send(endpoint, &self.output_buffer),
-        }
+    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) {
         self.output_buffer.clear();
+        match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
+            Transport::Tcp => {
+                self.prepare_output_message(message);
+                self.tcp_adapter.send(endpoint, &self.output_buffer)
+            },
+            Transport::Udp => {
+                bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+                self.udp_adapter.send(endpoint, &self.output_buffer)
+            },
+        }
         log::trace!("Message sent to {}", endpoint);
     }
 
     /// Serialize and send the message thought the connections represented by the given endpoints.
-    /// When there are severals endpoints to send the data, this function is faster than consecutive calls to `send()`
+    /// When there are severals endpoints to send the data,
+    /// this function is faster than consecutive calls to `send()`
     /// since the serialization is only performed one time for all endpoints.
     /// The funcion panics if some of endpoints do not exists.
     /// If the protocol is UDP, the function panics if the message size is higher than MTU.
     /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
-    pub fn send_all<'b, OutMessage>(
+    pub fn send_all<'b, M: Serialize>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,
-        message: OutMessage,
-    ) where OutMessage: Serialize {
+        message: M
+    ) {
+        self.output_buffer.clear();
         self.prepare_output_message(message);
         for endpoint in endpoints {
             match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
-                Transport::Tcp =>  self.tcp_adapter.send(*endpoint, &self.output_buffer),
-                Transport::Udp =>  self.udp_adapter.send(*endpoint, &self.output_buffer),
+                Transport::Tcp => self.tcp_adapter.send(*endpoint, &self.output_buffer),
+                Transport::Udp => {
+                    // It is preferred to avoid the encoding in udp
+                    // than check for each endpoint which one is UDP or not
+                    // since the conding is performed one time for all packets
+                    self.udp_adapter.send(*endpoint, &self.output_buffer[encoding::PADDING..])
+                },
             }
             log::trace!("Message sent to {}", endpoint);
         }
-        self.output_buffer.clear();
     }
 
-    fn prepare_output_message<OutMessage>(&mut self, message: OutMessage)
-    where OutMessage: Serialize {
+    fn prepare_output_message<M: Serialize>(&mut self, message: M) -> () {
         encoding::encode(&mut self.output_buffer, |enconding_slot| {
             bincode::serialize_into(enconding_slot, &message).unwrap();
         });

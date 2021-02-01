@@ -13,7 +13,7 @@
 **Any contribution is welcome!**
 
 ## Who is this project for?
-- People who want to make an application that needs to communicate over tcp/udp protocols.
+- People who want to make an application that needs to communicate over TCP/UDP protocols.
 - People who want to make a multiplayer game (server and/or client).
 - People who don't want to deal with concurrence or socket connection problems.
 - People who want to push the effort in the messages among the apps, not in how to transport them.

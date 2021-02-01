@@ -13,6 +13,7 @@ pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
     assert!(buffer.len() >= message_point, "Encoding must not decrement the buffer length");
     let data_size = (buffer.len() - message_point) as Padding;
     bincode::serialize_into(&mut buffer[start_point..start_point + PADDING], &data_size).unwrap();
+
 }
 
 /// Used to decoded one message from several/partial data chunks

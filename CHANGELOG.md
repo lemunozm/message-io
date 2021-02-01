@@ -1,5 +1,10 @@
 # Changelog
 
+## Current release
+- Added concurrent writing and reading from socket/streams in UDP and TCP protocols.
+- Removed UDP enconding (improved speed)
+- The Resource id from `Endpoint` is now a struct called `ResourceId` instead of `usize`.
+
 ## Release 0.5.1
 - Fixed a leak memory with timer events.
 - Improved timer events accuracy.

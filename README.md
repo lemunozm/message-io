@@ -4,7 +4,7 @@
 [![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
 
 # message-io
-`message-io` is an asynchronous message library to build network applications easy and fast. The library manages and processes the socket data streams in order to offer a simple event message API to the user.
+`message-io` is an asynchronous message library to build network applications **easy** and **fast**. The library manages and processes the socket data streams in order to offer a simple event message API to the user.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=653&h=305" width="653"/>
@@ -13,10 +13,10 @@
 **Any contribution is welcome!**
 
 ## Who is this project for?
-- People who want to make an application that needs to communicate over TCP/UDP protocols.
-- People who want to make a multiplayer game (server and/or client).
 - People who don't want to deal with concurrence or socket connection problems.
 - People who want to push the effort in the messages among the apps, not in how to transport them.
+- People who want to make a multiplayer game (server and/or client).
+- People who want to make an application that needs to communicate over TCP / UDP protocols.
 
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
@@ -151,7 +151,7 @@ To reach this, the user has to connect the `Network` to the `EventQueue` sending
 </p>
 
 ## Test yourself!
-Clone the repository and test the `tcp`example that you can found in [`examples/tcp`](examples/tcp):
+Clone the repository and test the TCP example that you can found in [`examples/tcp`](examples/tcp):
 
 Run the server:
 ```
@@ -162,4 +162,12 @@ In other terminals, run one or more clients:
 cargo run --example tcp client <name>
 ```
 
+## Not found the transport protocol you need? Add it easily!
 
+- Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs`
+- Modify the `src/network.rs` in two ways:
+  - Add a new entry of the `Transport` enum with your transport name.
+  - Fill the main functions with your transport calls following the existing pattern.
+
+Of course, any contribution of any kind: ideas, fixing bugs, adding tests, examples...
+is really appreciated.

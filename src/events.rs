@@ -30,7 +30,7 @@ where E: Send + 'static
 
     /// Returns the internal sender reference to this queue.
     /// This reference can be safety cloned and shared to other threads
-    /// in order to make several senders to the same queue.
+    /// in order to get several senders to the same queue.
     pub fn sender(&mut self) -> &mut EventSender<E> {
         &mut self.event_sender
     }
@@ -122,8 +122,7 @@ pub struct EventSender<E> {
 }
 
 impl<E> EventSender<E>
-where E: Send + 'static
-{
+where E: Send + 'static {
     const EVENT_SENDING_ERROR: &'static str =
         "The associated EventQueue must be alive for sending an event";
 

@@ -8,10 +8,10 @@ pub enum ResourceType {
 }
 
 /// Unique identifier of a network resource.
-/// The identifier wrap three data,
-/// - The type, that can be a value of [ResourceType]
+/// The identifier wrap 3 values,
+/// - The type, that can be a value of [ResourceType].
 /// - The adapter id, that represent the adapter that creates this id
-/// - The base value: that is the unique identifier of the resource inside of its adapter.
+/// - The base value: that is an unique identifier of the resource inside of its adapter.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ResourceId {
     id: usize,
@@ -51,7 +51,7 @@ impl ResourceId {
         self.id
     }
 
-    /// Returns the ResourceType of this id
+    /// Returns the [ResourceType] of this resource
     pub fn resource_type(&self) -> ResourceType {
         if self.id & Self::RESOURCE_TYPE_BIT != 0 {
             ResourceType::Listener
@@ -66,7 +66,7 @@ impl ResourceId {
         ((self.id & Self::ADAPTER_ID_MASK_OVER_ID) >> Self::ADAPTER_ID_POS) as u8
     }
 
-    /// Returns the unique identifier inside the adapter.
+    /// Returns the unique identifier inside this adapter.
     pub fn base_value(&self) -> usize {
         self.id & Self::BASE_VALUE_MASK_OVER_ID
     }

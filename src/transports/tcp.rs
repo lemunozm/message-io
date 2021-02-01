@@ -64,7 +64,7 @@ impl TcpAdapter {
         }
     }
 
-    pub fn add_listener(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+    pub fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         let mut listener = TcpListener::bind(addr)?;
 
         let id = self.store.id_generator.generate(ResourceType::Listener);
@@ -74,17 +74,17 @@ impl TcpAdapter {
         Ok((id, addr))
     }
 
-    pub fn add_remote(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
-        let mut remote = StdTcpStream::connect(addr).map(|stream| {
+    pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
+        let mut stream = StdTcpStream::connect(addr).map(|stream| {
             stream.set_nonblocking(true).unwrap();
             TcpStream::from_std(stream)
         })?;
 
         let id = self.store.id_generator.generate(ResourceType::Remote);
         // We store the addr because we will need it when the stream crash.
-        let addr = remote.peer_addr().unwrap();
-        self.store.registry.register(&mut remote, Token(id.raw()), Interest::READABLE).unwrap();
-        self.store.streams.write().expect(OTHER_THREAD_ERR).insert(id, (Arc::new(remote), addr));
+        let addr = stream.peer_addr().unwrap();
+        self.store.registry.register(&mut stream, Token(id.raw()), Interest::READABLE).unwrap();
+        self.store.streams.write().expect(OTHER_THREAD_ERR).insert(id, (Arc::new(stream), addr));
         Ok(Endpoint::new(id, addr))
     }
 

@@ -40,9 +40,11 @@ impl UdpAdapter {
             .spawn(move || {
                 let mut input_buffer = [0; MAX_UDP_LEN];
                 let timeout = Some(Duration::from_millis(NETWORK_SAMPLING_TIMEOUT));
+                /*
                 while running.load(Ordering::Relaxed) {
                     todo!()
                 }
+                */
             })
             .unwrap();
 
@@ -53,11 +55,11 @@ impl UdpAdapter {
         }
     }
 
-    pub fn add_listener(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+    pub fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         todo!()
     }
 
-    pub fn add_remote(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
+    pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
         todo!()
     }
 

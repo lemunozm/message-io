@@ -70,49 +70,53 @@ impl<'a> Network {
     /// Creates a new [Network].
     /// The user must register an event_callback that can be called
     /// each time the network generate and [NetEvent]
-    pub fn new<M, C>(event_callback: C) -> Network
+    pub fn new<M, C>(user_event_callback: C) -> Network
     where
         M: for<'b> Deserialize<'b> + Send + 'static,
-        C: Fn(NetEvent<M>) + Send + Copy + 'static,
+        C: Fn(NetEvent<M>) + Send + Clone + 'static,
     {
         let mut decoding_pool = DecodingPool::new();
 
-        Network {
-            tcp_adapter: TcpAdapter::init(Transport::Tcp.into(), move |endpoint, event| {
-                match event {
-                    TcpEvent::Connection => {
-                        log::trace!("Connected endpoint {}", endpoint);
-                        event_callback(NetEvent::AddedEndpoint(endpoint));
-                    }
-                    TcpEvent::Data(data) => {
-                        log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                        decoding_pool.decode_from(data, endpoint, |decoded_data| {
-                            log::trace!(
-                                "Message received from {}, {} bytes",
-                                endpoint, decoded_data.len()
-                            );
-                            match bincode::deserialize::<M>(decoded_data) {
-                                Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
-                                Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
-                            }
-                        });
-                    }
-                    TcpEvent::Disconnection => {
-                        log::trace!("Disconnected endpoint {}", endpoint);
-                        decoding_pool.remove_if_exists(endpoint);
-                        event_callback(NetEvent::RemovedEndpoint(endpoint));
-                    }
-                };
-            }),
-
-            udp_adapter: UdpAdapter::init(Transport::Udp.into(), move |endpoint, data| {
-                log::trace!("Message received from {}, {} bytes", endpoint, data.len());
-                match bincode::deserialize::<M>(data) {
-                    Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
-                    Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
+        let event_callback = user_event_callback.clone();
+        let tcp_adapter = TcpAdapter::init(Transport::Tcp.into(), move |endpoint, event| {
+            match event {
+                TcpEvent::Connection => {
+                    log::trace!("Connected endpoint {}", endpoint);
+                    event_callback(NetEvent::AddedEndpoint(endpoint));
                 }
-            }),
+                TcpEvent::Data(data) => {
+                    log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+                    decoding_pool.decode_from(data, endpoint, |decoded_data| {
+                        log::trace!(
+                            "Message received from {}, {} bytes",
+                            endpoint, decoded_data.len()
+                        );
+                        match bincode::deserialize::<M>(decoded_data) {
+                            Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
+                            Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
+                        }
+                    });
+                }
+                TcpEvent::Disconnection => {
+                    log::trace!("Disconnected endpoint {}", endpoint);
+                    decoding_pool.remove_if_exists(endpoint);
+                    event_callback(NetEvent::RemovedEndpoint(endpoint));
+                }
+            };
+        });
 
+        let event_callback = user_event_callback.clone();
+        let udp_adapter = UdpAdapter::init(Transport::Udp.into(), move |endpoint, data: &[u8]| {
+            log::trace!("Message received from {}, {} bytes", endpoint, data.len());
+            match bincode::deserialize::<M>(data) {
+                Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
+                Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
+            }
+        });
+
+        Network {
+            tcp_adapter,
+            udp_adapter,
             output_buffer: Vec::new(),
         }
     }

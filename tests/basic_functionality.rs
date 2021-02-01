@@ -2,6 +2,7 @@ use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, MAX_UDP_LEN};
 
 use std::net::{TcpStream, Shutdown};
+use std::time::{Duration};
 
 const SMALL_MESSAGE: &'static str = "Small message";
 
@@ -74,8 +75,8 @@ fn simple_data_by_udp() {
 
     let server_handle = std::thread::spawn(move || {
         loop {
-            match event_queue.receive() {
-                NetEvent::Message(endpoint, message) => {
+            match event_queue.receive_timeout(Duration::from_secs(1)) {
+                Some(NetEvent::Message(endpoint, message)) => {
                     assert_eq!(upd_listen_resource_id, endpoint.resource_id());
                     assert_eq!(message, SMALL_MESSAGE);
                     network.send(endpoint, message);
@@ -94,8 +95,8 @@ fn simple_data_by_udp() {
         let server_endpoint = network.connect_udp(server_addr).unwrap();
         network.send(server_endpoint, SMALL_MESSAGE.to_string());
         loop {
-            match event_queue.receive() {
-                NetEvent::Message(endpoint, message) => {
+            match event_queue.receive_timeout(Duration::from_secs(1)) {
+                Some(NetEvent::Message(endpoint, message)) => {
                     assert_eq!(server_endpoint, endpoint);
                     assert_eq!(message, SMALL_MESSAGE);
                     break //Exit from thread
@@ -153,7 +154,7 @@ fn max_udp_size_message() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    const MESSAGE_SIZE: usize = MAX_UDP_LEN - (8 + 4); // Vec<u8> header + encoding header
+    const MESSAGE_SIZE: usize = MAX_UDP_LEN - 8; // Vec<u8> header + encoding header
     const VALUE: u8 = 0xFF;
     let (_, receiver_addr) = network.listen_udp("127.0.0.1:0").unwrap();
 

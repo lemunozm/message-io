@@ -1,6 +1,7 @@
 use std::sync::{atomic::{Ordering, AtomicUsize}};
 
 /// Information about the type of resource
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ResourceType {
     Listener,
     Remote,
@@ -24,16 +25,19 @@ impl ResourceId {
         (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS; // 7 bytes
     const BASE_VALUE_MASK_OVER_ID: usize = 0x0FFFFFFF;
 
-    fn new(id: usize, resource_type: ResourceType, adapter_id: u8) -> Self {
+    fn new(base_value: usize, resource_type: ResourceType, adapter_id: u8) -> Self {
         assert_eq!(adapter_id & Self::ADAPTER_ID_MASK, adapter_id,
             "The adapter_id value uses bits outside of the mask");
+        assert_eq!(base_value & Self::BASE_VALUE_MASK_OVER_ID, base_value,
+            "The id value uses bits outside of the mask");
+
+        let resource_type = match resource_type {
+            ResourceType::Listener => Self::RESOURCE_TYPE_BIT,
+            ResourceType::Remote => 0,
+        };
+
         Self {
-            id: match resource_type {
-                ResourceType::Listener => id
-                    | Self::RESOURCE_TYPE_BIT
-                    | (adapter_id as usize) << Self::ADAPTER_ID_POS,
-                ResourceType::Remote => id,
-            }
+            id: base_value | resource_type | (adapter_id as usize) << Self::ADAPTER_ID_POS,
         }
     }
 
@@ -94,5 +98,47 @@ impl ResourceIdGenerator {
     pub fn generate(&self, resource_type: ResourceType) -> ResourceId {
         let last = self.last.fetch_add(1, Ordering::SeqCst);
         ResourceId::new(last, resource_type, self.adapter_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_value() {
+        let low_base_value = 0;
+
+        let resource_id = ResourceId::new(low_base_value, ResourceType::Listener, 1);
+        assert_eq!(resource_id.base_value(), low_base_value);
+
+        let high_base_value = ResourceId::BASE_VALUE_MASK_OVER_ID;
+
+        let resource_id = ResourceId::new(high_base_value, ResourceType::Listener, 1);
+        assert_eq!(resource_id.base_value(), high_base_value);
+    }
+
+    #[test]
+    fn resource_type() {
+        let resource_id = ResourceId::new(0, ResourceType::Listener, 0);
+        assert_eq!(resource_id.resource_type(), ResourceType::Listener);
+        assert_eq!(resource_id.adapter_id(), 0);
+
+        let resource_id = ResourceId::new(0, ResourceType::Remote, 0);
+        assert_eq!(resource_id.resource_type(), ResourceType::Remote);
+        assert_eq!(resource_id.adapter_id(), 0);
+    }
+
+    #[test]
+    fn adapter_id() {
+        let adapter_id = ResourceId::ADAPTER_ID_MASK;
+
+        let resource_id = ResourceId::new(0, ResourceType::Listener, adapter_id);
+        assert_eq!(resource_id.adapter_id(), adapter_id);
+        assert_eq!(resource_id.resource_type(), ResourceType::Listener);
+
+        let resource_id = ResourceId::new(0, ResourceType::Remote, adapter_id);
+        assert_eq!(resource_id.adapter_id(), adapter_id);
+        assert_eq!(resource_id.resource_type(), ResourceType::Remote);
     }
 }

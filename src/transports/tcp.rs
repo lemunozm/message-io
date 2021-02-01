@@ -114,9 +114,11 @@ impl TcpAdapter {
 
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
         let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
-        let (stream, _) = streams.get(&endpoint.resource_id())
-            .expect("Resource id '{}' doesn't exists in the tcp adapter \
-                or is not a remote resource");
+        let stream = match streams.get(&endpoint.resource_id()) {
+            Some((stream, _)) => stream,
+            None => panic!("Resource id '{}' doesn't exists in the tcp adapter \
+                or is not a remote resource", endpoint.resource_id()),
+        };
 
         // TODO: The current implementation implies an active waiting,
         // improve it using POLLIN instead to avoid active waiting.

@@ -10,7 +10,10 @@ use net2::{UdpBuilder};
 use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 use std::time::{Duration};
 use std::collections::{HashMap};
-use std::sync::{Arc, RwLock, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc, RwLock,
+    atomic::{AtomicBool, Ordering},
+};
 use std::thread::{self, JoinHandle};
 use std::io::{self, ErrorKind};
 
@@ -50,11 +53,7 @@ impl UdpAdapter {
             })
             .unwrap();
 
-        Self {
-            thread: Some(thread),
-            thread_running,
-            store,
-        }
+        Self { thread: Some(thread), thread_running, store }
     }
 
     pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
@@ -74,9 +73,7 @@ impl UdpAdapter {
 
     pub fn listen_multicast(&mut self, addr: SocketAddrV4) -> io::Result<(ResourceId, SocketAddr)> {
         let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
-        let socket = UdpBuilder::new_v4()?
-            .reuse_address(true)?
-            .bind(listening_addr)?;
+        let socket = UdpBuilder::new_v4()?.reuse_address(true)?.bind(listening_addr)?;
 
         socket.set_nonblocking(true)?;
         socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED)?;
@@ -95,36 +92,51 @@ impl UdpAdapter {
 
     pub fn remove(&mut self, id: ResourceId) -> Option<()> {
         match id.resource_type() {
-            ResourceType::Listener =>
-                self.store.listeners.write().expect(OTHER_THREAD_ERR).remove(&id)
-                    .map(|mut listener|{
+            ResourceType::Listener => {
+                self.store.listeners.write().expect(OTHER_THREAD_ERR).remove(&id).map(
+                    |mut listener| {
                         self.store.registry.deregister(&mut listener).unwrap();
-                    }),
-            ResourceType::Remote =>
-                self.store.sockets.write().expect(OTHER_THREAD_ERR).remove(&id)
-                    .map(|(socket, _)|{
+                    },
+                )
+            }
+            ResourceType::Remote => {
+                self.store.sockets.write().expect(OTHER_THREAD_ERR).remove(&id).map(
+                    |(socket, _)| {
                         let source = &mut Arc::try_unwrap(socket).unwrap();
                         self.store.registry.deregister(source).unwrap();
-                    }),
+                    },
+                )
+            }
         }
     }
 
     pub fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
         match id.resource_type() {
-            ResourceType::Listener =>
-                self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id)
-                    .map(|listener| listener.local_addr().unwrap()),
-            ResourceType::Remote =>
-                self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&id)
-                    .map(|(socket, _)| socket.local_addr().unwrap()),
+            ResourceType::Listener => self
+                .store
+                .listeners
+                .read()
+                .expect(OTHER_THREAD_ERR)
+                .get(&id)
+                .map(|listener| listener.local_addr().unwrap()),
+            ResourceType::Remote => self
+                .store
+                .sockets
+                .read()
+                .expect(OTHER_THREAD_ERR)
+                .get(&id)
+                .map(|(socket, _)| socket.local_addr().unwrap()),
         }
     }
 
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
-        assert!(data.len() <= MAX_UDP_LEN,
+        assert!(
+            data.len() <= MAX_UDP_LEN,
             "The datagram max size is {} bytes, but your message data takes {} bytes. \
             Split the message in several messages or use a stream protocol as TCP",
-            MAX_UDP_LEN, data.len());
+            MAX_UDP_LEN,
+            data.len()
+        );
 
         // Only two errors can happend in 'sends' methods of UDP:
         // A packet that exceeds MTU size and send() called without knowing the remote addr.
@@ -164,11 +176,7 @@ impl Drop for UdpAdapter {
         }
 
         self.thread_running.store(false, Ordering::Relaxed);
-        self.thread
-            .take()
-            .unwrap()
-            .join()
-            .expect(OTHER_THREAD_ERR);
+        self.thread.take().unwrap().join().expect(OTHER_THREAD_ERR);
     }
 }
 
@@ -203,7 +211,8 @@ impl<'a> UdpEventProcessor<'a> {
         input_buffer: &'a mut [u8],
         timeout: Option<Duration>,
         poll: Poll,
-    ) -> UdpEventProcessor<'a> {
+    ) -> UdpEventProcessor<'a>
+    {
         Self {
             resource_processor: UdpResourceProcessor::new(store, input_buffer),
             timeout,
@@ -212,10 +221,8 @@ impl<'a> UdpEventProcessor<'a> {
         }
     }
 
-    pub fn process<C>(
-        &mut self,
-        event_callback: &mut C,
-    ) where C: for<'b> FnMut(Endpoint, &'b [u8]) {
+    pub fn process<C>(&mut self, event_callback: &mut C)
+    where C: for<'b> FnMut(Endpoint, &'b [u8]) {
         loop {
             match self.poll.poll(&mut self.events, self.timeout) {
                 Ok(_) => break self.process_resource(event_callback),
@@ -235,10 +242,12 @@ impl<'a> UdpEventProcessor<'a> {
             log::trace!("Wake from poll for UDP with resource id {}. ", id);
 
             match id.resource_type() {
-                ResourceType::Listener =>
-                    self.resource_processor.process_listener_socket(id, event_callback),
-                ResourceType::Remote =>
-                    self.resource_processor.process_remote_socket(id, event_callback),
+                ResourceType::Listener => {
+                    self.resource_processor.process_listener_socket(id, event_callback)
+                }
+                ResourceType::Remote => {
+                    self.resource_processor.process_remote_socket(id, event_callback)
+                }
             }
         }
     }
@@ -251,7 +260,7 @@ struct UdpResourceProcessor<'a> {
 
 impl<'a> UdpResourceProcessor<'a> {
     fn new(store: Arc<Store>, input_buffer: &'a mut [u8]) -> Self {
-        Self { store, input_buffer, }
+        Self { store, input_buffer }
     }
 
     fn process_listener_socket<C>(&mut self, id: ResourceId, event_callback: &mut C)
@@ -261,10 +270,9 @@ impl<'a> UdpResourceProcessor<'a> {
         if let Some(socket) = self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id) {
             loop {
                 match socket.recv_from(&mut self.input_buffer) {
-                    Ok((size, addr)) => event_callback(
-                        Endpoint::new(id, addr),
-                        &mut self.input_buffer[..size],
-                    ),
+                    Ok((size, addr)) => {
+                        event_callback(Endpoint::new(id, addr), &mut self.input_buffer[..size])
+                    }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                     Err(err) => Err(err).unwrap(),
                 }

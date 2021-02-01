@@ -1,4 +1,6 @@
-use std::sync::{atomic::{Ordering, AtomicUsize}};
+use std::sync::{
+    atomic::{Ordering, AtomicUsize},
+};
 
 /// Information about the type of resource
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -18,27 +20,34 @@ pub struct ResourceId {
 }
 
 impl ResourceId {
-    const RESOURCE_TYPE_BIT: usize = 1 << 63; // 1 bit
-    const ADAPTER_ID_MASK: u8 = 0b01111111; // 7 bits
-    const ADAPTER_ID_POS: usize = 8 * 7; // 7 bytes
-    const ADAPTER_ID_MASK_OVER_ID: usize =
-        (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS; // 7 bytes
+    // 1 bit
+    const ADAPTER_ID_MASK: u8 = 0b01111111;
+    // 7 bytes
+    const ADAPTER_ID_MASK_OVER_ID: usize = (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS;
+    // 7 bits
+    const ADAPTER_ID_POS: usize = 8 * 7;
+    // 7 bytes
     const BASE_VALUE_MASK_OVER_ID: usize = 0x0FFFFFFF;
+    const RESOURCE_TYPE_BIT: usize = 1 << 63;
 
     fn new(base_value: usize, resource_type: ResourceType, adapter_id: u8) -> Self {
-        assert_eq!(adapter_id & Self::ADAPTER_ID_MASK, adapter_id,
-            "The adapter_id value uses bits outside of the mask");
-        assert_eq!(base_value & Self::BASE_VALUE_MASK_OVER_ID, base_value,
-            "The id value uses bits outside of the mask");
+        assert_eq!(
+            adapter_id & Self::ADAPTER_ID_MASK,
+            adapter_id,
+            "The adapter_id value uses bits outside of the mask"
+        );
+        assert_eq!(
+            base_value & Self::BASE_VALUE_MASK_OVER_ID,
+            base_value,
+            "The id value uses bits outside of the mask"
+        );
 
         let resource_type = match resource_type {
             ResourceType::Listener => Self::RESOURCE_TYPE_BIT,
             ResourceType::Remote => 0,
         };
 
-        Self {
-            id: base_value | resource_type | (adapter_id as usize) << Self::ADAPTER_ID_POS,
-        }
+        Self { id: base_value | resource_type | (adapter_id as usize) << Self::ADAPTER_ID_POS }
     }
 
     /// Creates a [ResourceId] from an id

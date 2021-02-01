@@ -122,7 +122,8 @@ pub struct EventSender<E> {
 }
 
 impl<E> EventSender<E>
-where E: Send + 'static {
+where E: Send + 'static
+{
     const EVENT_SENDING_ERROR: &'static str =
         "The associated EventQueue must be alive for sending an event";
 

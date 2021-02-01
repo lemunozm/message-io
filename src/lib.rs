@@ -1,8 +1,8 @@
 mod util;
 mod resource_id;
 mod endpoint;
-mod transports;
 mod encoding;
+mod adapters;
 
 pub mod network;
 pub mod events;

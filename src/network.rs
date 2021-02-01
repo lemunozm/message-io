@@ -1,8 +1,8 @@
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
-pub use crate::transports::udp::MAX_UDP_LEN;
+pub use crate::adapters::udp::MAX_UDP_LEN;
 
-use crate::transports::{
+use crate::adapters::{
     tcp::{TcpAdapter, TcpEvent},
     udp::{UdpAdapter},
 };

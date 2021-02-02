@@ -1,6 +1,6 @@
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
-pub use crate::adapters::udp::MAX_UDP_LEN;
+pub use crate::util::{SendingStatus};
 
 use crate::adapters::{
     tcp::{TcpAdapter, TcpEvent},
@@ -63,7 +63,8 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 pub struct Network {
     tcp_adapter: TcpAdapter,
     udp_adapter: UdpAdapter,
-    output_buffer: Vec<u8>,
+    output_buffer: Vec<u8>,              //cached for preformance
+    send_all_status: Vec<SendingStatus>, //cached for performance
 }
 
 impl<'a> Network {
@@ -115,7 +116,7 @@ impl<'a> Network {
             }
         });
 
-        Network { tcp_adapter, udp_adapter, output_buffer: Vec::new() }
+        Network { tcp_adapter, udp_adapter, output_buffer: Vec::new(), send_all_status: Vec::new() }
     }
 
     /// Creates a connection to the specific address by TCP.
@@ -185,11 +186,11 @@ impl<'a> Network {
     /// If the same message should be sent to different endpoints,
     /// use [Network::send_all()] to get a better performance.
     /// The funcion panics if the endpoint do not exists in the [Network].
-    /// If the protocol is UDP, the function panics if the message size is higher than [MAX_UDP_LEN].
     /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
-    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) {
+    /// A [SendingStatus] is returned with the information about the sending.
+    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendingStatus {
         self.output_buffer.clear();
-        match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
+        let status = match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
             Transport::Tcp => {
                 self.prepare_output_message(message);
                 self.tcp_adapter.send(endpoint, &self.output_buffer)
@@ -199,8 +200,9 @@ impl<'a> Network {
                 bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
                 self.udp_adapter.send(endpoint, &self.output_buffer)
             }
-        }
+        };
         log::trace!("Message sent to {}", endpoint);
+        status
     }
 
     /// This functions performs the same actions as [Network::send()] but for several endpoints.
@@ -212,12 +214,13 @@ impl<'a> Network {
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,
         message: M,
-    )
+    ) -> &Vec<SendingStatus>
     {
         self.output_buffer.clear();
+        self.send_all_status.clear();
         self.prepare_output_message(message);
         for endpoint in endpoints {
-            match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
+            let status = match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
                 Transport::Tcp => self.tcp_adapter.send(*endpoint, &self.output_buffer),
                 Transport::Udp => {
                     // It is preferred to avoid the encoding in UDP in the sending
@@ -225,9 +228,11 @@ impl<'a> Network {
                     // The waste is minimum since the encoding is performed one time for all packets
                     self.udp_adapter.send(*endpoint, &self.output_buffer[encoding::PADDING..])
                 }
-            }
+            };
+            self.send_all_status.push(status);
             log::trace!("Message sent to {}", endpoint);
         }
+        &self.send_all_status
     }
 
     /// Encodes and serilize a message storing the resuting data in the [Network::output_buffer]

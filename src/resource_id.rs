@@ -104,6 +104,10 @@ impl ResourceIdGenerator {
         let last = self.last.fetch_add(1, Ordering::SeqCst);
         ResourceId::new(last, resource_type, self.adapter_id)
     }
+
+    pub fn adapter_id(&self) -> u8 {
+        self.adapter_id
+    }
 }
 
 #[cfg(test)]

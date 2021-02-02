@@ -6,3 +6,5 @@ mod adapters;
 
 pub mod network;
 pub mod events;
+
+pub use adapters::udp::MAX_UDP_LEN;

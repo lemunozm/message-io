@@ -1,6 +1,6 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
-use crate::util::{OTHER_THREAD_ERR};
+use crate::util::{OTHER_THREAD_ERR, SendingStatus};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{Poll, Interest, Token, Events, Registry};
@@ -122,41 +122,43 @@ impl TcpAdapter {
         }
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
-        let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
-        let stream = match streams.get(&endpoint.resource_id()) {
-            Some((stream, _)) => stream,
-            None => panic!(
-                "Resource id '{}' doesn't exists in the tcp adapter or is not a remote resource",
-                endpoint.resource_id()
-            ),
-        };
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
+        assert_eq!(endpoint.resource_id().adapter_id(), self.store.id_generator.adapter_id());
 
-        // TODO: The current implementation implies an active waiting,
-        // improve it using POLLIN instead to avoid active waiting.
-        // Note: Despite the fear that an active waiting could generate,
-        // this waiting only occurs in the rare case when the send method needs block.
-        let mut total_bytes_sent = 0;
-        loop {
-            match stream.deref().write(&data[total_bytes_sent..]) {
-                Ok(bytes_sent) => {
-                    total_bytes_sent += bytes_sent;
-                    if total_bytes_sent == data.len() {
-                        break
+        let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
+        match streams.get(&endpoint.resource_id()) {
+            Some((stream, _)) => {
+                // TODO: The current implementation implies an active waiting,
+                // improve it using POLLIN instead to avoid active waiting.
+                // Note: Despite the fear that an active waiting could generate,
+                // this waiting only occurs in the rare case when the send method needs block.
+                let mut total_bytes_sent = 0;
+                loop {
+                    match stream.deref().write(&data[total_bytes_sent..]) {
+                        Ok(bytes_sent) => {
+                            total_bytes_sent += bytes_sent;
+                            if total_bytes_sent == data.len() {
+                                break SendingStatus::Sent
+                            }
+                            // We get sending to data, but not the totality.
+                            // We start waiting actively.
+                        }
+
+                        // If WouldBlock is received in this non-blocking socket means that
+                        // the sending buffer is full and it should wait to send more data.
+                        // This occurs when huge amounts of data are sent and It could be
+                        // intensified if the remote endpoint reads slower than this enpoint sends.
+                        Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+
+                        // Others errors are considered fatal for the connection.
+                        // an Event::Disconnection will be generated later.
+                        // It is possible to reach this point if the sending method is produced
+                        // before the disconnection/reset event is generated.
+                        Err(_) => break SendingStatus::RemovedEndpoint,
                     }
-                    // We get sending to data, but not the totality.
-                    // We start waiting actively.
                 }
-                // If WouldBlock is received in this non-blocking socket means that
-                // the sending buffer is full and it should wait to send more data.
-                // This occurs when huge amounts of data are sent and It could be
-                // intensified if the remote endpoint reads slower than this enpoint sends.
-                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
-                // Skipping. Others errors will be considered fatal for the connection.
-                // We skip here their handling because if the connection brokes,
-                // an Event::Disconnection will be generated later.
-                Err(_) => break,
             }
+            None => SendingStatus::RemovedEndpoint,
         }
     }
 }

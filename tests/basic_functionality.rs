@@ -1,5 +1,6 @@
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent, Transport, MAX_UDP_LEN};
+use message_io::network::{Network, NetEvent, Transport};
+use message_io::{MAX_UDP_LEN};
 
 use std::net::{TcpStream, Shutdown};
 use std::time::{Duration};

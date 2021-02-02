@@ -1,6 +1,6 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
-use crate::util::{OTHER_THREAD_ERR};
+use crate::util::{OTHER_THREAD_ERR, SendingStatus};
 
 use mio::{Poll, Interest, Token, Events, Registry};
 use mio::net::{UdpSocket};
@@ -124,38 +124,33 @@ impl UdpAdapter {
         }
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
-        assert!(
-            data.len() <= MAX_UDP_LEN,
-            "The datagram max size is {} bytes, but your message data takes {} bytes. \
-            Split the message in several messages or use a stream protocol as TCP",
-            MAX_UDP_LEN,
-            data.len()
-        );
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
+        assert_eq!(endpoint.resource_id().adapter_id(), self.store.id_generator.adapter_id());
 
-        // Only two errors can happend in 'sends' methods of UDP:
-        // A packet that exceeds MTU size and send() called without knowing the remote addr.
+        if data.len() > MAX_UDP_LEN {
+            SendingStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_LEN)
+        }
+        else {
+            // Only two errors can happend in 'sends' methods of UDP:
+            // A packet that exceeds MTU size and send() called without knowing the remote addr.
+            // Both controlled so we can expect that no errors be produced at sending
 
-        let mut message_sent = false;
-
-        {
-            let sockets = self.store.sockets.read().expect(OTHER_THREAD_ERR);
-            if let Some((socket, _)) = sockets.get(&endpoint.resource_id()) {
+            if let Some((socket, _)) =
+                self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
+            {
                 socket.send(data).expect("No errors here");
-                message_sent = true;
+                SendingStatus::Sent
             }
-        }
-
-        {
-            let listeners = self.store.listeners.read().expect(OTHER_THREAD_ERR);
-            if let Some(socket) = listeners.get(&endpoint.resource_id()) {
+            else if let Some(socket) =
+                self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
+            {
                 socket.send_to(data, endpoint.addr()).expect("No errors here");
-                message_sent = true;
+                SendingStatus::Sent
             }
-        }
-
-        if !message_sent {
-            panic!("Resource id '{}' doesn't exists", endpoint.resource_id());
+            else {
+                // If the endpoint does not exists, is because it was removed
+                SendingStatus::RemovedEndpoint
+            }
         }
     }
 }

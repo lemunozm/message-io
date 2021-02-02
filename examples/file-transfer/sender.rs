@@ -39,14 +39,10 @@ pub fn run(file_path: &str) {
         match event_queue.receive() {
             Event::Network(net_event) => match net_event {
                 NetEvent::Message(_, message) => match message {
-                    ReceiverMsg::CanReceive(can) => {
-                        if can {
-                            event_queue.sender().send(Event::SendChunk);
-                        }
-                        else {
-                            return println!("The receiver can not receive the file :(")
-                        }
-                    }
+                    ReceiverMsg::CanReceive(can) => match can {
+                        true => event_queue.sender().send(Event::SendChunk),
+                        false => return println!("The receiver can not receive the file :("),
+                    },
                 },
                 NetEvent::AddedEndpoint(_) => unreachable!(),
                 NetEvent::RemovedEndpoint(_) => return println!("\nReceiver disconnected"),

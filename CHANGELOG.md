@@ -9,6 +9,7 @@
 - Removed `listen_udp_multicast()` from network.
   Now it make uses of listen() function.
   If it uses an ipv4 multicast address it is set as multicast.
+- Adding a `SendingStatus` to sending functions.
 
 ## Release 0.5.1
 - Fixed a leak memory with timer events.

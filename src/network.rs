@@ -106,7 +106,7 @@ impl<'a> Network {
             };
         });
 
-        let event_callback = user_event_callback.clone();
+        let event_callback = user_event_callback;
         let udp_adapter = UdpAdapter::init(Transport::Udp.into(), move |endpoint, data: &[u8]| {
             log::trace!("Message received from {}, {} bytes", endpoint, data.len());
             match bincode::deserialize::<M>(data) {
@@ -231,7 +231,7 @@ impl<'a> Network {
     }
 
     /// Encodes and serilize a message storing the resuting data in the [Network::output_buffer]
-    fn prepare_output_message<M: Serialize>(&mut self, message: M) -> () {
+    fn prepare_output_message<M: Serialize>(&mut self, message: M) {
         encoding::encode(&mut self.output_buffer, |enconding_slot| {
             bincode::serialize_into(enconding_slot, &message).unwrap();
         });

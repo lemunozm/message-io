@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent};
+use message_io::network::{Network, NetEvent, Transport};
 
 use serde::{Serialize, Deserialize};
 
@@ -25,7 +25,7 @@ fn main() {
     let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
 
     let addr = "239.255.0.1:3010";
-    match network.connect_udp(addr) {
+    match network.connect(Transport::Udp, addr) {
         Ok(endpoint) => {
             println!("Notifying on the network");
             network.send(endpoint, Message::HelloLan(my_name.into()));
@@ -33,7 +33,9 @@ fn main() {
         Err(_) => return eprintln!("Could not connecto to {}", addr),
     }
 
-    network.listen_udp_multicast(addr).unwrap();
+    // Since the addrs belongs to the multicast range (from 224.0.0.0 to 239.255.255.255)
+    // the internal resource will be configured to receive multicast messages.
+    network.listen(Transport::Udp, addr).unwrap();
 
     loop {
         match event_queue.receive() {

@@ -1,7 +1,7 @@
 use super::common::{SenderMsg, ReceiverMsg};
 
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent, Endpoint};
+use message_io::network::{Network, NetEvent, Endpoint, Transport};
 
 use std::collections::{HashMap};
 use std::fs::{File};
@@ -25,7 +25,7 @@ pub fn run() {
     let mut network = Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let listen_addr = "127.0.0.1:3005";
-    match network.listen_tcp(listen_addr) {
+    match network.listen(Transport::Tcp, listen_addr) {
         Ok(_) => println!("Receiver running by TCP at {}", listen_addr),
         Err(_) => return println!("Can not listening by TCP at {}", listen_addr),
     }

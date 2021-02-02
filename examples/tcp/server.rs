@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent, Endpoint};
+use message_io::network::{Network, NetEvent, Endpoint, Transport};
 
 use std::collections::{HashMap};
 
@@ -22,7 +22,7 @@ pub fn run() {
     let mut clients: HashMap<Endpoint, ClientInfo> = HashMap::new();
 
     let listen_addr = "127.0.0.1:3000";
-    match network.listen_tcp(listen_addr) {
+    match network.listen(Transport::Tcp, listen_addr) {
         Ok(_) => println!("TCP Server running at {}", listen_addr),
         Err(_) => return println!("Can not listening at {}", listen_addr),
     }

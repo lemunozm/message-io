@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent, Endpoint};
+use message_io::network::{Network, NetEvent, Endpoint, Transport};
 
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
@@ -30,7 +30,7 @@ impl DiscoveryServer {
             Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
         let listen_addr = "127.0.0.1:5000";
-        match network.listen_tcp(listen_addr) {
+        match network.listen(Transport::Tcp, listen_addr) {
             Ok(_) => {
                 println!("Discovery server running at {}", listen_addr);
                 Some(DiscoveryServer { event_queue, network, participants: HashMap::new() })

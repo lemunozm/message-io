@@ -20,15 +20,11 @@ pub struct ResourceId {
 }
 
 impl ResourceId {
-    // 1 bit
-    const ADAPTER_ID_MASK: u8 = 0b01111111;
-    // 7 bytes
+    const RESOURCE_TYPE_BIT: usize = 1 << 63; // 1 bit
+    const ADAPTER_ID_POS: usize = 8 * 7; // 7 bytes
+    const ADAPTER_ID_MASK: u8 = 0b01111111; // 7 bits
     const ADAPTER_ID_MASK_OVER_ID: usize = (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS;
-    // 7 bits
-    const ADAPTER_ID_POS: usize = 8 * 7;
-    // 7 bytes
-    const BASE_VALUE_MASK_OVER_ID: usize = 0x0FFFFFFF;
-    const RESOURCE_TYPE_BIT: usize = 1 << 63;
+    const BASE_VALUE_MASK_OVER_ID: usize = 0x0FFFFFFF; // 7 bytes
 
     fn new(base_value: usize, resource_type: ResourceType, adapter_id: u8) -> Self {
         assert_eq!(
@@ -39,7 +35,7 @@ impl ResourceId {
         assert_eq!(
             base_value & Self::BASE_VALUE_MASK_OVER_ID,
             base_value,
-            "The id value uses bits outside of the mask"
+            "The base_value value uses bits outside of the mask"
         );
 
         let resource_type = match resource_type {

@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent, Endpoint};
+use message_io::network::{Network, NetEvent, Endpoint, Transport};
 
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
@@ -29,12 +29,12 @@ impl Participant {
 
         // A listener for any other participant that want to establish connection.
         let listen_addr = "127.0.0.1:0";
-        if let Ok((_, addr)) = network.listen_udp(listen_addr) {
+        if let Ok((_, addr)) = network.listen(Transport::Udp, listen_addr) {
             // 'addr' contains the port that the OS gives for us when we put a 0.
 
             // Connection to the discovery server.
             let discovery_addr = "127.0.0.1:5000";
-            if let Ok(endpoint) = network.connect_tcp(discovery_addr) {
+            if let Ok(endpoint) = network.connect(Transport::Tcp, discovery_addr) {
                 Some(Participant {
                     event_queue,
                     network,
@@ -112,7 +112,7 @@ impl Participant {
     }
 
     fn discovered_participant(&mut self, name: &str, addr: SocketAddr, message: &str) {
-        if let Ok(endpoint) = self.network.connect_udp(addr) {
+        if let Ok(endpoint) = self.network.connect(Transport::Udp, addr) {
             let gretings = format!("Hi '{}', {}", name, message);
             let message = Message::Gretings(self.name.clone(), gretings);
             self.network.send(endpoint, message);

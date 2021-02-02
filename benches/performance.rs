@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent};
+use message_io::network::{Network, NetEvent, Transport};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
@@ -34,12 +34,6 @@ struct BigMessage {
     data: [u8; BIG_SIZE],
 }
 const BIG_MESSAGE: BigMessage = BigMessage { data: [0xFF; BIG_SIZE] };
-
-#[derive(Debug)]
-enum Transport {
-    Tcp,
-    Udp,
-}
 
 //######################################################################
 //                     std benches (used as reference)
@@ -152,18 +146,10 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
     c.bench_function(&msg, |b| {
         // We need the internal network thread running while sending messages
         let mut recv_network = Network::new(|_: NetEvent<M>| ());
-
-        let receiver_addr = match transport {
-            Transport::Tcp => recv_network.listen_tcp("127.0.0.1:0").unwrap().1,
-            Transport::Udp => recv_network.listen_udp("127.0.0.1:0").unwrap().1,
-        };
+        let receiver_addr = recv_network.listen(transport, "127.0.0.1:0").unwrap().1;
 
         let mut send_network = Network::new(|_: NetEvent<M>| ());
-
-        let receiver = match transport {
-            Transport::Tcp => send_network.connect_tcp(receiver_addr).unwrap(),
-            Transport::Udp => send_network.connect_udp(receiver_addr).unwrap(),
-        };
+        let receiver = send_network.connect(transport, receiver_addr).unwrap();
 
         b.iter(|| {
             // The following process encodes, serializes and sends:
@@ -183,15 +169,8 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
         // other instace are sending also to the first one.
         let mut network = Network::new(|_: NetEvent<M>| ());
 
-        let receiver_addr = match transport {
-            Transport::Tcp => network.listen_tcp("127.0.0.1:0").unwrap().1,
-            Transport::Udp => network.listen_udp("127.0.0.1:0").unwrap().1,
-        };
-
-        let receiver = match transport {
-            Transport::Tcp => network.connect_tcp(receiver_addr).unwrap(),
-            Transport::Udp => network.connect_udp(receiver_addr).unwrap(),
-        };
+        let receiver_addr = network.listen(transport, "127.0.0.1:0").unwrap().1;
+        let receiver = network.connect(transport, receiver_addr).unwrap();
 
         b.iter(|| {
             // The following process encodes, serializes and sends:
@@ -211,13 +190,13 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
             let sender = recv_event_queue.sender().clone();
             let mut recv_network = Network::new(move |net_event| sender.send(net_event));
 
-            let (_, receiver_addr) = recv_network.listen_tcp("127.0.0.1:0").unwrap();
+            let (_, receiver_addr) = recv_network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
 
             let mut send_event_queue = EventQueue::<NetEvent<M>>::new();
             let sender = send_event_queue.sender().clone();
             let mut send_network = Network::new(move |net_event| sender.send(net_event));
 
-            let receiver = send_network.connect_tcp(receiver_addr).unwrap();
+            let receiver = send_network.connect(Transport::Tcp, receiver_addr).unwrap();
 
             let time = std::time::Instant::now();
             let receiver_handle = std::thread::spawn(move || {

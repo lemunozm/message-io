@@ -1,6 +1,5 @@
 control_brace_style = "ClosingNextLine"
 use_small_heuristics = "Max"
-reorder_impl_items = true
 reorder_imports = false
 reorder_modules = false
 trailing_semicolon = false

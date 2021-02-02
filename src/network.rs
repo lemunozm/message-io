@@ -20,8 +20,8 @@ use std::io::{self};
 
 #[derive(IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
-#[derive(Debug)]
-enum Transport {
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Transport {
     Tcp,
     Udp,
 }
@@ -121,52 +121,37 @@ impl<'a> Network {
     /// Creates a connection to the specific address by TCP.
     /// The endpoint, an identified of the new connection, will be returned.
     /// If the connection can not be performed (e.g. the address is not reached) an error is returned.
-    pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.tcp_adapter.connect(addr)
-    }
-
-    /// Creates a connection to the specific address by UDP.
-    /// The endpoint, an identified of the new connection, will be returned.
-    /// If there is an error during the socket creation, an error will be returned.
-    pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.udp_adapter.connect(addr)
-    }
-
-    /// Open a port to listen messages from TCP.
-    /// If the port can be opened, a [ResourceId] identifying the listener is returned along with the local address, or an error if not.
-    pub fn listen_tcp<A: ToSocketAddrs>(
+    pub fn connect<A: ToSocketAddrs>(
         &mut self,
+        transport: Transport,
+        addr: A,
+    ) -> io::Result<Endpoint>
+    {
+        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+        match transport {
+            Transport::Tcp => self.tcp_adapter.connect(addr),
+            Transport::Udp => self.udp_adapter.connect(addr),
+        }
+    }
+
+    /// Listen messages from specified transport.
+    /// The giver address will be used as interface and listening port.
+    /// If the port can be opened, a [ResourceId] identifying the listener is returned
+    /// along with the local address, or an error if not.
+    /// The address is returned despite you passed as parameter because
+    /// when a '0' port is specified, the OS will give a value.
+    /// If the protocol is UDP and the address is Ipv4 in the range of multicast ips
+    /// (from 224.0.0.0 to 239.255.255.255) it will be listening is multicast mode.
+    pub fn listen<A: ToSocketAddrs>(
+        &mut self,
+        transport: Transport,
         addr: A,
     ) -> io::Result<(ResourceId, SocketAddr)>
     {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.tcp_adapter.listen(addr)
-    }
-
-    /// Open a port to listen messages from UDP.
-    /// If the port can be opened, a [ResourceId] identifying the listener is returned along with the local address, or an error if not.
-    pub fn listen_udp<A: ToSocketAddrs>(
-        &mut self,
-        addr: A,
-    ) -> io::Result<(ResourceId, SocketAddr)>
-    {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.udp_adapter.listen(addr)
-    }
-
-    /// Open a port to listen messages from UDP in multicast.
-    /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
-    /// Only ipv4 addresses are allowed.
-    pub fn listen_udp_multicast<A: ToSocketAddrs>(
-        &mut self,
-        addr: A,
-    ) -> io::Result<(ResourceId, SocketAddr)>
-    {
-        match addr.to_socket_addrs().unwrap().next().unwrap() {
-            SocketAddr::V4(addr) => self.udp_adapter.listen_multicast(addr),
-            _ => panic!("Listening for UDP multicast is only supported for ipv4 addresses"),
+        match transport {
+            Transport::Tcp => self.tcp_adapter.listen(addr),
+            Transport::Udp => self.udp_adapter.listen(addr),
         }
     }
 
@@ -210,6 +195,7 @@ impl<'a> Network {
                 self.tcp_adapter.send(endpoint, &self.output_buffer)
             }
             Transport::Udp => {
+                // There is no need to encode in UDP
                 bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
                 self.udp_adapter.send(endpoint, &self.output_buffer)
             }
@@ -244,6 +230,7 @@ impl<'a> Network {
         }
     }
 
+    /// Encodes and serilize a message storing the resuting data in the [Network::output_buffer]
     fn prepare_output_message<M: Serialize>(&mut self, message: M) -> () {
         encoding::encode(&mut self.output_buffer, |enconding_slot| {
             bincode::serialize_into(enconding_slot, &message).unwrap();

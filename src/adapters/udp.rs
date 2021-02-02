@@ -67,27 +67,22 @@ impl UdpAdapter {
     }
 
     pub fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        let socket = UdpSocket::bind(addr)?;
-        Ok(self.listen_from_socket(socket))
-    }
+        let mut socket = match addr {
+            SocketAddr::V4(addr) if addr.ip().is_multicast() => {
+                let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
+                let socket = UdpBuilder::new_v4()?.reuse_address(true)?.bind(listening_addr)?;
+                socket.set_nonblocking(true)?;
+                socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED)?;
+                UdpSocket::from_std(socket)
+            }
+            _ => UdpSocket::bind(addr)?,
+        };
 
-    pub fn listen_multicast(&mut self, addr: SocketAddrV4) -> io::Result<(ResourceId, SocketAddr)> {
-        let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
-        let socket = UdpBuilder::new_v4()?.reuse_address(true)?.bind(listening_addr)?;
-
-        socket.set_nonblocking(true)?;
-        socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED)?;
-        let socket = UdpSocket::from_std(socket);
-
-        Ok(self.listen_from_socket(socket))
-    }
-
-    fn listen_from_socket(&mut self, mut socket: UdpSocket) -> (ResourceId, SocketAddr) {
         let id = self.store.id_generator.generate(ResourceType::Listener);
         let real_addr = socket.local_addr().unwrap();
         self.store.registry.register(&mut socket, Token(id.raw()), Interest::READABLE).unwrap();
         self.store.listeners.write().expect(OTHER_THREAD_ERR).insert(id, socket);
-        (id, real_addr)
+        Ok((id, real_addr))
     }
 
     pub fn remove(&mut self, id: ResourceId) -> Option<()> {

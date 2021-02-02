@@ -41,7 +41,7 @@
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.5"
+message-io = "0.6"
 ```
 
 ### Documentation

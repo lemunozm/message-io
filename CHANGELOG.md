@@ -1,6 +1,6 @@
 # Changelog
 
-## Current release
+## Release 0.6.0
 - Added concurrent writing and reading from socket/streams in UDP and TCP protocols.
 - Removed UDP enconding (improved speed)
 - The Resource id from `Endpoint` is now a struct called `ResourceId` instead of `usize`.

@@ -18,6 +18,8 @@ use std::convert::Into;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::io::{self};
 
+/// Enum to identified the underlying transport used.
+/// It can be passed in connect/listen functions
 #[derive(IntoPrimitive, TryFromPrimitive)]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

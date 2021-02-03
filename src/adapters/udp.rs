@@ -21,6 +21,24 @@ pub const MAX_UDP_LEN: usize = 1488;
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 const EVENTS_SIZE: usize = 1024;
 
+struct Store {
+    sockets: RwLock<HashMap<ResourceId, (UdpSocket, SocketAddr)>>,
+    listeners: RwLock<HashMap<ResourceId, UdpSocket>>,
+    id_generator: ResourceIdGenerator,
+    registry: Registry,
+}
+
+impl Store {
+    fn new(id_generator: ResourceIdGenerator, registry: Registry) -> Store {
+        Store {
+            sockets: RwLock::new(HashMap::new()),
+            listeners: RwLock::new(HashMap::new()),
+            id_generator,
+            registry,
+        }
+    }
+}
+
 pub struct UdpAdapter {
     thread: Option<JoinHandle<()>>,
     thread_running: Arc<AtomicBool>,
@@ -42,10 +60,8 @@ impl UdpAdapter {
         let thread = thread::Builder::new()
             .name("message-io: udp-adapter".into())
             .spawn(move || {
-                let mut input_buffer = [0; MAX_UDP_LEN];
                 let timeout = Some(Duration::from_millis(NETWORK_SAMPLING_TIMEOUT));
-                let mut event_processor =
-                    UdpEventProcessor::new(thread_store, &mut input_buffer[..], timeout, poll);
+                let mut event_processor = UdpEventProcessor::new(thread_store, timeout, poll);
 
                 while running.load(Ordering::Relaxed) {
                     event_processor.process(&mut event_callback);
@@ -62,7 +78,7 @@ impl UdpAdapter {
 
         let id = self.store.id_generator.generate(ResourceType::Remote);
         self.store.registry.register(&mut socket, Token(id.raw()), Interest::READABLE).unwrap();
-        self.store.sockets.write().expect(OTHER_THREAD_ERR).insert(id, (Arc::new(socket), addr));
+        self.store.sockets.write().expect(OTHER_THREAD_ERR).insert(id, (socket, addr));
         Ok(Endpoint::new(id, addr))
     }
 
@@ -96,9 +112,8 @@ impl UdpAdapter {
             }
             ResourceType::Remote => {
                 self.store.sockets.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |(socket, _)| {
-                        let source = &mut Arc::try_unwrap(socket).unwrap();
-                        self.store.registry.deregister(source).unwrap();
+                    |(mut socket, _)| {
+                        self.store.registry.deregister(&mut socket).unwrap();
                     },
                 )
             }
@@ -170,41 +185,17 @@ impl Drop for UdpAdapter {
     }
 }
 
-struct Store {
-    sockets: RwLock<HashMap<ResourceId, (Arc<UdpSocket>, SocketAddr)>>,
-    listeners: RwLock<HashMap<ResourceId, UdpSocket>>,
-    id_generator: ResourceIdGenerator,
-    registry: Registry,
-}
-
-impl Store {
-    fn new(id_generator: ResourceIdGenerator, registry: Registry) -> Store {
-        Store {
-            sockets: RwLock::new(HashMap::new()),
-            listeners: RwLock::new(HashMap::new()),
-            id_generator,
-            registry,
-        }
-    }
-}
-
-struct UdpEventProcessor<'a> {
-    resource_processor: UdpResourceProcessor<'a>,
+struct UdpEventProcessor {
+    resource_processor: UdpResourceProcessor,
     timeout: Option<Duration>,
     poll: Poll,
     events: Events,
 }
 
-impl<'a> UdpEventProcessor<'a> {
-    fn new(
-        store: Arc<Store>,
-        input_buffer: &'a mut [u8],
-        timeout: Option<Duration>,
-        poll: Poll,
-    ) -> UdpEventProcessor<'a>
-    {
+impl UdpEventProcessor {
+    fn new(store: Arc<Store>, timeout: Option<Duration>, poll: Poll) -> Self {
         Self {
-            resource_processor: UdpResourceProcessor::new(store, input_buffer),
+            resource_processor: UdpResourceProcessor::new(store),
             timeout,
             poll,
             events: Events::with_capacity(EVENTS_SIZE),
@@ -243,14 +234,14 @@ impl<'a> UdpEventProcessor<'a> {
     }
 }
 
-struct UdpResourceProcessor<'a> {
+struct UdpResourceProcessor {
     store: Arc<Store>,
-    input_buffer: &'a mut [u8],
+    input_buffer: [u8; MAX_UDP_LEN],
 }
 
-impl<'a> UdpResourceProcessor<'a> {
-    fn new(store: Arc<Store>, input_buffer: &'a mut [u8]) -> Self {
-        Self { store, input_buffer }
+impl UdpResourceProcessor {
+    fn new(store: Arc<Store>) -> Self {
+        Self { store, input_buffer: [0; MAX_UDP_LEN] }
     }
 
     fn process_listener_socket<C>(&mut self, id: ResourceId, event_callback: &mut C)
@@ -264,7 +255,7 @@ impl<'a> UdpResourceProcessor<'a> {
                         event_callback(Endpoint::new(id, addr), &mut self.input_buffer[..size])
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                    Err(err) => Err(err).unwrap(),
+                    Err(_) => break, // should not happened
                 }
             }
         }
@@ -279,7 +270,7 @@ impl<'a> UdpResourceProcessor<'a> {
                     Ok(size) => event_callback(endpoint, &mut self.input_buffer[..size]),
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                     Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => continue,
-                    Err(err) => Err(err).unwrap(),
+                    Err(_) => break, // should not happened
                 }
             }
         }

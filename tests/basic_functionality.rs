@@ -1,7 +1,9 @@
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent, MAX_UDP_LEN};
+use message_io::network::{Network, NetEvent, Transport};
+use message_io::{MAX_UDP_LEN};
 
 use std::net::{TcpStream, Shutdown};
+use std::time::{Duration};
 
 const SMALL_MESSAGE: &'static str = "Small message";
 
@@ -11,7 +13,7 @@ fn simple_connection_data_disconnection_by_tcp() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    let (_, server_addr) = network.listen_tcp("127.0.0.1:0").unwrap();
+    let (_, server_addr) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
 
     let server_handle = std::thread::spawn(move || {
         let mut client_endpoint = None;
@@ -41,7 +43,7 @@ fn simple_connection_data_disconnection_by_tcp() {
         let sender = event_queue.sender().clone();
         let mut network = Network::new(move |net_event| sender.send(net_event));
 
-        let server_endpoint = network.connect_tcp(server_addr).unwrap();
+        let server_endpoint = network.connect(Transport::Tcp, server_addr).unwrap();
         network.send(server_endpoint, SMALL_MESSAGE.to_string());
         loop {
             match event_queue.receive() {
@@ -70,12 +72,13 @@ fn simple_data_by_udp() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    let (upd_listen_resource_id, server_addr) = network.listen_udp("127.0.0.1:0").unwrap();
+    let (upd_listen_resource_id, server_addr) =
+        network.listen(Transport::Udp, "127.0.0.1:0").unwrap();
 
     let server_handle = std::thread::spawn(move || {
         loop {
-            match event_queue.receive() {
-                NetEvent::Message(endpoint, message) => {
+            match event_queue.receive_timeout(Duration::from_secs(1)) {
+                Some(NetEvent::Message(endpoint, message)) => {
                     assert_eq!(upd_listen_resource_id, endpoint.resource_id());
                     assert_eq!(message, SMALL_MESSAGE);
                     network.send(endpoint, message);
@@ -91,11 +94,11 @@ fn simple_data_by_udp() {
         let sender = event_queue.sender().clone();
         let mut network = Network::new(move |net_event| sender.send(net_event));
 
-        let server_endpoint = network.connect_udp(server_addr).unwrap();
+        let server_endpoint = network.connect(Transport::Udp, server_addr).unwrap();
         network.send(server_endpoint, SMALL_MESSAGE.to_string());
         loop {
-            match event_queue.receive() {
-                NetEvent::Message(endpoint, message) => {
+            match event_queue.receive_timeout(Duration::from_secs(1)) {
+                Some(NetEvent::Message(endpoint, message)) => {
                     assert_eq!(server_endpoint, endpoint);
                     assert_eq!(message, SMALL_MESSAGE);
                     break //Exit from thread
@@ -117,7 +120,7 @@ fn long_tcp_message() {
 
     const MESSAGE_SIZE: usize = 1_000_000; // Arround 1MB
     const VALUE: u8 = 0xAA;
-    let (_, receiver_addr) = network.listen_tcp("127.0.0.1:0").unwrap();
+    let (_, receiver_addr) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
 
     let receiver_handle = std::thread::spawn(move || {
         // Pass the network to the thread. The network should be destroyed before event queue.
@@ -140,7 +143,7 @@ fn long_tcp_message() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    let receiver = network.connect_tcp(receiver_addr).unwrap();
+    let receiver = network.connect(Transport::Tcp, receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
     network.send(receiver, message.clone()); // Blocks until the message is sent
 
@@ -153,9 +156,9 @@ fn max_udp_size_message() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    const MESSAGE_SIZE: usize = MAX_UDP_LEN - (8 + 4); // Vec<u8> header + encoding header
+    const MESSAGE_SIZE: usize = MAX_UDP_LEN - 8; // Vec<u8> header + encoding header
     const VALUE: u8 = 0xFF;
-    let (_, receiver_addr) = network.listen_udp("127.0.0.1:0").unwrap();
+    let (_, receiver_addr) = network.listen(Transport::Udp, "127.0.0.1:0").unwrap();
 
     let receiver_handle = std::thread::spawn(move || {
         // Pass the network to the thread. The network should be destroyed before event queue.
@@ -178,7 +181,7 @@ fn max_udp_size_message() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    let receiver = network.connect_udp(receiver_addr).unwrap();
+    let receiver = network.connect(Transport::Udp, receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
     network.send(receiver, message); // Blocks until the message is sent
 
@@ -191,7 +194,7 @@ fn disconnection() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    let (_, receiver_addr) = network.listen_tcp("127.0.0.1:0").unwrap();
+    let (_, receiver_addr) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
 
     let receiver_handle = std::thread::spawn(move || {
         // Pass the network to the thread. The network should be destroyed before event queue.

@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent};
+use message_io::network::{Network, NetEvent, Transport};
 
 use std::time::{Duration};
 
@@ -17,7 +17,7 @@ pub fn run(name: &str) {
     let mut network = Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let server_addr = "127.0.0.1:3000";
-    if let Ok(server_id) = network.connect_tcp(server_addr) {
+    if let Ok(server_id) = network.connect(Transport::Tcp, server_addr) {
         println!("Connect to server by TCP at {}", server_addr);
         event_queue.sender().send(Event::Greet);
 

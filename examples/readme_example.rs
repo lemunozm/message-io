@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent};
+use message_io::network::{Network, NetEvent, Transport};
 
 use serde::{Serialize, Deserialize};
 
@@ -29,8 +29,8 @@ fn main() {
 
     // Listen from TCP and UDP messages on ports 3005.
     let addr = "0.0.0.0:3005";
-    network.listen_tcp(addr).unwrap();
-    network.listen_udp(addr).unwrap();
+    network.listen(Transport::Tcp, addr).unwrap();
+    network.listen(Transport::Udp, addr).unwrap();
 
     loop {
         match event_queue.receive() { // Read the next event or wait until have it.

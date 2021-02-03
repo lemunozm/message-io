@@ -1,5 +1,16 @@
 # Changelog
 
+## Release 0.6.0
+- Added concurrent writing and reading from socket/streams in UDP and TCP protocols.
+- Removed UDP enconding (improved speed)
+- The Resource id from `Endpoint` is now a struct called `ResourceId` instead of `usize`.
+- Modified connect/listen API functions.
+  Now it make uses of the `Transport` enum in order to specify the transport.
+- Removed `listen_udp_multicast()` from network.
+  Now it make uses of listen() function.
+  If it uses an ipv4 multicast address it is set as multicast.
+- Adding a `SendingStatus` to sending functions.
+
 ## Release 0.5.1
 - Fixed a leak memory with timer events.
 - Improved timer events accuracy.

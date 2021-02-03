@@ -1,7 +1,7 @@
 use super::common::{Message};
 
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent};
+use message_io::network::{Network, NetEvent, Transport};
 
 enum Event {
     Network(NetEvent<Message>),
@@ -14,7 +14,7 @@ pub fn run() {
     let mut network = Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
 
     let listen_addr = "127.0.0.1:3000";
-    match network.listen_udp(listen_addr) {
+    match network.listen(Transport::Udp, listen_addr) {
         Ok(_) => println!("UDP Server running at {}", listen_addr),
         Err(_) => return println!("Can not listening at {}", listen_addr),
     }

@@ -1,29 +1,38 @@
-use crate::network_adapter::{self, Controller, Listener, Remote};
+pub use crate::resource_id::{ResourceId, ResourceType};
+pub use crate::endpoint::{Endpoint};
+pub use crate::util::{SendingStatus};
+
+use crate::adapters::{
+    tcp::{TcpAdapter, TcpEvent},
+    udp::{UdpAdapter},
+};
 use crate::encoding::{self, DecodingPool};
 
 use serde::{Serialize, Deserialize};
 
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
+use num_enum::IntoPrimitive;
+use num_enum::TryFromPrimitive;
+
+use std::convert::TryFrom;
+use std::convert::Into;
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::thread::{self, JoinHandle};
-use std::time::{Duration};
 use std::io::{self};
 
-pub use crate::network_adapter::{Endpoint, MAX_UDP_LEN};
-
-const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
-const INPUT_BUFFER_SIZE: usize = 65536;
+#[derive(IntoPrimitive, TryFromPrimitive)]
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Transport {
+    Tcp,
+    Udp,
+}
 
 /// Input network events.
 #[derive(Debug)]
-pub enum NetEvent<InMessage>
-where InMessage: for<'b> Deserialize<'b> + Send + 'static
+pub enum NetEvent<M>
+where M: for<'b> Deserialize<'b> + Send + 'static
 {
     /// Input message received by the network.
-    Message(Endpoint, InMessage),
+    Message(Endpoint, M),
 
     /// New endpoint added to a listener.
     /// It is sent when a new connection is accepted by the listener.
@@ -32,10 +41,10 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static
 
     /// A connection lost event.
     /// This event is only dispatched when a connection is lost.
-    /// Call to `remove_resource()` will not generate the event.
+    /// Call to [Network::remove_resource()] will NOT generate the event.
     /// After this event, the resource is considered removed.
-    /// A Message event will never be generated after this event.
-    /// This event will be sent only in TCP.
+    /// A Message event will never be generated after this event from the endpoint.
+    /// This event will be sent only in connection oriented protocols as TCP.
     /// Because UDP is not connection oriented, the event can no be detected.
     RemovedEndpoint(Endpoint),
 
@@ -48,221 +57,188 @@ where InMessage: for<'b> Deserialize<'b> + Send + 'static
     DeserializationError(Endpoint),
 }
 
-/// Network allows to manage the network easier.
-/// It is in mainly in charge to transform raw data from the network into message events
-/// and vice versa.
+/// Network is in charge of managing all the connections transparently.
+/// It transforms raw data from the network into message events and vice versa,
+/// and manages the different adapters for you.
 pub struct Network {
-    network_event_thread: Option<JoinHandle<()>>,
-    network_thread_running: Arc<AtomicBool>,
-    network_controller: Arc<Mutex<Controller>>,
-    output_buffer: Vec<u8>,
+    tcp_adapter: TcpAdapter,
+    udp_adapter: UdpAdapter,
+    output_buffer: Vec<u8>,              //cached for preformance
+    send_all_status: Vec<SendingStatus>, //cached for performance
 }
 
 impl<'a> Network {
-    const POISONED_LOCK: &'static str = "This error is shown because other thread has panicked";
-
     /// Creates a new [Network].
     /// The user must register an event_callback that can be called
-    /// each time the network generate and [NetEvent]
-    pub fn new<InMessage, C>(event_callback: C) -> Network
+    /// each time the network generate and [NetEvent].
+    pub fn new<M, C>(user_event_callback: C) -> Network
     where
-        InMessage: for<'b> Deserialize<'b> + Send + 'static,
-        C: Fn(NetEvent<InMessage>) + Send + 'static,
+        M: for<'b> Deserialize<'b> + Send + 'static,
+        C: Fn(NetEvent<M>) + Send + Clone + 'static,
     {
-        let (network_controller, mut network_receiver) = network_adapter::adapter();
+        let mut decoding_pool = DecodingPool::new();
 
-        let network_thread_running = Arc::new(AtomicBool::new(true));
-        let running = network_thread_running.clone();
-
-        let network_event_thread = thread::Builder::new()
-            .name("message-io: network".into())
-            .spawn(move || {
-                let mut input_buffer = [0; INPUT_BUFFER_SIZE];
-                let mut decoding_pool = DecodingPool::new();
-                let timeout = Duration::from_millis(NETWORK_SAMPLING_TIMEOUT);
-                while running.load(Ordering::Relaxed) {
-                    network_receiver.receive(
-                        &mut input_buffer[..],
-                        Some(timeout),
-                        |endpoint, event| {
-                            Self::process_network_event(
-                                &event_callback,
-                                endpoint,
-                                event,
-                                &mut decoding_pool,
-                            );
-                        },
-                    );
+        let event_callback = user_event_callback.clone();
+        let tcp_adapter = TcpAdapter::init(Transport::Tcp.into(), move |endpoint, event| {
+            match event {
+                TcpEvent::Connection => {
+                    log::trace!("Connected endpoint {}", endpoint);
+                    event_callback(NetEvent::AddedEndpoint(endpoint));
                 }
-            })
-            .unwrap();
+                TcpEvent::Data(data) => {
+                    log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+                    decoding_pool.decode_from(data, endpoint, |decoded_data| {
+                        log::trace!(
+                            "Message received from {}, {} bytes",
+                            endpoint,
+                            decoded_data.len()
+                        );
+                        match bincode::deserialize::<M>(decoded_data) {
+                            Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
+                            Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
+                        }
+                    });
+                }
+                TcpEvent::Disconnection => {
+                    log::trace!("Disconnected endpoint {}", endpoint);
+                    decoding_pool.remove_if_exists(endpoint);
+                    event_callback(NetEvent::RemovedEndpoint(endpoint));
+                }
+            };
+        });
 
-        Network {
-            network_event_thread: Some(network_event_thread),
-            network_thread_running,
-            network_controller,
-            output_buffer: Vec::new(),
-        }
-    }
+        let event_callback = user_event_callback;
+        let udp_adapter = UdpAdapter::init(Transport::Udp.into(), move |endpoint, data: &[u8]| {
+            log::trace!("Message received from {}, {} bytes", endpoint, data.len());
+            match bincode::deserialize::<M>(data) {
+                Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
+                Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
+            }
+        });
 
-    fn process_network_event<'c, InMessage, C>(
-        event_callback: &C,
-        endpoint: Endpoint,
-        event: network_adapter::Event<'c>,
-        decoding_pool: &mut DecodingPool<Endpoint>,
-    ) where
-        InMessage: for<'b> Deserialize<'b> + Send + 'static,
-        C: Fn(NetEvent<InMessage>) + Send + 'static,
-    {
-        match event {
-            network_adapter::Event::Connection => {
-                log::trace!("Connected endpoint {}", endpoint);
-                event_callback(NetEvent::AddedEndpoint(endpoint));
-            }
-            network_adapter::Event::Data(data) => {
-                log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                decoding_pool.decode_from(data, endpoint, |decoded_data| {
-                    log::trace!("Message received from {}, {} bytes", endpoint, decoded_data.len());
-                    match bincode::deserialize::<InMessage>(decoded_data) {
-                        Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
-                        Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
-                    }
-                });
-            }
-            network_adapter::Event::Disconnection => {
-                log::trace!("Disconnected endpoint {}", endpoint);
-                decoding_pool.remove_if_exists(endpoint);
-                event_callback(NetEvent::RemovedEndpoint(endpoint));
-            }
-        };
+        Network { tcp_adapter, udp_adapter, output_buffer: Vec::new(), send_all_status: Vec::new() }
     }
 
     /// Creates a connection to the specific address by TCP.
     /// The endpoint, an identified of the new connection, will be returned.
     /// If the connection can not be performed (e.g. the address is not reached) an error is returned.
-    pub fn connect_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Remote::new_tcp(addr).map(|remote| {
-            self.network_controller.lock().expect(Self::POISONED_LOCK).add_remote(remote)
-        })
-    }
-
-    /// Creates a connection to the specific address by UDP.
-    /// The endpoint, an identified of the new connection, will be returned.
-    /// If there is an error during the socket creation, an error will be returned.
-    pub fn connect_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<Endpoint> {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Remote::new_udp(addr).map(|remote| {
-            self.network_controller.lock().expect(Self::POISONED_LOCK).add_remote(remote)
-        })
-    }
-
-    /// Open a port to listen messages from TCP.
-    /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
-    pub fn listen_tcp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Listener::new_tcp(addr).map(|listener| {
-            self.network_controller.lock().expect(Self::POISONED_LOCK).add_listener(listener)
-        })
-    }
-
-    /// Open a port to listen messages from UDP.
-    /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
-    pub fn listen_udp<A: ToSocketAddrs>(&mut self, addr: A) -> io::Result<(usize, SocketAddr)> {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        Listener::new_udp(addr).map(|listener| {
-            self.network_controller.lock().expect(Self::POISONED_LOCK).add_listener(listener)
-        })
-    }
-
-    /// Open a port to listen messages from UDP in multicast.
-    /// If the port can be opened, an resource id identifying the listener is returned along with the local address, or an error if not.
-    /// Only ipv4 addresses are allowed.
-    pub fn listen_udp_multicast<A: ToSocketAddrs>(
+    pub fn connect<A: ToSocketAddrs>(
         &mut self,
+        transport: Transport,
         addr: A,
-    ) -> io::Result<(usize, SocketAddr)>
+    ) -> io::Result<Endpoint>
     {
-        match addr.to_socket_addrs().unwrap().next().unwrap() {
-            SocketAddr::V4(addr) => Listener::new_udp_multicast(addr).map(|listener| {
-                self.network_controller.lock().expect(Self::POISONED_LOCK).add_listener(listener)
-            }),
-            _ => panic!("Listening for udp multicast is only supported for ipv4 addresses"),
+        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+        match transport {
+            Transport::Tcp => self.tcp_adapter.connect(addr),
+            Transport::Udp => self.udp_adapter.connect(addr),
+        }
+    }
+
+    /// Listen messages from specified transport.
+    /// The giver address will be used as interface and listening port.
+    /// If the port can be opened, a [ResourceId] identifying the listener is returned
+    /// along with the local address, or an error if not.
+    /// The address is returned despite you passed as parameter because
+    /// when a '0' port is specified, the OS will give a value.
+    /// If the protocol is UDP and the address is Ipv4 in the range of multicast ips
+    /// (from 224.0.0.0 to 239.255.255.255) it will be listening is multicast mode.
+    pub fn listen<A: ToSocketAddrs>(
+        &mut self,
+        transport: Transport,
+        addr: A,
+    ) -> io::Result<(ResourceId, SocketAddr)>
+    {
+        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+        match transport {
+            Transport::Tcp => self.tcp_adapter.listen(addr),
+            Transport::Udp => self.udp_adapter.listen(addr),
         }
     }
 
     /// Remove a network resource.
     /// Returns `None` if the resource id not exists.
-    /// This is used mainly to remove resources that the program has been created explicitely, as connection or listeners.
-    /// Resources of endpoints generated by a TcpListener can also be removed to close the connection.
-    /// Note: Udp endpoints generated by a UdpListener shared the resource, the own UdpListener.
+    /// This is used mainly to remove resources that the program has been created explicitely,
+    /// as connection or listeners.
+    /// Resources of endpoints generated by listening from TCP can also be removed
+    /// to close the connection.
+    /// Note: UDP endpoints generated by listening from UDP shared the resource.
     /// This means that there is no resource to remove as the TCP case.
-    pub fn remove_resource(&mut self, resource_id: usize) -> Option<()> {
-        self.network_controller.lock().expect(Self::POISONED_LOCK).remove_resource(resource_id)
+    /// (in fact there is no connection itself to close, 'there is no spoon').
+    pub fn remove_resource(&mut self, resource_id: ResourceId) -> Option<()> {
+        match Transport::try_from(resource_id.adapter_id()).unwrap() {
+            Transport::Tcp => self.tcp_adapter.remove(resource_id),
+            Transport::Udp => self.udp_adapter.remove(resource_id),
+        }
     }
 
     /// Request a local address of a resource.
-    /// Returns `None` if the endpoint id not exists.
-    /// Note: Udp endpoints generated by a UdpListener shared the resource.
-    pub fn local_address(&self, resource_id: usize) -> Option<SocketAddr> {
-        self.network_controller.lock().expect(Self::POISONED_LOCK).local_address(resource_id)
+    /// Returns `None` if the endpoint id does not exists.
+    /// Note: UDP endpoints generated by a listen from UDP shared the resource.
+    pub fn local_addr(&self, resource_id: ResourceId) -> Option<SocketAddr> {
+        match Transport::try_from(resource_id.adapter_id()).unwrap() {
+            Transport::Tcp => self.tcp_adapter.local_address(resource_id),
+            Transport::Udp => self.udp_adapter.local_address(resource_id),
+        }
     }
 
     /// Serialize and send the message thought the connection represented by the given endpoint.
-    /// If the same message should be sent to different endpoints, use `send_all()` to better performance.
-    /// The funcion panics if some of endpoints do not exists.
+    /// If the same message should be sent to different endpoints,
+    /// use [Network::send_all()] to get a better performance.
+    /// The funcion panics if the endpoint do not exists in the [Network].
     /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
-    pub fn send<OutMessage>(&mut self, endpoint: Endpoint, message: OutMessage)
-    where OutMessage: Serialize {
-        self.prepare_output_message(message);
-        self.network_controller
-            .lock()
-            .expect(Self::POISONED_LOCK)
-            .send(endpoint, &self.output_buffer);
-
+    /// A [SendingStatus] is returned with the information about the sending.
+    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendingStatus {
         self.output_buffer.clear();
+        let status = match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
+            Transport::Tcp => {
+                self.prepare_output_message(message);
+                self.tcp_adapter.send(endpoint, &self.output_buffer)
+            }
+            Transport::Udp => {
+                // There is no need to encode in UDP
+                bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
+                self.udp_adapter.send(endpoint, &self.output_buffer)
+            }
+        };
         log::trace!("Message sent to {}", endpoint);
+        status
     }
 
-    /// Serialize and send the message thought the connections represented by the given endpoints.
-    /// When there are severals endpoints to send the data, this function is faster than consecutive calls to `send()`
-    /// since the serialization is only performed one time for all endpoints.
-    /// The funcion panics if some of endpoints do not exists.
-    /// If the protocol is UDP, the function panics if the message size is higher than MTU.
-    /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
-    pub fn send_all<'b, OutMessage>(
+    /// This functions performs the same actions as [Network::send()] but for several endpoints.
+    /// When there are severals endpoints to send the data,
+    /// this function is faster than consecutive calls to [Network::send()]
+    /// since the encoding and serialization is performed only one time for all endpoints.
+    /// The funcion panics if some of endpoints do not exists in the [Network].
+    pub fn send_all<'b, M: Serialize>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,
-        message: OutMessage,
-    ) where
-        OutMessage: Serialize,
+        message: M,
+    ) -> &Vec<SendingStatus>
     {
+        self.output_buffer.clear();
+        self.send_all_status.clear();
         self.prepare_output_message(message);
-        let mut controller = self.network_controller.lock().expect(Self::POISONED_LOCK);
-
         for endpoint in endpoints {
-            controller.send(*endpoint, &self.output_buffer);
+            let status = match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
+                Transport::Tcp => self.tcp_adapter.send(*endpoint, &self.output_buffer),
+                Transport::Udp => {
+                    // It is preferred to avoid the encoding in UDP in the sending
+                    // than check for each endpoint which one is UDP in order to encode it.
+                    // The waste is minimum since the encoding is performed one time for all packets
+                    self.udp_adapter.send(*endpoint, &self.output_buffer[encoding::PADDING..])
+                }
+            };
+            self.send_all_status.push(status);
             log::trace!("Message sent to {}", endpoint);
         }
-
-        self.output_buffer.clear();
+        &self.send_all_status
     }
 
-    fn prepare_output_message<OutMessage>(&mut self, message: OutMessage)
-    where OutMessage: Serialize {
+    /// Encodes and serilize a message storing the resuting data in the [Network::output_buffer]
+    fn prepare_output_message<M: Serialize>(&mut self, message: M) {
         encoding::encode(&mut self.output_buffer, |enconding_slot| {
             bincode::serialize_into(enconding_slot, &message).unwrap();
         });
-    }
-}
-
-impl Drop for Network {
-    fn drop(&mut self) {
-        self.network_thread_running.store(false, Ordering::Relaxed);
-        self.network_event_thread
-            .take()
-            .expect("Always exists")
-            .join()
-            .expect("This error is shown because other thread has panicked");
     }
 }

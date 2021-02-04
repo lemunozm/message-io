@@ -2,31 +2,21 @@ pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
 pub use crate::util::{SendingStatus};
 
-use crate::mio_engine::{MioEngine, MioPoll, AdapterEvent};
+use crate::engine::{NetworkEngine, AdapterLauncher};
+use crate::adapter::{AdapterEvent};
 use crate::adapters::{
-    tcp::{TcpAdapter, TcpController},
-    udp::{UdpAdapter, UdpController},
+    tcp::{TcpAdapter},
+    udp::{UdpAdapter},
 };
 
 use serde::{Serialize, Deserialize};
 
 use num_enum::IntoPrimitive;
-use num_enum::TryFromPrimitive;
 
-use std::convert::TryFrom;
-use std::convert::Into;
+use strum::{IntoEnumIterator, EnumIter};
+
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::io::{self};
-
-/// Enum to identified the underlying transport used.
-/// It can be passed in connect/listen functions
-#[derive(IntoPrimitive, TryFromPrimitive)]
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum Transport {
-    Tcp,
-    Udp,
-}
 
 /// Input network events.
 #[derive(Debug)]
@@ -59,27 +49,27 @@ where M: for<'b> Deserialize<'b> + Send + 'static
     DeserializationError(Endpoint),
 }
 
-impl<M> NetEvent<M>
-where M: for<'b> Deserialize<'b> + Send + 'static
-{
-    fn from_adapter(endpoint: Endpoint, event: AdapterEvent<'_>) -> NetEvent<M> {
-        match event {
-            AdapterEvent::Added => {
-                log::trace!("Endpoint connected: {}", endpoint);
-                NetEvent::AddedEndpoint(endpoint)
-            }
-            AdapterEvent::Data(data) => {
-                log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                match bincode::deserialize::<M>(data) {
-                    Ok(message) => NetEvent::Message(endpoint, message),
-                    Err(_) => NetEvent::DeserializationError(endpoint),
-                }
-            }
-            AdapterEvent::Removed => {
-                log::trace!("Endpoint disconnected: {}", endpoint);
-                NetEvent::RemovedEndpoint(endpoint)
-            }
-        }
+/// Enum to identified the underlying transport used.
+/// It can be passed in connect/listen functions
+#[derive(IntoPrimitive, EnumIter)]
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum Transport {
+    Tcp,
+    Udp,
+}
+
+impl Transport {
+    pub fn id(self) -> u8 {
+        self.into()
+    }
+
+    fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>)
+    where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static {
+        match self {
+            Transport::Tcp => launcher.mount(self.id(), TcpAdapter),
+            Transport::Udp => launcher.mount(self.id(), UdpAdapter),
+        };
     }
 }
 
@@ -87,9 +77,7 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 /// It transforms raw data from the network into message events and vice versa,
 /// and manages the different adapters for you.
 pub struct Network {
-    _mio_engine: MioEngine, // Keep it until drop it
-    tcp_controller: TcpController,
-    udp_controller: UdpController,
+    engine: NetworkEngine,
     output_buffer: Vec<u8>,              //cached for preformance
     send_all_status: Vec<SendingStatus>, //cached for performance
 }
@@ -103,32 +91,31 @@ impl Network {
         M: for<'b> Deserialize<'b> + Send + 'static,
         C: Fn(NetEvent<M>) + Send + Clone + 'static,
     {
-        let mut mio_poll = MioPoll::default();
+        let mut launcher = AdapterLauncher::default();
+        Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
-        let (tcp_controller, mut tcp_processor) =
-            TcpAdapter::split(mio_poll.create_register(Transport::Tcp.into()));
-
-        let (udp_controller, mut udp_processor) =
-            UdpAdapter::split(mio_poll.create_register(Transport::Udp.into()));
-
-        let mio_engine = MioEngine::new(mio_poll, move |resource_id| {
-            match Transport::try_from(resource_id.adapter_id()).unwrap() {
-                Transport::Tcp => tcp_processor.process(resource_id, |endpoint, event| {
-                    event_callback(NetEvent::from_adapter(endpoint, event));
-                }),
-                Transport::Udp => udp_processor.process(resource_id, |endpoint, event| {
-                    event_callback(NetEvent::from_adapter(endpoint, event));
-                }),
-            }
+        let engine = NetworkEngine::new(launcher, move |endpoint, adapter_event| {
+            let event = match adapter_event {
+                AdapterEvent::Added => {
+                    log::trace!("Endpoint connected: {}", endpoint);
+                    NetEvent::AddedEndpoint(endpoint)
+                }
+                AdapterEvent::Data(data) => {
+                    log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+                    match bincode::deserialize::<M>(data) {
+                        Ok(message) => NetEvent::Message(endpoint, message),
+                        Err(_) => NetEvent::DeserializationError(endpoint),
+                    }
+                }
+                AdapterEvent::Removed => {
+                    log::trace!("Endpoint disconnected: {}", endpoint);
+                    NetEvent::RemovedEndpoint(endpoint)
+                }
+            };
+            event_callback(event);
         });
 
-        Network {
-            _mio_engine: mio_engine,
-            tcp_controller,
-            udp_controller,
-            output_buffer: Vec::new(),
-            send_all_status: Vec::new(),
-        }
+        Network { engine, output_buffer: Vec::new(), send_all_status: Vec::new() }
     }
 
     /// Creates a connection to the specific address by TCP.
@@ -142,10 +129,7 @@ impl Network {
     ) -> io::Result<Endpoint>
     {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        match transport {
-            Transport::Tcp => self.tcp_controller.connect(addr),
-            Transport::Udp => self.udp_controller.connect(addr),
-        }
+        self.engine.connect(transport.id(), addr)
     }
 
     /// Listen messages from specified transport.
@@ -163,10 +147,7 @@ impl Network {
     ) -> io::Result<(ResourceId, SocketAddr)>
     {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        match transport {
-            Transport::Tcp => self.tcp_controller.listen(addr),
-            Transport::Udp => self.udp_controller.listen(addr),
-        }
+        self.engine.listen(transport.id(), addr)
     }
 
     /// Remove a network resource.
@@ -179,20 +160,14 @@ impl Network {
     /// This means that there is no resource to remove as the TCP case.
     /// (in fact there is no connection itself to close, 'there is no spoon').
     pub fn remove_resource(&mut self, resource_id: ResourceId) -> Option<()> {
-        match Transport::try_from(resource_id.adapter_id()).unwrap() {
-            Transport::Tcp => self.tcp_controller.remove(resource_id),
-            Transport::Udp => self.udp_controller.remove(resource_id),
-        }
+        self.engine.remove(resource_id)
     }
 
     /// Request a local address of a resource.
     /// Returns `None` if the endpoint id does not exists.
     /// Note: UDP endpoints generated by a listen from UDP shared the resource.
     pub fn local_addr(&self, resource_id: ResourceId) -> Option<SocketAddr> {
-        match Transport::try_from(resource_id.adapter_id()).unwrap() {
-            Transport::Tcp => self.tcp_controller.local_address(resource_id),
-            Transport::Udp => self.udp_controller.local_address(resource_id),
-        }
+        self.engine.local_addr(resource_id)
     }
 
     /// Serialize and send the message thought the connection represented by the given endpoint.
@@ -204,10 +179,8 @@ impl Network {
     pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendingStatus {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        let status = match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
-            Transport::Tcp => self.tcp_controller.send(endpoint, &self.output_buffer),
-            Transport::Udp => self.udp_controller.send(endpoint, &self.output_buffer),
-        };
+
+        let status = self.engine.send(endpoint, &self.output_buffer);
         log::trace!("Message sent to {}, {:?}", endpoint, status);
         status
     }
@@ -227,10 +200,7 @@ impl Network {
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
         self.send_all_status.clear();
         for endpoint in endpoints {
-            let status = match Transport::try_from(endpoint.resource_id().adapter_id()).unwrap() {
-                Transport::Tcp => self.tcp_controller.send(*endpoint, &self.output_buffer),
-                Transport::Udp => self.udp_controller.send(*endpoint, &self.output_buffer),
-            };
+            let status = self.engine.send(*endpoint, &self.output_buffer);
             self.send_all_status.push(status);
             log::trace!("Message sent to {}, {:?}", endpoint, status);
         }

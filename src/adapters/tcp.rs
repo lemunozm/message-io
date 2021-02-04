@@ -1,6 +1,7 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
-use crate::mio_engine::{MioRegister, AdapterEvent};
+use crate::adapter::{AdapterEvent, Adapter, Controller, Processor};
+use crate::poll::{PollRegister};
 use crate::encoding::{self, DecodingPool};
 use crate::util::{OTHER_THREAD_ERR, SendingStatus};
 
@@ -29,47 +30,54 @@ impl Store {
 
 pub struct TcpAdapter;
 
-impl TcpAdapter {
-    pub fn split(mio_register: MioRegister) -> (TcpController, TcpProcessor) {
+impl<C> Adapter<C> for TcpAdapter
+where C: FnMut(Endpoint, AdapterEvent<'_>)
+{
+    type Controller = TcpController;
+    type Processor = TcpProcessor;
+
+    fn split(&self, poll_register: PollRegister) -> (TcpController, TcpProcessor) {
         let store = Arc::new(Store::new());
         (
-            TcpController::new(store.clone(), mio_register.clone()),
-            TcpProcessor::new(store, mio_register),
+            TcpController::new(store.clone(), poll_register.clone()),
+            TcpProcessor::new(store, poll_register),
         )
     }
 }
 
 pub struct TcpController {
     store: Arc<Store>,
-    mio_register: MioRegister,
+    poll_register: PollRegister,
 }
 
 impl TcpController {
-    fn new(store: Arc<Store>, mio_register: MioRegister) -> Self {
-        Self { store, mio_register }
+    fn new(store: Arc<Store>, poll_register: PollRegister) -> Self {
+        Self { store, poll_register }
     }
+}
 
-    pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
+impl Controller for TcpController {
+    fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
         let stream = StdTcpStream::connect(addr)?;
         stream.set_nonblocking(true)?;
         let mut stream = TcpStream::from_std(stream);
 
-        let id = self.mio_register.add(&mut stream, ResourceType::Remote);
+        let id = self.poll_register.add(&mut stream, ResourceType::Remote);
         self.store.streams.write().expect(OTHER_THREAD_ERR).insert(id, (stream, addr));
         Ok(Endpoint::new(id, addr))
     }
 
-    pub fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         let mut listener = TcpListener::bind(addr)?;
 
-        let id = self.mio_register.add(&mut listener, ResourceType::Listener);
+        let id = self.poll_register.add(&mut listener, ResourceType::Listener);
         let real_addr = listener.local_addr().unwrap();
         self.store.listeners.write().expect(OTHER_THREAD_ERR).insert(id, listener);
         Ok((id, real_addr))
     }
 
-    pub fn remove(&mut self, id: ResourceId) -> Option<()> {
-        let mio_register = &mut self.mio_register;
+    fn remove(&mut self, id: ResourceId) -> Option<()> {
+        let poll_register = &mut self.poll_register;
         match id.resource_type() {
             ResourceType::Listener => self
                 .store
@@ -77,18 +85,18 @@ impl TcpController {
                 .write()
                 .expect(OTHER_THREAD_ERR)
                 .remove(&id)
-                .map(|mut listener| mio_register.remove(&mut listener)),
+                .map(|mut listener| poll_register.remove(&mut listener)),
             ResourceType::Remote => self
                 .store
                 .streams
                 .write()
                 .expect(OTHER_THREAD_ERR)
                 .remove(&id)
-                .map(|(mut stream, _)| mio_register.remove(&mut stream)),
+                .map(|(mut stream, _)| poll_register.remove(&mut stream)),
         }
     }
 
-    pub fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
+    fn local_addr(&self, id: ResourceId) -> Option<SocketAddr> {
         match id.resource_type() {
             ResourceType::Listener => self
                 .store
@@ -107,7 +115,7 @@ impl TcpController {
         }
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
+    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
         let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
         match streams.get(&endpoint.resource_id()) {
             Some((stream, _)) => {
@@ -156,31 +164,26 @@ impl TcpController {
 
 pub struct TcpProcessor {
     store: Arc<Store>,
-    mio_register: MioRegister,
+    poll_register: PollRegister,
     decoding_pool: DecodingPool<Endpoint>,
     input_buffer: [u8; INPUT_BUFFER_SIZE],
 }
 
 impl TcpProcessor {
-    fn new(store: Arc<Store>, mio_register: MioRegister) -> Self {
+    fn new(store: Arc<Store>, poll_register: PollRegister) -> Self {
         Self {
             store,
-            mio_register,
+            poll_register,
             input_buffer: [0; INPUT_BUFFER_SIZE],
             decoding_pool: DecodingPool::new(),
         }
     }
+}
 
-    pub fn process<C>(&mut self, id: ResourceId, event_callback: C)
-    where C: FnMut(Endpoint, AdapterEvent<'_>) {
-        match id.resource_type() {
-            ResourceType::Listener => self.process_listener(id, event_callback),
-            ResourceType::Remote => self.process_stream(id, event_callback),
-        }
-    }
-
-    fn process_listener<C>(&mut self, id: ResourceId, mut event_callback: C)
-    where C: FnMut(Endpoint, AdapterEvent<'_>) {
+impl<C> Processor<C> for TcpProcessor
+where C: FnMut(Endpoint, AdapterEvent<'_>)
+{
+    fn process_listener(&mut self, id: ResourceId, event_callback: &mut C) {
         // We check the existance of the listener because some event could be produced
         // before removing it.
         if let Some(listener) = self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id) {
@@ -188,7 +191,7 @@ impl TcpProcessor {
             loop {
                 match listener.accept() {
                     Ok((mut stream, addr)) => {
-                        let id = self.mio_register.add(&mut stream, ResourceType::Remote);
+                        let id = self.poll_register.add(&mut stream, ResourceType::Remote);
                         streams.insert(id, (stream, addr));
 
                         let endpoint = Endpoint::new(id, addr);
@@ -205,8 +208,7 @@ impl TcpProcessor {
         }
     }
 
-    fn process_stream<C>(&mut self, id: ResourceId, mut event_callback: C)
-    where C: FnMut(Endpoint, AdapterEvent<'_>) {
+    fn process_remote(&mut self, id: ResourceId, event_callback: &mut C) {
         let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
         if let Some((stream, addr)) = streams.get(&id) {
             let endpoint = Endpoint::new(id, *addr);
@@ -230,7 +232,7 @@ impl TcpProcessor {
             };
 
             if must_be_removed {
-                let mio_register = &mut self.mio_register;
+                let poll_register = &mut self.poll_register;
                 drop(streams);
                 self.store
                     .streams
@@ -238,7 +240,7 @@ impl TcpProcessor {
                     .expect(OTHER_THREAD_ERR)
                     .remove(&id)
                     .map(|(mut stream, _)| {
-                        mio_register.remove(&mut stream);
+                        poll_register.remove(&mut stream);
                     })
                     .unwrap();
                 self.decoding_pool.remove_if_exists(endpoint);

@@ -22,6 +22,7 @@ crossbeam = "0.8"
 log = "0.4"
 net2 = "0.2.34"
 num_enum = "0.5.1"
+strum = { version = "0.20", features = ["derive"] }
 
 #![cfg_attr(test, feature(proc_macro))]
 #[cfg(test)]

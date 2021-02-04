@@ -13,12 +13,15 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 use std::io::{self};
 
+type Controllers = [Option<Box<dyn Controller + Send>>; ResourceId::ADAPTER_ID_MAX];
+type Processors<C> = [Option<Box<dyn Processor<C> + Send>>; ResourceId::ADAPTER_ID_MAX];
+
 pub struct AdapterLauncher<C>
 where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
 {
     poll: Poll,
-    controllers: [Option<Box<dyn Controller + Send>>; ResourceId::ADAPTER_ID_MAX],
-    processors: [Option<Box<dyn Processor<C> + Send>>; ResourceId::ADAPTER_ID_MAX],
+    controllers: Controllers,
+    processors: Processors<C>
 }
 
 impl<C> Default for AdapterLauncher<C>
@@ -49,13 +52,7 @@ where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
         self.processors[index] = Some(Box::new(processor));
     }
 
-    fn launch(
-        self,
-    ) -> (
-        Poll,
-        [Option<Box<dyn Controller + Send>>; ResourceId::ADAPTER_ID_MAX],
-        [Option<Box<dyn Processor<C> + Send>>; ResourceId::ADAPTER_ID_MAX],
-    ) {
+    fn launch(self) -> (Poll, Controllers, Processors<C>) {
         (self.poll, self.controllers, self.processors)
     }
 }
@@ -63,7 +60,7 @@ where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
 pub struct NetworkEngine {
     thread: Option<JoinHandle<()>>,
     thread_running: Arc<AtomicBool>,
-    controllers: [Option<Box<dyn Controller + Send>>; ResourceId::ADAPTER_ID_MAX],
+    controllers: Controllers,
 }
 
 impl NetworkEngine {

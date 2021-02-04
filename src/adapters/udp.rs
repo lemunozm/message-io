@@ -12,7 +12,7 @@ use std::collections::{HashMap};
 use std::sync::{Arc, RwLock};
 use std::io::{self, ErrorKind};
 
-pub const MAX_UDP_LEN: usize = 1488;
+pub const MAX_UDP_LEN: usize = 1472; // 1500 (MTU) - 20 (max IP header) - 8 (max udp header)
 
 struct Store {
     // We store the addr because we will need it when the stream crash.

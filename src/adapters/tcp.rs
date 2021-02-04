@@ -12,7 +12,7 @@ use std::sync::{Arc, RwLock};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 
-const INPUT_BUFFER_SIZE: usize = 65536;
+const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 
 struct Store {
     // We store the addr because we will need it when the stream crash.

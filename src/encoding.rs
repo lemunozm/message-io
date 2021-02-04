@@ -12,7 +12,7 @@ pub fn encode(message: &[u8]) -> [u8; PADDING] {
 /// Decodes a encoded value in a buffer.
 /// The function returns the message size or none if the buffer is less than [`PADDING`].
 pub fn decode(data: &[u8]) -> Option<usize> {
-    data.try_into().map(|data| Padding::from_le_bytes(data) as usize).ok()
+    data[..PADDING].try_into().map(|data| Padding::from_le_bytes(data) as usize).ok()
 }
 
 /// Used to decoded one message from several/partial data chunks

@@ -59,6 +59,29 @@ where M: for<'b> Deserialize<'b> + Send + 'static
     DeserializationError(Endpoint),
 }
 
+impl<M> NetEvent<M>
+where M: for<'b> Deserialize<'b> + Send + 'static {
+    fn from_adapter(endpoint: Endpoint, event: AdapterEvent<'_>) -> NetEvent<M> {
+        match event {
+            AdapterEvent::Added => {
+                log::trace!("Endpoint connected: {}", endpoint);
+                NetEvent::AddedEndpoint(endpoint)
+            }
+            AdapterEvent::Data(data) => {
+                log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+                match bincode::deserialize::<M>(data) {
+                    Ok(message) => NetEvent::Message(endpoint, message),
+                    Err(_) => NetEvent::DeserializationError(endpoint),
+                }
+            }
+            AdapterEvent::Removed => {
+                log::trace!("Endpoint disconnected: {}", endpoint);
+                NetEvent::RemovedEndpoint(endpoint)
+            }
+        }
+    }
+}
+
 /// Network is in charge of managing all the connections transparently.
 /// It transforms raw data from the network into message events and vice versa,
 /// and manages the different adapters for you.
@@ -79,28 +102,6 @@ impl Network {
         M: for<'b> Deserialize<'b> + Send + 'static,
         C: Fn(NetEvent<M>) + Send + Clone + 'static,
     {
-        /*
-        let adapter_event_cb = move |endpoint, event | {
-            match event {
-                AdapterEvent::Added => {
-                    log::trace!("Endpoint connected: {}", endpoint);
-                    event_callback(NetEvent::AddedEndpoint(endpoint));
-                }
-                AdapterEvent::Data(data) => {
-                    log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                    match bincode::deserialize::<M>(data) {
-                        Ok(message) => event_callback(NetEvent::Message(endpoint, message)),
-                        Err(_) => event_callback(NetEvent::DeserializationError(endpoint)),
-                    }
-                }
-                AdapterEvent::Removed => {
-                    log::trace!("Endpoint disconnected: {}", endpoint);
-                    event_callback(NetEvent::RemovedEndpoint(endpoint));
-                }
-            }
-        };
-        */
-
         let mut mio_poll = MioPoll::new();
 
         let (tcp_controller, mut tcp_processor)
@@ -112,10 +113,10 @@ impl Network {
         let mio_engine = MioEngine::new(mio_poll, move |resource_id| {
             match Transport::try_from(resource_id.adapter_id()).unwrap() {
                 Transport::Tcp => tcp_processor.process(resource_id, |endpoint, event| {
-                    event_callback(Self::build_net_event(endpoint, event));
+                    event_callback(NetEvent::from_adapter(endpoint, event));
                 }),
                 Transport::Udp => udp_processor.process(resource_id, |endpoint, event| {
-                    event_callback(Self::build_net_event(endpoint, event));
+                    event_callback(NetEvent::from_adapter(endpoint, event));
                 }),
             }
         });
@@ -235,24 +236,4 @@ impl Network {
         &self.send_all_status
     }
 
-    fn build_net_event<M>(endpoint: Endpoint, event: AdapterEvent<'_>) -> NetEvent<M>
-    where M: for<'b> Deserialize<'b> + Send + 'static {
-        match event {
-            AdapterEvent::Added => {
-                log::trace!("Endpoint connected: {}", endpoint);
-                NetEvent::AddedEndpoint(endpoint)
-            }
-            AdapterEvent::Data(data) => {
-                log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                match bincode::deserialize::<M>(data) {
-                    Ok(message) => NetEvent::Message(endpoint, message),
-                    Err(_) => NetEvent::DeserializationError(endpoint),
-                }
-            }
-            AdapterEvent::Removed => {
-                log::trace!("Endpoint disconnected: {}", endpoint);
-                NetEvent::RemovedEndpoint(endpoint)
-            }
-        }
-    }
 }

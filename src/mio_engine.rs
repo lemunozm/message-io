@@ -26,10 +26,6 @@ pub struct MioPoll {
 impl MioPoll {
     const EVENTS_SIZE: usize = 1024;
 
-    pub fn new() -> Self {
-        Self { poll: Poll::new().unwrap(), events: Events::with_capacity(Self::EVENTS_SIZE) }
-    }
-
     fn process_event<C>(&mut self, timeout: Option<Duration>, event_callback: &mut C)
     where C: FnMut(ResourceId) {
         loop {
@@ -52,6 +48,12 @@ impl MioPoll {
 
     pub fn create_register(&mut self, adapter_id: u8) -> MioRegister {
         MioRegister::new(adapter_id, self.poll.registry().try_clone().unwrap())
+    }
+}
+
+impl Default for MioPoll {
+    fn default() -> Self {
+        Self { poll: Poll::new().unwrap(), events: Events::with_capacity(Self::EVENTS_SIZE) }
     }
 }
 

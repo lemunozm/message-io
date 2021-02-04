@@ -1,8 +1,8 @@
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
-pub use crate::mio_engine::{MioEngine, MioRegister, MioPoll, AdapterEvent};
 pub use crate::util::{SendingStatus};
 
+use crate::mio_engine::{MioEngine, MioPoll, AdapterEvent};
 use crate::adapters::{
     tcp::{TcpAdapter, TcpController},
     udp::{UdpAdapter, UdpController},
@@ -103,7 +103,7 @@ impl Network {
         M: for<'b> Deserialize<'b> + Send + 'static,
         C: Fn(NetEvent<M>) + Send + Clone + 'static,
     {
-        let mut mio_poll = MioPoll::new();
+        let mut mio_poll = MioPoll::default();
 
         let (tcp_controller, mut tcp_processor) =
             TcpAdapter::split(mio_poll.create_register(Transport::Tcp.into()));

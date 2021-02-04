@@ -83,8 +83,7 @@ fn simple_data_by_udp() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    let (upd_listen_resource_id, server_addr) =
-        network.listen(Transport::Udp, LOCAL_ADDR).unwrap();
+    let (upd_listen_resource_id, server_addr) = network.listen(Transport::Udp, LOCAL_ADDR).unwrap();
 
     let server_handle = std::thread::spawn(move || {
         loop {

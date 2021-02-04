@@ -60,7 +60,8 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 }
 
 impl<M> NetEvent<M>
-where M: for<'b> Deserialize<'b> + Send + 'static {
+where M: for<'b> Deserialize<'b> + Send + 'static
+{
     fn from_adapter(endpoint: Endpoint, event: AdapterEvent<'_>) -> NetEvent<M> {
         match event {
             AdapterEvent::Added => {
@@ -104,11 +105,11 @@ impl Network {
     {
         let mut mio_poll = MioPoll::new();
 
-        let (tcp_controller, mut tcp_processor)
-            = TcpAdapter::split(mio_poll.create_register(Transport::Tcp.into()));
+        let (tcp_controller, mut tcp_processor) =
+            TcpAdapter::split(mio_poll.create_register(Transport::Tcp.into()));
 
-        let (udp_controller, mut udp_processor)
-            = UdpAdapter::split(mio_poll.create_register(Transport::Udp.into()));
+        let (udp_controller, mut udp_processor) =
+            UdpAdapter::split(mio_poll.create_register(Transport::Udp.into()));
 
         let mio_engine = MioEngine::new(mio_poll, move |resource_id| {
             match Transport::try_from(resource_id.adapter_id()).unwrap() {
@@ -126,7 +127,7 @@ impl Network {
             tcp_controller,
             udp_controller,
             output_buffer: Vec::new(),
-            send_all_status: Vec::new()
+            send_all_status: Vec::new(),
         }
     }
 
@@ -235,5 +236,4 @@ impl Network {
         }
         &self.send_all_status
     }
-
 }

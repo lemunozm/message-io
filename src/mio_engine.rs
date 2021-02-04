@@ -27,10 +27,7 @@ impl MioPoll {
     const EVENTS_SIZE: usize = 1024;
 
     pub fn new() -> Self {
-        Self {
-            poll: Poll::new().unwrap(),
-            events: Events::with_capacity(Self::EVENTS_SIZE),
-        }
+        Self { poll: Poll::new().unwrap(), events: Events::with_capacity(Self::EVENTS_SIZE) }
     }
 
     fn process_event<C>(&mut self, timeout: Option<Duration>, event_callback: &mut C)
@@ -43,8 +40,8 @@ impl MioPoll {
                         log::trace!("Wake from poll for resource id {}. ", id);
                         event_callback(id);
                     }
-                    break;
-                },
+                    break
+                }
                 Err(e) => match e.kind() {
                     ErrorKind::Interrupted => continue,
                     _ => Err(e).expect("No error here"),
@@ -58,7 +55,6 @@ impl MioPoll {
     }
 }
 
-
 pub struct MioRegister {
     id_generator: Arc<ResourceIdGenerator>,
     registry: Registry,
@@ -66,10 +62,7 @@ pub struct MioRegister {
 
 impl MioRegister {
     fn new(adapter_id: u8, registry: Registry) -> MioRegister {
-        MioRegister {
-            id_generator: Arc::new(ResourceIdGenerator::new(adapter_id)),
-            registry,
-        }
+        MioRegister { id_generator: Arc::new(ResourceIdGenerator::new(adapter_id)), registry }
     }
 
     pub fn add(&mut self, source: &mut dyn Source, resource_type: ResourceType) -> ResourceId {
@@ -89,14 +82,12 @@ impl MioRegister {
 
 impl Clone for MioRegister {
     fn clone(&self) -> Self {
-
         MioRegister {
             id_generator: self.id_generator.clone(),
             registry: self.registry.try_clone().unwrap(),
         }
     }
 }
-
 
 pub struct MioEngine {
     thread: Option<JoinHandle<()>>,

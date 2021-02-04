@@ -23,10 +23,7 @@ struct Store {
 
 impl Store {
     fn new() -> Store {
-        Store {
-            streams: RwLock::new(HashMap::new()),
-            listeners: RwLock::new(HashMap::new()),
-        }
+        Store { streams: RwLock::new(HashMap::new()), listeners: RwLock::new(HashMap::new()) }
     }
 }
 
@@ -74,16 +71,20 @@ impl TcpController {
     pub fn remove(&mut self, id: ResourceId) -> Option<()> {
         let mio_register = &mut self.mio_register;
         match id.resource_type() {
-            ResourceType::Listener => {
-                self.store.listeners.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |mut listener| mio_register.remove(&mut listener)
-                )
-            }
-            ResourceType::Remote => {
-                self.store.streams.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |(mut stream, _)| mio_register.remove(&mut stream)
-                )
-            }
+            ResourceType::Listener => self
+                .store
+                .listeners
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|mut listener| mio_register.remove(&mut listener)),
+            ResourceType::Remote => self
+                .store
+                .streams
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|(mut stream, _)| mio_register.remove(&mut stream)),
         }
     }
 
@@ -153,7 +154,6 @@ impl TcpController {
     }
 }
 
-
 pub struct TcpProcessor {
     store: Arc<Store>,
     mio_register: MioRegister,
@@ -174,12 +174,8 @@ impl TcpProcessor {
     pub fn process<C>(&mut self, id: ResourceId, event_callback: C)
     where C: FnMut(Endpoint, AdapterEvent<'_>) {
         match id.resource_type() {
-            ResourceType::Listener => {
-                self.process_listener(id, event_callback)
-            }
-            ResourceType::Remote => {
-                self.process_stream(id, event_callback)
-            }
+            ResourceType::Listener => self.process_listener(id, event_callback),
+            ResourceType::Remote => self.process_stream(id, event_callback),
         }
     }
 

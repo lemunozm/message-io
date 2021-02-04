@@ -23,10 +23,7 @@ struct Store {
 
 impl Store {
     fn new() -> Self {
-        Self {
-            sockets: RwLock::new(HashMap::new()),
-            listeners: RwLock::new(HashMap::new()),
-        }
+        Self { sockets: RwLock::new(HashMap::new()), listeners: RwLock::new(HashMap::new()) }
     }
 }
 
@@ -35,10 +32,7 @@ pub struct UdpAdapter;
 impl UdpAdapter {
     pub fn split(mio_register: MioRegister) -> (UdpController, UdpProcessor) {
         let store = Arc::new(Store::new());
-        (
-            UdpController::new(store.clone(), mio_register),
-            UdpProcessor::new(store),
-        )
+        (UdpController::new(store.clone(), mio_register), UdpProcessor::new(store))
     }
 }
 
@@ -49,7 +43,7 @@ pub struct UdpController {
 
 impl UdpController {
     fn new(store: Arc<Store>, mio_register: MioRegister) -> Self {
-        Self {store, mio_register}
+        Self { store, mio_register }
     }
 
     pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
@@ -82,16 +76,20 @@ impl UdpController {
     pub fn remove(&mut self, id: ResourceId) -> Option<()> {
         let mio_register = &mut self.mio_register;
         match id.resource_type() {
-            ResourceType::Listener => {
-                self.store.listeners.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |mut listener| mio_register.remove(&mut listener)
-                )
-            }
-            ResourceType::Remote => {
-                self.store.sockets.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |(mut socket, _)| mio_register.remove(&mut socket)
-                )
-            }
+            ResourceType::Listener => self
+                .store
+                .listeners
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|mut listener| mio_register.remove(&mut listener)),
+            ResourceType::Remote => self
+                .store
+                .sockets
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|(mut socket, _)| mio_register.remove(&mut socket)),
         }
     }
 
@@ -155,7 +153,6 @@ impl Drop for UdpController {
     }
 }
 
-
 pub struct UdpProcessor {
     store: Arc<Store>,
     input_buffer: [u8; MAX_UDP_LEN],
@@ -169,12 +166,8 @@ impl UdpProcessor {
     pub fn process<C>(&mut self, id: ResourceId, event_callback: C)
     where C: FnMut(Endpoint, AdapterEvent<'_>) {
         match id.resource_type() {
-            ResourceType::Listener => {
-                self.process_listener(id, event_callback)
-            }
-            ResourceType::Remote => {
-                self.process_remote(id, event_callback)
-            }
+            ResourceType::Listener => self.process_listener(id, event_callback),
+            ResourceType::Remote => self.process_remote(id, event_callback),
         }
     }
 

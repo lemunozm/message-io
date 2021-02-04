@@ -190,7 +190,10 @@ impl UdpProcessor {
                         event_callback(endpoint, AdapterEvent::Data(data));
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                    Err(_) => break, // should not happened
+                    Err(_) => {
+                        log::error!("UDP process listener error");
+                        break // should not happen
+                    }
                 }
             }
         }
@@ -208,7 +211,10 @@ impl UdpProcessor {
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                     Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => continue,
-                    Err(_) => break, // should not happened
+                    Err(_) => {
+                        log::error!("UDP process remote error");
+                        break // should not happen
+                    }
                 }
             }
         }

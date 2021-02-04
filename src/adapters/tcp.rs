@@ -192,7 +192,7 @@ impl TcpProcessor {
             loop {
                 match listener.accept() {
                     Ok((mut stream, addr)) => {
-                        let id = self.mio_register.add(&mut stream, ResourceType::Listener);
+                        let id = self.mio_register.add(&mut stream, ResourceType::Remote);
                         streams.insert(id, (stream, addr));
 
                         let endpoint = Endpoint::new(id, addr);
@@ -200,7 +200,10 @@ impl TcpProcessor {
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                     Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                    Err(_) => break, // should not happened
+                    Err(_) => {
+                        log::trace!("TCP process listener error");
+                        break // should not happen
+                    }
                 }
             }
         }
@@ -223,7 +226,10 @@ impl TcpProcessor {
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break false,
                     Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                    Err(_) => break true,
+                    Err(_) => {
+                        log::error!("TCP process stream error");
+                        break true // should not happen
+                    }
                 }
             };
 

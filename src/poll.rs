@@ -22,7 +22,6 @@ impl Poll {
                 Ok(_) => {
                     for mio_event in &self.events {
                         let id = ResourceId::from(mio_event.token().0);
-                        log::trace!("Wake from poll for resource id {}. ", id);
                         event_callback(id);
                     }
                     break

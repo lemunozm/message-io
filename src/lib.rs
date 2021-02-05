@@ -1,5 +1,3 @@
-#![feature(const_in_array_repeat_expressions)]
-
 mod util;
 mod resource_id;
 mod endpoint;

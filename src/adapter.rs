@@ -15,7 +15,7 @@ pub enum AdapterEvent<'a> {
     Removed,
 }
 
-/// High level trait to represent an adapter for a transport/protocol.
+/// High level trait to represent an adapter for a transport protocol.
 /// The adapter is used to pack a [`Controller`] and [`Adapter`].
 /// Two traits to describes how an adapter behaves.
 pub trait Adapter<C>

@@ -36,7 +36,7 @@ where C: FnMut(Endpoint, AdapterEvent<'_>)
     type Controller = TcpController;
     type Processor = TcpProcessor;
 
-    fn split(&self, poll_register: PollRegister) -> (TcpController, TcpProcessor) {
+    fn split(self, poll_register: PollRegister) -> (TcpController, TcpProcessor) {
         let store = Arc::new(Store::new());
         (
             TcpController::new(store.clone(), poll_register.clone()),

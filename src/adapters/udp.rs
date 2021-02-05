@@ -35,7 +35,7 @@ where C: FnMut(Endpoint, AdapterEvent<'_>)
 {
     type Controller = UdpController;
     type Processor = UdpProcessor;
-    fn split(&self, poll_register: PollRegister) -> (UdpController, UdpProcessor) {
+    fn split(self, poll_register: PollRegister) -> (UdpController, UdpProcessor) {
         let store = Arc::new(Store::new());
         (UdpController::new(store.clone(), poll_register), UdpProcessor::new(store))
     }

@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.6.1
+- Internal improvements in order to use one thread for all adapters.
+- Clean architecture to implement new adapters easier.
+
 ## Release 0.6.0
 - Added concurrent writing and reading from socket/streams in UDP and TCP protocols.
 - Removed UDP enconding (improved speed)

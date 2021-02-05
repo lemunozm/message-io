@@ -1,20 +1,18 @@
 use std::collections::{HashMap, hash_map::Entry};
+use std::convert::{TryInto};
 
 type Padding = u32;
 pub const PADDING: usize = std::mem::size_of::<Padding>();
 
-/// Prepare the buffer to encode data.
-/// The user should copy the data to the callback buffer in order to encode it.
-pub fn encode<C: Fn(&mut Vec<u8>)>(buffer: &mut Vec<u8>, encode_callback: C) {
-    let start_point = buffer.len();
-    buffer.extend_from_slice(&[0; PADDING]); //Start serializing after PADDING
-    let message_point = buffer.len();
+/// Encode a message, returning the bytes that must be sent before the message.
+pub fn encode(message: &[u8]) -> [u8; PADDING] {
+    (message.len() as Padding).to_le_bytes()
+}
 
-    encode_callback(buffer);
-
-    assert!(buffer.len() >= message_point, "Encoding must not decrement the buffer length");
-    let data_size = (buffer.len() - message_point) as Padding;
-    bincode::serialize_into(&mut buffer[start_point..start_point + PADDING], &data_size).unwrap();
+/// Decodes a encoded value in a buffer.
+/// The function returns the message size or none if the buffer is less than [`PADDING`].
+pub fn decode(data: &[u8]) -> Option<usize> {
+    data[..PADDING].try_into().map(|data| Padding::from_le_bytes(data) as usize).ok()
 }
 
 /// Used to decoded one message from several/partial data chunks
@@ -38,7 +36,7 @@ impl Decoder {
     /// If this function returns None, a call to `decode()` is needed.
     pub fn try_fast_decode(data: &[u8]) -> Option<(&[u8], &[u8])> {
         if data.len() >= PADDING {
-            let expected_size = bincode::deserialize::<Padding>(data).unwrap() as usize;
+            let expected_size = decode(&data).unwrap();
             if data[PADDING..].len() >= expected_size {
                 return Some((
                     &data[PADDING..PADDING + expected_size], // decoded data
@@ -67,8 +65,7 @@ impl Decoder {
             // Deserializing the decoded data size
             let size_pos = std::cmp::min(PADDING - self.decoded_data.len(), PADDING);
             self.decoded_data.extend_from_slice(&data[..size_pos]);
-            let expected_size =
-                bincode::deserialize::<Padding>(&self.decoded_data).unwrap() as usize;
+            let expected_size = decode(&self.decoded_data).unwrap();
             self.expected_size = Some(expected_size);
 
             let data = &data[size_pos..];
@@ -161,9 +158,8 @@ mod tests {
     const MESSAGE: [u8; MESSAGE_SIZE] = [MESSAGE_VALUE; MESSAGE_SIZE];
 
     fn encode_message(buffer: &mut Vec<u8>) {
-        super::encode(buffer, |slot| {
-            slot.extend_from_slice(&MESSAGE);
-        });
+        buffer.extend_from_slice(&encode(&MESSAGE));
+        buffer.extend_from_slice(&MESSAGE);
     }
 
     #[test]
@@ -172,7 +168,7 @@ mod tests {
         encode_message(&mut buffer);
 
         assert_eq!(buffer.len(), ENCODED_MESSAGE_SIZE);
-        let expected_size = bincode::deserialize::<Padding>(&buffer[0..]).unwrap() as usize;
+        let expected_size = decode(&buffer).unwrap();
         assert_eq!(expected_size, MESSAGE_SIZE);
         assert_eq!(&buffer[PADDING..], &MESSAGE);
     }

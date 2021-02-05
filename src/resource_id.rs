@@ -26,6 +26,8 @@ impl ResourceId {
     const ADAPTER_ID_MASK_OVER_ID: usize = (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS;
     const BASE_VALUE_MASK_OVER_ID: usize = 0x0FFFFFFF; // 7 bytes
 
+    pub const ADAPTER_ID_MAX: usize = Self::ADAPTER_ID_MASK as usize + 1; // 128
+
     fn new(base_value: usize, resource_type: ResourceType, adapter_id: u8) -> Self {
         assert_eq!(
             adapter_id & Self::ADAPTER_ID_MASK,
@@ -103,10 +105,6 @@ impl ResourceIdGenerator {
     pub fn generate(&self, resource_type: ResourceType) -> ResourceId {
         let last = self.last.fetch_add(1, Ordering::SeqCst);
         ResourceId::new(last, resource_type, self.adapter_id)
-    }
-
-    pub fn adapter_id(&self) -> u8 {
-        self.adapter_id
     }
 }
 

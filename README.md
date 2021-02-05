@@ -10,6 +10,11 @@
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=653&h=305" width="653"/>
 </p>
 
+Also, it can be understanding as a **generic manager network**.
+This means that you can implement your own protocol following some rules
+and `message-io` will manage the tedious asynchrony and thread management for you.
+See more [here](#custom-adapter).
+
 **Any contribution is welcome!**
 
 ## Who is this project for?
@@ -162,12 +167,16 @@ In other terminals, run one or more clients:
 cargo run --example tcp client <name>
 ```
 
-## Not found the transport protocol you need? Add it easily!
+## Do you need a transport protocol that `message-io` doesn't have? Add it! <span id="custom-adapter"><span>
 
-- Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs`
-- Modify the `src/network.rs` in two ways:
-  - Add a new entry of the `Transport` enum with your transport name.
-  - Fill the main functions with your transport calls following the existing pattern.
+If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#platforms)
+(most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
-Of course, any contribution of any kind: ideas, fixing bugs, adding tests, examples...
-is really appreciated.
+1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
+  traits that you can found in [`src/adapter.rs`](src/adapter.rs).
+
+1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
+
+That's all! You can use your new transport in the `message-io` API like any other.
+
+Oops, one step more, you can make a *Pull request* for everyone to use it :)

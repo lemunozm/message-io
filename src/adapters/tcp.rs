@@ -1,126 +1,102 @@
 use crate::endpoint::{Endpoint};
-use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
+use crate::resource_id::{ResourceId, ResourceType};
+use crate::adapter::{AdapterEvent, Adapter, Controller, Processor};
+use crate::poll::{PollRegister};
+use crate::encoding::{self, DecodingPool};
 use crate::util::{OTHER_THREAD_ERR, SendingStatus};
 
 use mio::net::{TcpListener, TcpStream};
-use mio::{Poll, Interest, Token, Events, Registry};
 
 use std::net::{SocketAddr, TcpStream as StdTcpStream};
-use std::time::{Duration};
 use std::collections::{HashMap};
-use std::sync::{
-    Arc, RwLock,
-    atomic::{AtomicBool, Ordering},
-};
-use std::thread::{self, JoinHandle};
+use std::sync::{Arc, RwLock};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 
-const INPUT_BUFFER_SIZE: usize = 65536;
-const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
-const EVENTS_SIZE: usize = 1024;
-
-#[derive(Debug)]
-pub enum TcpEvent<'a> {
-    Connection,
-    Data(&'a [u8]),
-    Disconnection,
-}
+const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 
 struct Store {
     // We store the addr because we will need it when the stream crash.
     // When a stream crash by an error (i.e. reset) peer_addr no longer returns the addr.
     streams: RwLock<HashMap<ResourceId, (TcpStream, SocketAddr)>>,
     listeners: RwLock<HashMap<ResourceId, TcpListener>>,
-    id_generator: ResourceIdGenerator,
-    registry: Registry,
 }
 
 impl Store {
-    fn new(id_generator: ResourceIdGenerator, registry: Registry) -> Store {
-        Store {
-            streams: RwLock::new(HashMap::new()),
-            listeners: RwLock::new(HashMap::new()),
-            id_generator,
-            registry,
-        }
+    fn new() -> Store {
+        Store { streams: RwLock::new(HashMap::new()), listeners: RwLock::new(HashMap::new()) }
     }
 }
 
-pub struct TcpAdapter {
-    thread: Option<JoinHandle<()>>,
-    thread_running: Arc<AtomicBool>,
+pub struct TcpAdapter;
+
+impl<C> Adapter<C> for TcpAdapter
+where C: FnMut(Endpoint, AdapterEvent<'_>)
+{
+    type Controller = TcpController;
+    type Processor = TcpProcessor;
+
+    fn split(self, poll_register: PollRegister) -> (TcpController, TcpProcessor) {
+        let store = Arc::new(Store::new());
+        (
+            TcpController::new(store.clone(), poll_register.clone()),
+            TcpProcessor::new(store, poll_register),
+        )
+    }
+}
+
+pub struct TcpController {
     store: Arc<Store>,
+    poll_register: PollRegister,
 }
 
-impl TcpAdapter {
-    pub fn init<C>(adapter_id: u8, mut event_callback: C) -> Self
-    where C: for<'b> FnMut(Endpoint, TcpEvent<'b>) + Send + 'static {
-        let id_generator = ResourceIdGenerator::new(adapter_id);
-        let poll = Poll::new().unwrap();
-        let store = Store::new(id_generator, poll.registry().try_clone().unwrap());
-        let store = Arc::new(store);
-        let thread_store = store.clone();
-
-        let thread_running = Arc::new(AtomicBool::new(true));
-        let running = thread_running.clone();
-
-        let thread = thread::Builder::new()
-            .name("message-io: tcp-adapter".into())
-            .spawn(move || {
-                let timeout = Some(Duration::from_millis(NETWORK_SAMPLING_TIMEOUT));
-                let mut event_processor = TcpEventProcessor::new(thread_store, timeout, poll);
-
-                while running.load(Ordering::Relaxed) {
-                    event_processor.process(&mut event_callback);
-                }
-            })
-            .unwrap();
-
-        Self { thread: Some(thread), thread_running, store }
+impl TcpController {
+    fn new(store: Arc<Store>, poll_register: PollRegister) -> Self {
+        Self { store, poll_register }
     }
+}
 
-    pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
+impl Controller for TcpController {
+    fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
         let stream = StdTcpStream::connect(addr)?;
         stream.set_nonblocking(true)?;
         let mut stream = TcpStream::from_std(stream);
 
-        let id = self.store.id_generator.generate(ResourceType::Remote);
-        self.store.registry.register(&mut stream, Token(id.raw()), Interest::READABLE).unwrap();
+        let id = self.poll_register.add(&mut stream, ResourceType::Remote);
         self.store.streams.write().expect(OTHER_THREAD_ERR).insert(id, (stream, addr));
         Ok(Endpoint::new(id, addr))
     }
 
-    pub fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         let mut listener = TcpListener::bind(addr)?;
 
-        let id = self.store.id_generator.generate(ResourceType::Listener);
+        let id = self.poll_register.add(&mut listener, ResourceType::Listener);
         let real_addr = listener.local_addr().unwrap();
-        self.store.registry.register(&mut listener, Token(id.raw()), Interest::READABLE).unwrap();
         self.store.listeners.write().expect(OTHER_THREAD_ERR).insert(id, listener);
         Ok((id, real_addr))
     }
 
-    pub fn remove(&mut self, id: ResourceId) -> Option<()> {
+    fn remove(&mut self, id: ResourceId) -> Option<()> {
+        let poll_register = &mut self.poll_register;
         match id.resource_type() {
-            ResourceType::Listener => {
-                self.store.listeners.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |mut listener| {
-                        self.store.registry.deregister(&mut listener).unwrap();
-                    },
-                )
-            }
-            ResourceType::Remote => {
-                self.store.streams.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |(mut stream, _)| {
-                        self.store.registry.deregister(&mut stream).unwrap();
-                    },
-                )
-            }
+            ResourceType::Listener => self
+                .store
+                .listeners
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|mut listener| poll_register.remove(&mut listener)),
+            ResourceType::Remote => self
+                .store
+                .streams
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|(mut stream, _)| poll_register.remove(&mut stream)),
         }
     }
 
-    pub fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
+    fn local_addr(&self, id: ResourceId) -> Option<SocketAddr> {
         match id.resource_type() {
             ResourceType::Listener => self
                 .store
@@ -139,22 +115,28 @@ impl TcpAdapter {
         }
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
-        assert_eq!(endpoint.resource_id().adapter_id(), self.store.id_generator.adapter_id());
-
+    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
         let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
         match streams.get(&endpoint.resource_id()) {
             Some((stream, _)) => {
+                let encode_value = encoding::encode(data);
+
                 // TODO: The current implementation implies an active waiting,
                 // improve it using POLLIN instead to avoid active waiting.
                 // Note: Despite the fear that an active waiting could generate,
                 // this waiting only occurs in the rare case when the send method needs block.
                 let mut total_bytes_sent = 0;
+                let total_bytes = encoding::PADDING + data.len();
                 loop {
-                    match stream.deref().write(&data[total_bytes_sent..]) {
+                    let data_to_send = match total_bytes_sent < encoding::PADDING {
+                        true => &encode_value[total_bytes_sent..],
+                        false => &data[(total_bytes_sent - encoding::PADDING)..],
+                    };
+
+                    match stream.deref().write(data_to_send) {
                         Ok(bytes_sent) => {
                             total_bytes_sent += bytes_sent;
-                            if total_bytes_sent == data.len() {
+                            if total_bytes_sent == total_bytes {
                                 break SendingStatus::Sent
                             }
                             // We get sending to data, but not the totality.
@@ -180,72 +162,28 @@ impl TcpAdapter {
     }
 }
 
-impl Drop for TcpAdapter {
-    fn drop(&mut self) {
-        self.thread_running.store(false, Ordering::Relaxed);
-        self.thread.take().unwrap().join().expect(OTHER_THREAD_ERR);
-    }
-}
-
-struct TcpEventProcessor {
-    resource_processor: TcpResourceProcessor,
-    timeout: Option<Duration>,
-    poll: Poll,
-    events: Events,
-}
-
-impl TcpEventProcessor {
-    fn new(store: Arc<Store>, timeout: Option<Duration>, poll: Poll) -> Self {
-        Self {
-            resource_processor: TcpResourceProcessor::new(store),
-            timeout,
-            poll,
-            events: Events::with_capacity(EVENTS_SIZE),
-        }
-    }
-
-    pub fn process<C>(&mut self, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, TcpEvent<'b>) {
-        loop {
-            match self.poll.poll(&mut self.events, self.timeout) {
-                Ok(_) => break self.process_resource(event_callback),
-                Err(e) => match e.kind() {
-                    ErrorKind::Interrupted => continue,
-                    _ => Err(e).unwrap(),
-                },
-            }
-        }
-    }
-
-    fn process_resource<C>(&mut self, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, TcpEvent<'b>) {
-        for mio_event in &self.events {
-            let id = ResourceId::from(mio_event.token().0);
-
-            log::trace!("Wake from poll for TCP with resource id {}. ", id);
-
-            match id.resource_type() {
-                ResourceType::Listener => {
-                    self.resource_processor.process_listener(id, event_callback)
-                }
-                ResourceType::Remote => self.resource_processor.process_stream(id, event_callback),
-            }
-        }
-    }
-}
-
-struct TcpResourceProcessor {
+pub struct TcpProcessor {
     store: Arc<Store>,
+    poll_register: PollRegister,
+    decoding_pool: DecodingPool<Endpoint>,
     input_buffer: [u8; INPUT_BUFFER_SIZE],
 }
 
-impl<'a> TcpResourceProcessor {
-    fn new(store: Arc<Store>) -> Self {
-        Self { store, input_buffer: [0; INPUT_BUFFER_SIZE] }
+impl TcpProcessor {
+    fn new(store: Arc<Store>, poll_register: PollRegister) -> Self {
+        Self {
+            store,
+            poll_register,
+            input_buffer: [0; INPUT_BUFFER_SIZE],
+            decoding_pool: DecodingPool::new(),
+        }
     }
+}
 
-    fn process_listener<C>(&mut self, id: ResourceId, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, TcpEvent<'b>) {
+impl<C> Processor<C> for TcpProcessor
+where C: FnMut(Endpoint, AdapterEvent<'_>)
+{
+    fn process_listener(&mut self, id: ResourceId, event_callback: &mut C) {
         // We check the existance of the listener because some event could be produced
         // before removing it.
         if let Some(listener) = self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id) {
@@ -253,27 +191,24 @@ impl<'a> TcpResourceProcessor {
             loop {
                 match listener.accept() {
                     Ok((mut stream, addr)) => {
-                        let id = self.store.id_generator.generate(ResourceType::Remote);
-                        self.store
-                            .registry
-                            .register(&mut stream, Token(id.raw()), Interest::READABLE)
-                            .unwrap();
-
+                        let id = self.poll_register.add(&mut stream, ResourceType::Remote);
                         streams.insert(id, (stream, addr));
 
                         let endpoint = Endpoint::new(id, addr);
-                        event_callback(endpoint, TcpEvent::Connection);
+                        event_callback(endpoint, AdapterEvent::Added);
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                     Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                    Err(_) => break, // should not happened
+                    Err(_) => {
+                        log::trace!("TCP process listener error");
+                        break // should not happen
+                    }
                 }
             }
         }
     }
 
-    fn process_stream<C>(&mut self, id: ResourceId, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, TcpEvent<'b>) {
+    fn process_remote(&mut self, id: ResourceId, event_callback: &mut C) {
         let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
         if let Some((stream, addr)) = streams.get(&id) {
             let endpoint = Endpoint::new(id, *addr);
@@ -281,15 +216,23 @@ impl<'a> TcpResourceProcessor {
                 match stream.deref().read(&mut self.input_buffer) {
                     Ok(0) => break true,
                     Ok(size) => {
-                        event_callback(endpoint, TcpEvent::Data(&self.input_buffer[..size]))
+                        let data = &self.input_buffer[..size];
+                        log::trace!("Decoding data from {}, {} bytes", endpoint, data.len());
+                        self.decoding_pool.decode_from(data, endpoint, |decoded_data| {
+                            event_callback(endpoint, AdapterEvent::Data(decoded_data));
+                        });
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break false,
                     Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                    Err(_) => break true,
+                    Err(_) => {
+                        log::error!("TCP process stream error");
+                        break true // should not happen
+                    }
                 }
             };
 
             if must_be_removed {
+                let poll_register = &mut self.poll_register;
                 drop(streams);
                 self.store
                     .streams
@@ -297,10 +240,11 @@ impl<'a> TcpResourceProcessor {
                     .expect(OTHER_THREAD_ERR)
                     .remove(&id)
                     .map(|(mut stream, _)| {
-                        self.store.registry.deregister(&mut stream).unwrap();
+                        poll_register.remove(&mut stream);
                     })
                     .unwrap();
-                event_callback(endpoint, TcpEvent::Disconnection);
+                self.decoding_pool.remove_if_exists(endpoint);
+                event_callback(endpoint, AdapterEvent::Removed);
             }
         }
     }

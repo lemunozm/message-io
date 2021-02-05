@@ -1,88 +1,68 @@
 use crate::endpoint::{Endpoint};
-use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
+use crate::resource_id::{ResourceId, ResourceType};
+use crate::adapter::{AdapterEvent, Adapter, Controller, Processor};
+use crate::poll::{PollRegister};
 use crate::util::{OTHER_THREAD_ERR, SendingStatus};
 
-use mio::{Poll, Interest, Token, Events, Registry};
 use mio::net::{UdpSocket};
 
 use net2::{UdpBuilder};
 
 use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
-use std::time::{Duration};
 use std::collections::{HashMap};
-use std::sync::{
-    Arc, RwLock,
-    atomic::{AtomicBool, Ordering},
-};
-use std::thread::{self, JoinHandle};
+use std::sync::{Arc, RwLock};
 use std::io::{self, ErrorKind};
 
-pub const MAX_UDP_LEN: usize = 1488;
-const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
-const EVENTS_SIZE: usize = 1024;
+pub const MAX_UDP_LEN: usize = 1472; // 1500 (MTU) - 20 (max IP header) - 8 (max udp header)
 
 struct Store {
+    // We store the addr because we will need it when the stream crash.
+    // When a stream crash by an error (i.e. reset) peer_addr no longer returns the addr.
     sockets: RwLock<HashMap<ResourceId, (UdpSocket, SocketAddr)>>,
     listeners: RwLock<HashMap<ResourceId, UdpSocket>>,
-    id_generator: ResourceIdGenerator,
-    registry: Registry,
 }
 
 impl Store {
-    fn new(id_generator: ResourceIdGenerator, registry: Registry) -> Store {
-        Store {
-            sockets: RwLock::new(HashMap::new()),
-            listeners: RwLock::new(HashMap::new()),
-            id_generator,
-            registry,
-        }
+    fn new() -> Self {
+        Self { sockets: RwLock::new(HashMap::new()), listeners: RwLock::new(HashMap::new()) }
     }
 }
 
-pub struct UdpAdapter {
-    thread: Option<JoinHandle<()>>,
-    thread_running: Arc<AtomicBool>,
+pub struct UdpAdapter;
+
+impl<C> Adapter<C> for UdpAdapter
+where C: FnMut(Endpoint, AdapterEvent<'_>)
+{
+    type Controller = UdpController;
+    type Processor = UdpProcessor;
+    fn split(self, poll_register: PollRegister) -> (UdpController, UdpProcessor) {
+        let store = Arc::new(Store::new());
+        (UdpController::new(store.clone(), poll_register), UdpProcessor::new(store))
+    }
+}
+
+pub struct UdpController {
     store: Arc<Store>,
+    poll_register: PollRegister,
 }
 
-impl UdpAdapter {
-    pub fn init<C>(adapter_id: u8, mut event_callback: C) -> Self
-    where C: for<'b> FnMut(Endpoint, &'b [u8]) + Send + 'static {
-        let id_generator = ResourceIdGenerator::new(adapter_id);
-        let poll = Poll::new().unwrap();
-        let store = Store::new(id_generator, poll.registry().try_clone().unwrap());
-        let store = Arc::new(store);
-        let thread_store = store.clone();
-
-        let thread_running = Arc::new(AtomicBool::new(true));
-        let running = thread_running.clone();
-
-        let thread = thread::Builder::new()
-            .name("message-io: udp-adapter".into())
-            .spawn(move || {
-                let timeout = Some(Duration::from_millis(NETWORK_SAMPLING_TIMEOUT));
-                let mut event_processor = UdpEventProcessor::new(thread_store, timeout, poll);
-
-                while running.load(Ordering::Relaxed) {
-                    event_processor.process(&mut event_callback);
-                }
-            })
-            .unwrap();
-
-        Self { thread: Some(thread), thread_running, store }
+impl UdpController {
+    fn new(store: Arc<Store>, poll_register: PollRegister) -> Self {
+        Self { store, poll_register }
     }
+}
 
-    pub fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
+impl Controller for UdpController {
+    fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
         let mut socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
         socket.connect(addr)?;
 
-        let id = self.store.id_generator.generate(ResourceType::Remote);
-        self.store.registry.register(&mut socket, Token(id.raw()), Interest::READABLE).unwrap();
+        let id = self.poll_register.add(&mut socket, ResourceType::Remote);
         self.store.sockets.write().expect(OTHER_THREAD_ERR).insert(id, (socket, addr));
         Ok(Endpoint::new(id, addr))
     }
 
-    pub fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         let mut socket = match addr {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
@@ -94,33 +74,33 @@ impl UdpAdapter {
             _ => UdpSocket::bind(addr)?,
         };
 
-        let id = self.store.id_generator.generate(ResourceType::Listener);
+        let id = self.poll_register.add(&mut socket, ResourceType::Listener);
         let real_addr = socket.local_addr().unwrap();
-        self.store.registry.register(&mut socket, Token(id.raw()), Interest::READABLE).unwrap();
         self.store.listeners.write().expect(OTHER_THREAD_ERR).insert(id, socket);
         Ok((id, real_addr))
     }
 
-    pub fn remove(&mut self, id: ResourceId) -> Option<()> {
+    fn remove(&mut self, id: ResourceId) -> Option<()> {
+        let poll_register = &mut self.poll_register;
         match id.resource_type() {
-            ResourceType::Listener => {
-                self.store.listeners.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |mut listener| {
-                        self.store.registry.deregister(&mut listener).unwrap();
-                    },
-                )
-            }
-            ResourceType::Remote => {
-                self.store.sockets.write().expect(OTHER_THREAD_ERR).remove(&id).map(
-                    |(mut socket, _)| {
-                        self.store.registry.deregister(&mut socket).unwrap();
-                    },
-                )
-            }
+            ResourceType::Listener => self
+                .store
+                .listeners
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|mut listener| poll_register.remove(&mut listener)),
+            ResourceType::Remote => self
+                .store
+                .sockets
+                .write()
+                .expect(OTHER_THREAD_ERR)
+                .remove(&id)
+                .map(|(mut socket, _)| poll_register.remove(&mut socket)),
         }
     }
 
-    pub fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
+    fn local_addr(&self, id: ResourceId) -> Option<SocketAddr> {
         match id.resource_type() {
             ResourceType::Listener => self
                 .store
@@ -139,9 +119,7 @@ impl UdpAdapter {
         }
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
-        assert_eq!(endpoint.resource_id().adapter_id(), self.store.id_generator.adapter_id());
-
+    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
         if data.len() > MAX_UDP_LEN {
             SendingStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_LEN)
         }
@@ -153,13 +131,13 @@ impl UdpAdapter {
             if let Some((socket, _)) =
                 self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
             {
-                socket.send(data).expect("No errors here");
+                socket.send(data).expect("Unexpected send error");
                 SendingStatus::Sent
             }
             else if let Some(socket) =
                 self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
             {
-                socket.send_to(data, endpoint.addr()).expect("No errors here");
+                socket.send_to(data, endpoint.addr()).expect("Unexpected send error");
                 SendingStatus::Sent
             }
             else {
@@ -170,7 +148,7 @@ impl UdpAdapter {
     }
 }
 
-impl Drop for UdpAdapter {
+impl Drop for UdpController {
     fn drop(&mut self) {
         for socket in self.store.listeners.write().expect(OTHER_THREAD_ERR).values_mut() {
             if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
@@ -179,98 +157,57 @@ impl Drop for UdpAdapter {
                 }
             }
         }
-
-        self.thread_running.store(false, Ordering::Relaxed);
-        self.thread.take().unwrap().join().expect(OTHER_THREAD_ERR);
     }
 }
 
-struct UdpEventProcessor {
-    resource_processor: UdpResourceProcessor,
-    timeout: Option<Duration>,
-    poll: Poll,
-    events: Events,
-}
-
-impl UdpEventProcessor {
-    fn new(store: Arc<Store>, timeout: Option<Duration>, poll: Poll) -> Self {
-        Self {
-            resource_processor: UdpResourceProcessor::new(store),
-            timeout,
-            poll,
-            events: Events::with_capacity(EVENTS_SIZE),
-        }
-    }
-
-    pub fn process<C>(&mut self, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, &'b [u8]) {
-        loop {
-            match self.poll.poll(&mut self.events, self.timeout) {
-                Ok(_) => break self.process_resource(event_callback),
-                Err(e) => match e.kind() {
-                    ErrorKind::Interrupted => continue,
-                    _ => Err(e).unwrap(),
-                },
-            }
-        }
-    }
-
-    fn process_resource<C>(&mut self, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, &'b [u8]) {
-        for mio_event in &self.events {
-            let id = ResourceId::from(mio_event.token().0);
-
-            log::trace!("Wake from poll for UDP with resource id {}. ", id);
-
-            match id.resource_type() {
-                ResourceType::Listener => {
-                    self.resource_processor.process_listener_socket(id, event_callback)
-                }
-                ResourceType::Remote => {
-                    self.resource_processor.process_remote_socket(id, event_callback)
-                }
-            }
-        }
-    }
-}
-
-struct UdpResourceProcessor {
+pub struct UdpProcessor {
     store: Arc<Store>,
     input_buffer: [u8; MAX_UDP_LEN],
 }
 
-impl UdpResourceProcessor {
+impl UdpProcessor {
     fn new(store: Arc<Store>) -> Self {
         Self { store, input_buffer: [0; MAX_UDP_LEN] }
     }
+}
 
-    fn process_listener_socket<C>(&mut self, id: ResourceId, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, &'b [u8]) {
-        // We check the existance of the listener because some event could be produced
-        // before removing it.
+impl<C> Processor<C> for UdpProcessor
+where C: FnMut(Endpoint, AdapterEvent<'_>)
+{
+    fn process_listener(&mut self, id: ResourceId, event_callback: &mut C) {
         if let Some(socket) = self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id) {
             loop {
                 match socket.recv_from(&mut self.input_buffer) {
                     Ok((size, addr)) => {
-                        event_callback(Endpoint::new(id, addr), &mut self.input_buffer[..size])
+                        let endpoint = Endpoint::new(id, addr);
+                        let data = &mut self.input_buffer[..size];
+                        event_callback(endpoint, AdapterEvent::Data(data));
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                    Err(_) => break, // should not happened
+                    Err(_) => {
+                        log::error!("UDP process listener error");
+                        break // should not happen
+                    }
                 }
             }
         }
     }
 
-    fn process_remote_socket<C>(&mut self, id: ResourceId, event_callback: &mut C)
-    where C: for<'b> FnMut(Endpoint, &'b [u8]) {
+    fn process_remote(&mut self, id: ResourceId, event_callback: &mut C) {
         if let Some((socket, addr)) = self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&id) {
             let endpoint = Endpoint::new(id, *addr);
             loop {
                 match socket.recv(&mut self.input_buffer) {
-                    Ok(size) => event_callback(endpoint, &mut self.input_buffer[..size]),
+                    Ok(size) => {
+                        let data = &mut self.input_buffer[..size];
+                        event_callback(endpoint, AdapterEvent::Data(data));
+                    }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                     Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => continue,
-                    Err(_) => break, // should not happened
+                    Err(_) => {
+                        log::error!("UDP process remote error");
+                        break // should not happen
+                    }
                 }
             }
         }

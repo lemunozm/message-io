@@ -13,7 +13,10 @@ use std::collections::{HashMap};
 use std::sync::{Arc, RwLock};
 use std::io::{self, ErrorKind};
 
-pub const MAX_UDP_LEN: usize = 1472; // 1500 (MTU) - 20 (max IP header) - 8 (max udp header)
+/// Maximun payload that a UDP packet can hold:
+/// 65535 (MTU) - 20 (max IP header) - 8 (max udp header)
+/// The serialization of your message must not exceed this value.
+pub const MAX_UDP_LEN: usize = 65535 - 20 - 8;
 
 struct Store {
     // We store the addr because we will need it when the stream crash.
@@ -121,29 +124,29 @@ impl Controller for UdpController {
 
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
         if data.len() > MAX_UDP_LEN {
+            log::error!(
+                "The UDP message could not set because it exceeds the MTU. \
+                Current size: {}, MTU: {}",
+                data.len(),
+                MAX_UDP_LEN
+            );
             SendingStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_LEN)
         }
+        else if let Some((socket, _)) =
+            self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
+        {
+            socket.send(data).expect("Errors already managed");
+            SendingStatus::Sent
+        }
+        else if let Some(socket) =
+            self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
+        {
+            socket.send_to(data, endpoint.addr()).expect("Errors already managed");
+            SendingStatus::Sent
+        }
         else {
-            // Only two errors can happend in 'sends' methods of UDP:
-            // A packet that exceeds MTU size and send() called without knowing the remote addr.
-            // Both controlled so we can expect that no errors be produced at sending
-
-            if let Some((socket, _)) =
-                self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
-            {
-                socket.send(data).expect("Unexpected send error");
-                SendingStatus::Sent
-            }
-            else if let Some(socket) =
-                self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
-            {
-                socket.send_to(data, endpoint.addr()).expect("Unexpected send error");
-                SendingStatus::Sent
-            }
-            else {
-                // If the endpoint does not exists, is because it was removed
-                SendingStatus::RemovedEndpoint
-            }
+            // We can safety panics here because it is a programming error by the user.
+            panic!("Error: you are sending over an already removed endpoint");
         }
     }
 }
@@ -203,7 +206,6 @@ where C: FnMut(Endpoint, AdapterEvent<'_>)
                         event_callback(endpoint, AdapterEvent::Data(data));
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                    Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => continue,
                     Err(_) => {
                         log::error!("UDP process remote error");
                         break // should not happen

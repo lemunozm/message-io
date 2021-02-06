@@ -3,6 +3,7 @@
 ## Release 0.6.1
 - Internal improvements in order to use one thread for all adapters.
 - Clean architecture to implement new adapters easier.
+- Increase the UDP packet size that can be sent.
 
 ## Release 0.6.0
 - Added concurrent writing and reading from socket/streams in UDP and TCP protocols.

@@ -60,6 +60,7 @@ pub trait Controller {
 /// It is in change to perform eventual actions comming from the internal network engine.
 /// The `event_callback` is the action that will be performed when an [AdapterEvent] is
 /// generated for some `Endpoint`.
+/// This function will be produce the [create::network::NetEvent].
 pub trait Processor<C>
 where C: FnMut(Endpoint, AdapterEvent<'_>)
 {

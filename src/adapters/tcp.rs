@@ -157,6 +157,12 @@ impl Controller for TcpController {
                     }
                 }
             }
+
+            // TODO: currently there is not a safe way to know if it this is reached because of
+            // a user API error (send over already removed endpoint) or because a disconnection
+            // was happened but the user has not processed it yet.
+            // It could be better to panics in the first case to distinguish the programming error
+            // from the second case.
             None => SendingStatus::RemovedEndpoint,
         }
     }

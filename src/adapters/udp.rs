@@ -14,9 +14,11 @@ use std::sync::{Arc, RwLock};
 use std::io::{self, ErrorKind};
 
 /// Maximun payload that a UDP packet can hold:
-/// 65535 (MTU) - 20 (max IP header) - 8 (max udp header)
+/// - 9216: MTU of the OS with the minimun MTU: OSX
+/// - 20: max IP header
+/// - 8: max udp header
 /// The serialization of your message must not exceed this value.
-pub const MAX_UDP_LEN: usize = 65535 - 20 - 8;
+pub const MAX_UDP_LEN: usize = 9216 - 20 - 8;
 
 struct Store {
     // We store the addr because we will need it when the stream crash.

@@ -124,6 +124,32 @@ fn main() {
 }
 ```
 
+## Test yourself!
+Clone the repository and test the TCP example that you can found in [`examples/tcp`](examples/tcp):
+
+Run the server:
+```
+cargo run --example tcp server
+```
+In other terminals, run one or more clients:
+```
+cargo run --example tcp client <name>
+```
+
+## Do you need a transport protocol that `message-io` doesn't have? Add it! <span id="custom-adapter"><span>
+
+If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#platforms)
+(most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
+
+1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
+  traits that you can found in [`src/adapter.rs`](src/adapter.rs).
+
+1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
+
+That's all! You can use your new transport in the `message-io` API like any other.
+
+Oops, one step more, you can make a *Pull request* for everyone to use it :)
+
 ## Basic concepts
 The library has two main pieces:
 
@@ -155,28 +181,3 @@ To reach this, the user has to connect the `Network` to the `EventQueue` sending
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vT6IuBVr4mLbdNfs2yZayqqUJ04PsuqG27Ce3Vdr0ZG8ItX3slISoKVxyndybaYPIS5oFZ6N4TljrKQ/pub?w=701&h=383"/>
 </p>
 
-## Test yourself!
-Clone the repository and test the TCP example that you can found in [`examples/tcp`](examples/tcp):
-
-Run the server:
-```
-cargo run --example tcp server
-```
-In other terminals, run one or more clients:
-```
-cargo run --example tcp client <name>
-```
-
-## Do you need a transport protocol that `message-io` doesn't have? Add it! <span id="custom-adapter"><span>
-
-If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#platforms)
-(most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
-
-1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you can found in [`src/adapter.rs`](src/adapter.rs).
-
-1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
-
-That's all! You can use your new transport in the `message-io` API like any other.
-
-Oops, one step more, you can make a *Pull request* for everyone to use it :)

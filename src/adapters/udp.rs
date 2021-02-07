@@ -20,6 +20,8 @@ use std::io::{self, ErrorKind};
 /// The serialization of your message must not exceed this value.
 pub const MAX_UDP_LEN: usize = 9216 - 20 - 8;
 
+const MAX_BUFFER_UDP_LEN: usize = 65535 - 20 - 8; //Defined by the UDP standard
+
 struct Store {
     // We store the addr because we will need it when the stream crash.
     // When a stream crash by an error (i.e. reset) peer_addr no longer returns the addr.
@@ -127,28 +129,39 @@ impl Controller for UdpController {
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
         if data.len() > MAX_UDP_LEN {
             log::error!(
-                "The UDP message could not set because it exceeds the MTU. \
+                "The UDP message could not be sent because it exceeds the MTU. \
                 Current size: {}, MTU: {}",
                 data.len(),
                 MAX_UDP_LEN
             );
-            SendingStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_LEN)
+            return SendingStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_LEN)
         }
-        else if let Some((socket, _)) =
+
+        let result = if let Some((socket, _)) =
             self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
         {
-            socket.send(data).expect("Errors already managed");
-            SendingStatus::Sent
+            socket.send(data)
         }
         else if let Some(socket) =
             self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
         {
-            socket.send_to(data, endpoint.addr()).expect("Errors already managed");
-            SendingStatus::Sent
+            socket.send_to(data, endpoint.addr())
         }
         else {
             // We can safety panics here because it is a programming error by the user.
             panic!("Error: you are sending over an already removed endpoint");
+        };
+
+        match result {
+            Ok(_) => SendingStatus::Sent,
+            // Avoid ICMP generated error to be logged
+            Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
+                SendingStatus::RemovedEndpoint
+            }
+            Err(_) => {
+                log::error!("UDP send remote error");
+                SendingStatus::RemovedEndpoint
+            }
         }
     }
 }
@@ -167,12 +180,12 @@ impl Drop for UdpController {
 
 pub struct UdpProcessor {
     store: Arc<Store>,
-    input_buffer: [u8; MAX_UDP_LEN],
+    input_buffer: [u8; MAX_BUFFER_UDP_LEN],
 }
 
 impl UdpProcessor {
     fn new(store: Arc<Store>) -> Self {
-        Self { store, input_buffer: [0; MAX_UDP_LEN] }
+        Self { store, input_buffer: [0; MAX_BUFFER_UDP_LEN] }
     }
 }
 
@@ -208,6 +221,8 @@ where C: FnMut(Endpoint, AdapterEvent<'_>)
                         event_callback(endpoint, AdapterEvent::Data(data));
                     }
                     Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                    // Avoid ICMP generated error to be logged
+                    Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => break,
                     Err(_) => {
                         log::error!("UDP process remote error");
                         break // should not happen

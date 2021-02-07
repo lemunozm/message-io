@@ -2,7 +2,7 @@ use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId};
 use crate::poll::{PollRegister};
 use crate::adapter::{ActionHandler, EventHandler};
-use crate::util::{SendingStatus};
+use crate::util::{SendingStatus, OTHER_THREAD_ERR};
 
 use mio::event::{Source};
 
@@ -21,7 +21,7 @@ pub enum AdapterEvent<'a> {
 }
 
 pub struct ResourceRegister<S> {
-    // We store the local addr because if the source disconnects, it can not be retrieved.
+    // We store the local addr because if the resource disconnects, it can not be retrieved.
     resources: RwLock<HashMap<ResourceId, (S, SocketAddr)>>,
     poll_register: PollRegister,
 }
@@ -31,20 +31,33 @@ impl<S: Source> ResourceRegister<S> {
         ResourceRegister { resources: RwLock::new(HashMap::new()), poll_register }
     }
 
-    pub fn add(&mut self, source: S, addr: SocketAddr) {
-        todo!()
+    pub fn add(&mut self, mut resource: S, addr: SocketAddr) -> ResourceId {
+        let id = self.poll_register.add(&mut resource);
+        self.resources.write().expect(OTHER_THREAD_ERR).insert(id, (resource, addr));
+        id
     }
 
     pub fn remove(&mut self, id: ResourceId) -> Option<S> {
-        todo!()
+        let poll_register = &mut self.poll_register;
+        self.resources
+            .write()
+            .expect(OTHER_THREAD_ERR)
+            .remove(&id)
+            .map(|(mut resource, _)| {
+                poll_register.remove(&mut resource);
+                resource
+            })
     }
 
-    pub fn read_source(id: ResourceId, action: impl FnMut(S)) -> Option<()> {
-        todo!()
+    pub fn read_source(&self, id: ResourceId, mut action: impl FnMut(&S, SocketAddr))
+        -> Option<()> {
+        let resources = self.resources.read().expect(OTHER_THREAD_ERR);
+        resources.get(&id).map(|(resource, addr)| action(resource, *addr))
     }
 
-    pub fn write_source(id: ResourceId, action: impl FnMut(S)) -> Option<()> {
-        todo!()
+    pub fn write_source(&mut self, id: ResourceId, mut action: impl FnMut(&S, SocketAddr)) -> Option<()> {
+        let mut resources = self.resources.write().expect(OTHER_THREAD_ERR);
+        resources.get_mut(&id).map(|(resource, addr)| action(resource, *addr))
     }
 }
 

@@ -59,7 +59,7 @@ pub trait EventHandler: Send {
     /// The `id` represents the listener that have generated the event.
     /// The **implementator** is in charge of retrive the instance represented by this `id`
     /// to accept that connection.
-    fn on_accept(
+    fn accept_event(
         &mut self,
         listener: Self::Listener,
         create_remote_callback: &mut dyn FnMut(Self::Remote, SocketAddr)
@@ -71,7 +71,7 @@ pub trait EventHandler: Send {
     /// The `id` represents the remote entity that has generated the event.
     /// The **implementator** is in charge of retrive the instance represented by this `id`
     /// and process the event.
-    fn on_read(
+    fn read_event(
         &mut self,
         remote: Self::Remote,
         remote_event_callback: &mut dyn FnMut(RemoteEvent<'_>)

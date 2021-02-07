@@ -57,6 +57,14 @@ impl UdpController {
     fn new(store: Arc<Store>, poll_register: PollRegister) -> Self {
         Self { store, poll_register }
     }
+
+    fn leave_multicast_v4(socket: &mut UdpSocket) {
+        if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
+            if addr.ip().is_multicast() {
+                socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
+            }
+        }
+    }
 }
 
 impl Controller for UdpController {
@@ -103,7 +111,10 @@ impl Controller for UdpController {
                 .write()
                 .expect(OTHER_THREAD_ERR)
                 .remove(&id)
-                .map(|(mut socket, _)| poll_register.remove(&mut socket)),
+                .map(|(mut socket, _)| {
+                    Self::leave_multicast_v4(&mut socket);
+                    poll_register.remove(&mut socket)
+                }),
         }
     }
 
@@ -168,12 +179,8 @@ impl Controller for UdpController {
 
 impl Drop for UdpController {
     fn drop(&mut self) {
-        for socket in self.store.listeners.write().expect(OTHER_THREAD_ERR).values_mut() {
-            if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
-                if addr.ip().is_multicast() {
-                    socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
-                }
-            }
+        for mut socket in self.store.listeners.write().expect(OTHER_THREAD_ERR).values_mut() {
+            Self::leave_multicast_v4(&mut socket);
         }
     }
 }

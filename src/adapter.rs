@@ -1,4 +1,3 @@
-use crate::endpoint::{Endpoint};
 use crate::util::{SendingStatus};
 
 use mio::event::{Source};
@@ -38,12 +37,12 @@ pub trait ActionHandler: Send {
     /// Sends a raw message by the specific endpoint.
     /// The **implementator** is in charge to send the `data` using the instance represented by
     /// `endpoint.resource_id()`.
-    fn send(&mut self, resource: &Self::Remote, endpoint: Endpoint, data: &[u8]) -> SendingStatus;
+    fn send(&mut self, resource: &Self::Remote, data: &[u8]) -> SendingStatus;
 
     fn send_by_listener(
         &mut self,
         _resource: &Self::Listener,
-        _endpoint: Endpoint,
+        _target_addr: SocketAddr,
         _data: &[u8],
     ) -> SendingStatus
     {

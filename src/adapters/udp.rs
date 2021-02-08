@@ -1,7 +1,6 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
-use crate::adapter::{AdapterEvent, Adapter, Controller, Processor};
-use crate::poll::{PollRegister};
+use crate::adapter::{Adapter, ActionHandler, EventHandler, AcceptionEvent};
 use crate::util::{OTHER_THREAD_ERR, SendingStatus};
 
 use mio::net::{UdpSocket};
@@ -9,8 +8,6 @@ use mio::net::{UdpSocket};
 use net2::{UdpBuilder};
 
 use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
-use std::collections::{HashMap};
-use std::sync::{Arc, RwLock};
 use std::io::{self, ErrorKind};
 
 /// Maximun payload that a UDP packet can hold:
@@ -22,63 +19,34 @@ pub const MAX_UDP_LEN: usize = 9216 - 20 - 8;
 
 const MAX_BUFFER_UDP_LEN: usize = 65535 - 20 - 8; //Defined by the UDP standard
 
-struct Store {
-    // We store the addr because we will need it when the stream crash.
-    // When a stream crash by an error (i.e. reset) peer_addr no longer returns the addr.
-    sockets: RwLock<HashMap<ResourceId, (UdpSocket, SocketAddr)>>,
-    listeners: RwLock<HashMap<ResourceId, UdpSocket>>,
-}
-
-impl Store {
-    fn new() -> Self {
-        Self { sockets: RwLock::new(HashMap::new()), listeners: RwLock::new(HashMap::new()) }
-    }
-}
-
 pub struct UdpAdapter;
 
-impl<C> Adapter<C> for UdpAdapter
-where C: FnMut(Endpoint, AdapterEvent<'_>)
-{
-    type Controller = UdpController;
-    type Processor = UdpProcessor;
-    fn split(self, poll_register: PollRegister) -> (UdpController, UdpProcessor) {
-        let store = Arc::new(Store::new());
-        (UdpController::new(store.clone(), poll_register), UdpProcessor::new(store))
+impl Adapter for UdpAdapter {
+    type Remote = UdpSocket;
+    type Listener = UdpSocket;
+    type ActionHandler = UdpActionHandler;
+    type EventHandler = UdpEventHandler;
+
+    fn split(self) -> (UdpActionHandler, UdpEventHandler) {
+        (UdpActionHandler, UdpEventHandler)
     }
 }
 
-pub struct UdpController {
-    store: Arc<Store>,
-    poll_register: PollRegister,
-}
+fn leave_multicast_v4(socket: &mut UdpSocket) {}
 
-impl UdpController {
-    fn new(store: Arc<Store>, poll_register: PollRegister) -> Self {
-        Self { store, poll_register }
-    }
+pub struct UdpActionHandler;
+impl ActionHandler for UdpActionHandler {
+    type Remote = UdpSocket;
+    type Listener = UdpSocket;
 
-    fn leave_multicast_v4(socket: &mut UdpSocket) {
-        if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
-            if addr.ip().is_multicast() {
-                socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
-            }
-        }
-    }
-}
-
-impl Controller for UdpController {
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
-        let mut socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
+    fn connect(&mut self, addr: SocketAddr) -> io::Result<UdpSocket> {
+        let socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
         socket.connect(addr)?;
-
-        let id = self.poll_register.add(&mut socket, ResourceType::Remote);
-        self.store.sockets.write().expect(OTHER_THREAD_ERR).insert(id, (socket, addr));
-        Ok(Endpoint::new(id, addr))
+        Ok(socket)
     }
 
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        let mut socket = match addr {
+    fn listen(&mut self, addr: SocketAddr) -> io::Result<(UdpSocket, SocketAddr)> {
+        let socket = match addr {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
                 let socket = UdpBuilder::new_v4()?.reuse_address(true)?.bind(listening_addr)?;
@@ -89,80 +57,55 @@ impl Controller for UdpController {
             _ => UdpSocket::bind(addr)?,
         };
 
-        let id = self.poll_register.add(&mut socket, ResourceType::Listener);
         let real_addr = socket.local_addr().unwrap();
-        self.store.listeners.write().expect(OTHER_THREAD_ERR).insert(id, socket);
-        Ok((id, real_addr))
+        Ok((socket, real_addr))
     }
 
-    fn remove(&mut self, id: ResourceId) -> Option<()> {
-        let poll_register = &mut self.poll_register;
-        match id.resource_type() {
-            ResourceType::Listener => self
-                .store
-                .listeners
-                .write()
-                .expect(OTHER_THREAD_ERR)
-                .remove(&id)
-                .map(|mut listener| poll_register.remove(&mut listener)),
-            ResourceType::Remote => self
-                .store
-                .sockets
-                .write()
-                .expect(OTHER_THREAD_ERR)
-                .remove(&id)
-                .map(|(mut socket, _)| {
-                    Self::leave_multicast_v4(&mut socket);
-                    poll_register.remove(&mut socket)
-                }),
+    fn remove_listener(&mut self, socket: UdpSocket) {
+        if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
+            if addr.ip().is_multicast() {
+                socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
+            }
         }
     }
 
-    fn local_addr(&self, id: ResourceId) -> Option<SocketAddr> {
-        match id.resource_type() {
-            ResourceType::Listener => self
-                .store
-                .listeners
-                .read()
-                .expect(OTHER_THREAD_ERR)
-                .get(&id)
-                .map(|listener| listener.local_addr().unwrap()),
-            ResourceType::Remote => self
-                .store
-                .sockets
-                .read()
-                .expect(OTHER_THREAD_ERR)
-                .get(&id)
-                .map(|(socket, _)| socket.local_addr().unwrap()),
-        }
-    }
-
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
+    fn send(&mut self, socket: &UdpSocket, data: &[u8]) -> SendingStatus {
         if data.len() > MAX_UDP_LEN {
-            log::error!(
-                "The UDP message could not be sent because it exceeds the MTU. \
-                Current size: {}, MTU: {}",
-                data.len(),
-                MAX_UDP_LEN
-            );
-            return SendingStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_LEN)
-        }
-
-        let result = if let Some((socket, _)) =
-            self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
-        {
-            socket.send(data)
-        }
-        else if let Some(socket) =
-            self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&endpoint.resource_id())
-        {
-            socket.send_to(data, endpoint.addr())
+            Self::udp_length_exceeded(data.len())
         }
         else {
-            // We can safety panics here because it is a programming error by the user.
-            panic!("Error: you are sending over an already removed endpoint");
-        };
+            Self::sending_status(socket.send(data))
+        }
+    }
 
+    fn send_by_listener(
+        &mut self,
+        socket: &UdpSocket,
+        addr: SocketAddr,
+        data: &[u8],
+    ) -> SendingStatus
+    {
+        if data.len() > MAX_UDP_LEN {
+            Self::udp_length_exceeded(data.len())
+        }
+        else {
+            Self::sending_status(socket.send_to(data, addr))
+        }
+    }
+}
+
+impl UdpActionHandler {
+    fn udp_length_exceeded(length: usize) -> SendingStatus {
+        log::error!(
+            "The UDP message could not be sent because it exceeds the MTU. \
+            Current size: {}, MTU: {}",
+            length,
+            MAX_UDP_LEN
+        );
+        return SendingStatus::MaxPacketSizeExceeded(length, MAX_UDP_LEN)
+    }
+
+    fn sending_status(result: io::Result<usize>) -> SendingStatus {
         match result {
             Ok(_) => SendingStatus::Sent,
             // Avoid ICMP generated error to be logged
@@ -177,28 +120,32 @@ impl Controller for UdpController {
     }
 }
 
-impl Drop for UdpController {
-    fn drop(&mut self) {
-        for mut socket in self.store.listeners.write().expect(OTHER_THREAD_ERR).values_mut() {
-            Self::leave_multicast_v4(&mut socket);
-        }
+pub struct UdpEventHandler;
+
+impl EventHandler for UdpEventHandler {
+    type Remote = UdpSocket;
+    type Listener = UdpSocket;
+
+    fn accept_event(
+        &mut self,
+        listener: &Self::Listener,
+        event_callback: &mut dyn FnMut(AcceptionEvent<'_, Self::Remote>),
+    )
+    {
+        todo!()
     }
-}
 
-pub struct UdpProcessor {
-    store: Arc<Store>,
-    input_buffer: [u8; MAX_BUFFER_UDP_LEN],
-}
-
-impl UdpProcessor {
-    fn new(store: Arc<Store>) -> Self {
-        Self { store, input_buffer: [0; MAX_BUFFER_UDP_LEN] }
+    fn read_event(
+        &mut self,
+        remote: &Self::Remote,
+        addr: SocketAddr,
+        event_callback: &mut dyn FnMut(&[u8]),
+    ) -> bool
+    {
+        todo!()
     }
-}
 
-impl<C> Processor<C> for UdpProcessor
-where C: FnMut(Endpoint, AdapterEvent<'_>)
-{
+    /*
     fn process_listener(&mut self, id: ResourceId, event_callback: &mut C) {
         if let Some(socket) = self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id) {
             loop {
@@ -238,4 +185,5 @@ where C: FnMut(Endpoint, AdapterEvent<'_>)
             }
         }
     }
+    */
 }

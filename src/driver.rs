@@ -58,7 +58,7 @@ pub trait ActionController {
     fn local_addr(&self, id: ResourceId) -> Option<SocketAddr>;
 }
 
-pub struct GenericActionController<R, L> {
+pub struct GenericActionController<R: Source, L: Source> {
     remote_register: Arc<ResourceRegister<R>>,
     listener_register: Arc<ResourceRegister<L>>,
     action_handler: Box<dyn ActionHandler<Remote = R, Listener = L>>,
@@ -101,10 +101,11 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
                 match remotes.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => self.action_handler.send(resource, endpoint, data),
+                    Some((resource, _)) => self.action_handler.send(resource, data),
                     // TODO: currently there is not a safe way to know if it this is
                     // reached because of a user API error (send over already removed endpoint)
-                    // or because a disconnection was happened but the user has not processed it yet.
+                    // or because a disconnection was happened but the user has not processed
+                    // it yet.
                     // It could be better to panics in the first case to distinguish
                     // the programming error from the second case.
                     None => SendingStatus::RemovedEndpoint,
@@ -113,8 +114,8 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
             ResourceType::Listener => {
                 let listeners = self.listener_register.resources().read().expect(OTHER_THREAD_ERR);
                 match listeners.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => {
-                        self.action_handler.send_by_listener(resource, endpoint, data)
+                    Some((resource, addr)) => {
+                        self.action_handler.send_by_listener(resource, *addr, data)
                     }
                     None => {
                         panic!("Error: You are trying to send by a listener that does not exists")
@@ -154,6 +155,18 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
                 .expect(OTHER_THREAD_ERR)
                 .get(&id)
                 .map(|(_, addr)| *addr),
+        }
+    }
+}
+
+impl<R: Source, L: Source> Drop for GenericActionController<R, L> {
+    fn drop(&mut self) {
+        let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
+        let ids = remotes.keys().map(|id| *id).collect::<Vec<_>>();
+        drop(remotes);
+
+        for id in ids {
+            self.remove(id);
         }
     }
 }

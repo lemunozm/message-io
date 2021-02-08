@@ -1,4 +1,3 @@
-use crate::endpoint::{Endpoint};
 use crate::adapter::{Adapter, ActionHandler, EventHandler, AcceptionEvent};
 use crate::encoding::{self, DecodingPool};
 use crate::util::{SendingStatus, OTHER_THREAD_ERR};
@@ -52,7 +51,7 @@ impl ActionHandler for TcpActionHandler {
         Ok((listener, real_addr))
     }
 
-    fn send(&mut self, stream: &TcpStream, _: Endpoint, data: &[u8]) -> SendingStatus {
+    fn send(&mut self, stream: &TcpStream, data: &[u8]) -> SendingStatus {
         let encode_value = encoding::encode(data);
 
         // TODO: The current implementation implies an active waiting,

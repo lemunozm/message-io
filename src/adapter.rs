@@ -9,12 +9,11 @@ use std::io::{self};
 /// High level trait to represent an adapter for a transport protocol.
 /// The adapter is used to pack a [`Controller`] and [`Adapter`].
 /// Two traits to describes how an adapter behaves.
-pub trait Adapter
-{
+pub trait Adapter {
     type Remote: Source + Send + Sync;
     type Listener: Source + Send + Sync;
-    type ActionHandler: ActionHandler<Remote=Self::Remote, Listener=Self::Listener>;
-    type EventHandler: EventHandler<Remote=Self::Remote, Listener=Self::Listener>;
+    type ActionHandler: ActionHandler<Remote = Self::Remote, Listener = Self::Listener>;
+    type EventHandler: EventHandler<Remote = Self::Remote, Listener = Self::Listener>;
 
     /// Creates a [`Controller`] and [`Processor`] that represents the adapter.
     /// The **implementator** must create their [`Controller`] and [`Processor`] here.
@@ -39,12 +38,25 @@ pub trait ActionHandler: Send {
     /// Sends a raw message by the specific endpoint.
     /// The **implementator** is in charge to send the `data` using the instance represented by
     /// `endpoint.resource_id()`.
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus;
+    fn send(&mut self, resource: &Self::Remote, endpoint: Endpoint, data: &[u8]) -> SendingStatus;
+
+    fn send_by_listener(
+        &mut self,
+        _resource: &Self::Listener,
+        _endpoint: Endpoint,
+        _data: &[u8],
+    ) -> SendingStatus
+    {
+        panic!("Error: You are sending a message from a listener resource");
+    }
+
+    fn remove_remote(&mut self, _resource: Self::Remote, _addr: SocketAddr) {}
+    fn remove_listener(&mut self, _resource: Self::Listener) {}
 }
 
-pub enum RemoteEvent<'a> {
-    Data(&'a [u8]),
-    Removed,
+pub enum AcceptionEvent<'a, R> {
+    Remote(SocketAddr, R),
+    Data(SocketAddr, &'a [u8]),
 }
 
 /// It is in change to perform eventual actions comming from the internal network engine.
@@ -54,6 +66,7 @@ pub enum RemoteEvent<'a> {
 pub trait EventHandler: Send {
     type Remote: Source;
     type Listener: Source;
+
     /// Called when a listener received an event.
     /// It means that an endpoint has try to connect and the connection should accept.
     /// The `id` represents the listener that have generated the event.
@@ -61,8 +74,8 @@ pub trait EventHandler: Send {
     /// to accept that connection.
     fn accept_event(
         &mut self,
-        listener: Self::Listener,
-        create_remote_callback: &mut dyn FnMut(Self::Remote, SocketAddr)
+        listener: &Self::Listener,
+        event_callback: &mut dyn FnMut(AcceptionEvent<'_, Self::Remote>),
     );
 
     /// Called when a remote endpoint received an event.
@@ -73,7 +86,8 @@ pub trait EventHandler: Send {
     /// and process the event.
     fn read_event(
         &mut self,
-        remote: Self::Remote,
-        remote_event_callback: &mut dyn FnMut(RemoteEvent<'_>)
-    );
+        remote: &Self::Remote,
+        addr: SocketAddr,
+        event_callback: &mut dyn FnMut(&[u8]),
+    ) -> bool;
 }

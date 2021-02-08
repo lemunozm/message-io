@@ -7,7 +7,6 @@ use std::time::{Duration};
 use std::sync::{Arc};
 use std::io::{ErrorKind};
 
-
 pub struct Poll {
     mio_poll: MioPoll,
     events: Events,
@@ -59,13 +58,13 @@ impl PollRegister {
         }
     }
 
-    pub fn add(&mut self, source: &mut dyn Source) -> ResourceId {
+    pub fn add(&self, source: &mut dyn Source) -> ResourceId {
         let id = self.id_generator.generate();
         self.registry.register(source, Token(id.raw()), Interest::READABLE).unwrap();
         id
     }
 
-    pub fn remove(&mut self, source: &mut dyn Source) {
+    pub fn remove(&self, source: &mut dyn Source) {
         self.registry.deregister(source).unwrap()
     }
 }
@@ -78,4 +77,3 @@ impl Clone for PollRegister {
         }
     }
 }
-

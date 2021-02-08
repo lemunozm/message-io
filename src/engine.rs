@@ -2,7 +2,10 @@ use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{Poll};
 use crate::adapter::{Adapter};
-use crate::driver::{AdapterEvent, ActionController, EventProcessor, ResourceRegister, GenericActionController, GenericEventProcessor};
+use crate::driver::{
+    AdapterEvent, ActionController, EventProcessor, ResourceRegister, GenericActionController,
+    GenericEventProcessor,
+};
 use crate::util::{OTHER_THREAD_ERR, SendingStatus};
 
 use std::time::{Duration};
@@ -17,15 +20,13 @@ use std::io::{self};
 type ActionControllers = Vec<Box<dyn ActionController + Send>>;
 type EventProcessors<C> = Vec<Box<dyn EventProcessor<C> + Send>>;
 
-pub struct AdapterLauncher<C>
-{
+pub struct AdapterLauncher<C> {
     poll: Poll,
     controllers: ActionControllers,
     processors: EventProcessors<C>,
 }
 
-impl<C> Default for AdapterLauncher<C>
-{
+impl<C> Default for AdapterLauncher<C> {
     fn default() -> AdapterLauncher<C> {
         Self {
             poll: Poll::default(),
@@ -44,7 +45,8 @@ impl<C> Default for AdapterLauncher<C>
 }
 
 impl<C> AdapterLauncher<C>
-where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static {
+where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
+{
     pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
         let index = adapter_id as usize;
         let (controller, processor) = adapter.split();
@@ -61,16 +63,11 @@ where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static {
             controller,
         );
 
-        let event_processor = GenericEventProcessor::new(
-            remote_register,
-            listener_register,
-            processor,
-        );
+        let event_processor =
+            GenericEventProcessor::new(remote_register, listener_register, processor);
 
-        self.controllers[index]
-            = Box::new(action_controller) as Box<(dyn ActionController + Send)>;
-        self.processors[index]
-            = Box::new(event_processor) as Box<(dyn EventProcessor<C> + Send)>;
+        self.controllers[index] = Box::new(action_controller) as Box<(dyn ActionController + Send)>;
+        self.processors[index] = Box::new(event_processor) as Box<(dyn EventProcessor<C> + Send)>;
     }
 
     fn launch(self) -> (Poll, ActionControllers, EventProcessors<C>) {
@@ -100,23 +97,11 @@ impl NetworkEngine {
                 let timeout = Some(Duration::from_millis(Self::NETWORK_SAMPLING_TIMEOUT));
 
                 while running.load(Ordering::Relaxed) {
-                    poll.process_event(timeout, &mut |resource_id: ResourceId| {
+                    poll.process_event(timeout, &mut |resource_id| {
                         log::trace!("process event for {}. ", resource_id);
-                        let processor = &mut processors[resource_id.adapter_id() as usize];
-                        processor.process(resource_id, &mut event_callback);
-                        /*
-                        match resource_id.resource_type() {
-                            ResourceType::Listener => {
-                                processor.read_resource(|listener| {
 
-                                })
-                                processor.process_listener(resource_id, &mut event_callback)
-                            }
-                            ResourceType::Remote => {
-                                processor.process_remote(resource_id, &mut event_callback)
-                            }
-                        }
-                        */
+                        processors[resource_id.adapter_id() as usize]
+                            .process(resource_id, &mut event_callback);
                     });
                 }
             })

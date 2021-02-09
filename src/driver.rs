@@ -114,8 +114,8 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
             ResourceType::Listener => {
                 let listeners = self.listener_register.resources().read().expect(OTHER_THREAD_ERR);
                 match listeners.get(&endpoint.resource_id()) {
-                    Some((resource, addr)) => {
-                        self.action_handler.send_by_listener(resource, *addr, data)
+                    Some((resource, _)) => {
+                        self.action_handler.send_by_listener(resource, endpoint.addr(), data)
                     }
                     None => {
                         panic!("Error: You are trying to send by a listener that does not exists")
@@ -174,7 +174,7 @@ impl<R: Source, L: Source> Drop for GenericActionController<R, L> {
 pub trait EventProcessor<C>
 where C: FnMut(Endpoint, AdapterEvent<'_>)
 {
-    fn process(&mut self, id: ResourceId, event_callback: &mut C);
+    fn try_process(&mut self, id: ResourceId, event_callback: &mut C);
 }
 
 pub struct GenericEventProcessor<R, L> {
@@ -201,19 +201,22 @@ impl<R: Source, L: Source> GenericEventProcessor<R, L> {
 impl<C, R: Source, L: Source> EventProcessor<C> for GenericEventProcessor<R, L>
 where C: FnMut(Endpoint, AdapterEvent<'_>)
 {
-    fn process(&mut self, id: ResourceId, event_callback: &mut C) {
+    fn try_process(&mut self, id: ResourceId, event_callback: &mut C) {
         match id.resource_type() {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
 
-                let (resource, addr) = remotes.get(&id).unwrap(); //TODO: could be removed
-                let endpoint = Endpoint::new(id, *addr);
-                let removed = self.event_handler.read_event(&resource, *addr, &mut |data| {
-                    event_callback(endpoint, AdapterEvent::Data(data))
-                });
+                if let Some((resource, addr)) = remotes.get(&id) {
+                    log::trace!("Processing event (read) for {}", id);
 
-                if removed {
-                    event_callback(endpoint, AdapterEvent::Removed);
+                    let endpoint = Endpoint::new(id, *addr);
+                    let removed = self.event_handler.read_event(&resource, *addr, &mut |data| {
+                        event_callback(endpoint, AdapterEvent::Data(data))
+                    });
+
+                    if removed {
+                        event_callback(endpoint, AdapterEvent::Removed);
+                    }
                 }
             }
             ResourceType::Listener => {
@@ -221,18 +224,21 @@ where C: FnMut(Endpoint, AdapterEvent<'_>)
 
                 let remotes = &mut self.remote_register;
 
-                let (resource, _) = listeners.get(&id).unwrap(); //TODO: could be removed
-                self.event_handler.accept_event(&resource, &mut |event| match event {
-                    AcceptionEvent::Remote(addr, remote) => {
-                        let id = remotes.add(remote, addr);
-                        let endpoint = Endpoint::new(id, addr);
-                        event_callback(endpoint, AdapterEvent::Added)
-                    }
-                    AcceptionEvent::Data(addr, data) => {
-                        let endpoint = Endpoint::new(id, addr);
-                        event_callback(endpoint, AdapterEvent::Data(data))
-                    }
-                });
+                if let Some((resource, _)) = listeners.get(&id) {
+                    log::trace!("Processing event (accept) for {}", id);
+                    self.event_handler.accept_event(&resource, &mut |event| match event {
+                        AcceptionEvent::Remote(addr, remote) => {
+                            let id = remotes.add(remote, addr);
+                            let endpoint = Endpoint::new(id, addr);
+                            event_callback(endpoint, AdapterEvent::Added)
+                        }
+                        AcceptionEvent::Data(addr, data) => {
+                            log::error!("{}", addr);
+                            let endpoint = Endpoint::new(id, addr);
+                            event_callback(endpoint, AdapterEvent::Data(data))
+                        }
+                    });
+                }
             }
         }
     }

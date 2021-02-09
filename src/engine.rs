@@ -26,20 +26,20 @@ pub struct AdapterLauncher<C> {
     processors: EventProcessors<C>,
 }
 
-impl<C> Default for AdapterLauncher<C> {
+impl<C> Default for AdapterLauncher<C>
+where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
+{
     fn default() -> AdapterLauncher<C> {
         Self {
             poll: Poll::default(),
-            controllers: Vec::new(),
-            processors: Vec::new(),
-            /*
             controllers: (0..ResourceId::ADAPTER_ID_MAX)
-                .map(|_| Box::new(UnimplementedController) as Box<dyn Controller + Send>)
+                .map(|_| {
+                    Box::new(UnimplementedActionController) as Box<dyn ActionController + Send>
+                })
                 .collect::<Vec<_>>(),
             processors: (0..ResourceId::ADAPTER_ID_MAX)
-                .map(|_| Box::new(UnimplementedProcessor) as Box<dyn Processor<C> + Send>)
+                .map(|_| Box::new(UnimplementedEventProcessor) as Box<dyn EventProcessor<C> + Send>)
                 .collect(),
-            */
         }
     }
 }
@@ -98,10 +98,10 @@ impl NetworkEngine {
 
                 while running.load(Ordering::Relaxed) {
                     poll.process_event(timeout, &mut |resource_id| {
-                        log::trace!("process event for {}. ", resource_id);
+                        log::trace!("Try process event for {}", resource_id);
 
                         processors[resource_id.adapter_id() as usize]
-                            .process(resource_id, &mut event_callback);
+                            .try_process(resource_id, &mut event_callback);
                     });
                 }
             })
@@ -146,16 +146,21 @@ impl Drop for NetworkEngine {
 // The following unimplemented controller/processor is used to fill
 // the invalid adapter id holes in the registers.
 // It is faster and cleanest than to use an option that always must to be unwrapped.
-const UNIMPLEMENTED_ADAPTER_ERR: &str = "The adapter id do not reference an existing adapter";
+// (Even the user can not use bad the API in this context)
 
-/*
-struct UnimplementedController;
-impl Controller for UnimplementedController {
+const UNIMPLEMENTED_ADAPTER_ERR: &str = "The adapter id used do not reference an existing adapter";
+
+pub struct UnimplementedActionController;
+impl ActionController for UnimplementedActionController {
     fn connect(&mut self, _: SocketAddr) -> io::Result<Endpoint> {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 
     fn listen(&mut self, _: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+        panic!(UNIMPLEMENTED_ADAPTER_ERR);
+    }
+
+    fn send(&mut self, _: Endpoint, _: &[u8]) -> SendingStatus {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 
@@ -166,22 +171,13 @@ impl Controller for UnimplementedController {
     fn local_addr(&self, _: ResourceId) -> Option<SocketAddr> {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
-
-    fn send(&mut self, _: Endpoint, _: &[u8]) -> SendingStatus {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
-    }
 }
 
-struct UnimplementedProcessor;
-impl<C> Processor<C> for UnimplementedProcessor
+pub struct UnimplementedEventProcessor;
+impl<C> EventProcessor<C> for UnimplementedEventProcessor
 where C: FnMut(Endpoint, AdapterEvent<'_>)
 {
-    fn process_listener(&mut self, _: ResourceId, _: &mut C) {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
-    }
-
-    fn process_remote(&mut self, _: ResourceId, _: &mut C) {
+    fn try_process(&mut self, _: ResourceId, _: &mut C) {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 }
-*/

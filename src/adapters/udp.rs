@@ -1,7 +1,5 @@
-use crate::endpoint::{Endpoint};
-use crate::resource_id::{ResourceId, ResourceType};
 use crate::adapter::{Adapter, ActionHandler, EventHandler, AcceptionEvent};
-use crate::util::{OTHER_THREAD_ERR, SendingStatus};
+use crate::util::{SendingStatus};
 
 use mio::net::{UdpSocket};
 
@@ -28,11 +26,9 @@ impl Adapter for UdpAdapter {
     type EventHandler = UdpEventHandler;
 
     fn split(self) -> (UdpActionHandler, UdpEventHandler) {
-        (UdpActionHandler, UdpEventHandler)
+        (UdpActionHandler, UdpEventHandler::default())
     }
 }
-
-fn leave_multicast_v4(socket: &mut UdpSocket) {}
 
 pub struct UdpActionHandler;
 impl ActionHandler for UdpActionHandler {
@@ -120,7 +116,15 @@ impl UdpActionHandler {
     }
 }
 
-pub struct UdpEventHandler;
+pub struct UdpEventHandler {
+    input_buffer: [u8; MAX_BUFFER_UDP_LEN],
+}
+
+impl Default for UdpEventHandler {
+    fn default() -> Self {
+        Self { input_buffer: [0; MAX_BUFFER_UDP_LEN] }
+    }
+}
 
 impl EventHandler for UdpEventHandler {
     type Remote = UdpSocket;
@@ -128,62 +132,43 @@ impl EventHandler for UdpEventHandler {
 
     fn accept_event(
         &mut self,
-        listener: &Self::Listener,
+        socket: &UdpSocket,
         event_callback: &mut dyn FnMut(AcceptionEvent<'_, Self::Remote>),
     )
     {
-        todo!()
+        loop {
+            match socket.recv_from(&mut self.input_buffer) {
+                Ok((size, addr)) => {
+                    let data = &mut self.input_buffer[..size];
+                    event_callback(AcceptionEvent::Data(addr, data));
+                }
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                Err(_) => {
+                    log::error!("UDP process listener error");
+                    break // should not happen
+                }
+            }
+        }
     }
 
     fn read_event(
         &mut self,
-        remote: &Self::Remote,
-        addr: SocketAddr,
+        socket: &UdpSocket,
+        _: SocketAddr,
         event_callback: &mut dyn FnMut(&[u8]),
     ) -> bool
     {
-        todo!()
-    }
-
-    /*
-    fn process_listener(&mut self, id: ResourceId, event_callback: &mut C) {
-        if let Some(socket) = self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id) {
-            loop {
-                match socket.recv_from(&mut self.input_buffer) {
-                    Ok((size, addr)) => {
-                        let endpoint = Endpoint::new(id, addr);
-                        let data = &mut self.input_buffer[..size];
-                        event_callback(endpoint, AdapterEvent::Data(data));
-                    }
-                    Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                    Err(_) => {
-                        log::error!("UDP process listener error");
-                        break // should not happen
-                    }
+        loop {
+            match socket.recv(&mut self.input_buffer) {
+                Ok(size) => event_callback(&mut self.input_buffer[..size]),
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break false,
+                // Avoid ICMP generated error to be logged
+                Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => break false,
+                Err(_) => {
+                    log::error!("UDP process remote error");
+                    break false // should not happen
                 }
             }
         }
     }
-
-    fn process_remote(&mut self, id: ResourceId, event_callback: &mut C) {
-        if let Some((socket, addr)) = self.store.sockets.read().expect(OTHER_THREAD_ERR).get(&id) {
-            let endpoint = Endpoint::new(id, *addr);
-            loop {
-                match socket.recv(&mut self.input_buffer) {
-                    Ok(size) => {
-                        let data = &mut self.input_buffer[..size];
-                        event_callback(endpoint, AdapterEvent::Data(data));
-                    }
-                    Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                    // Avoid ICMP generated error to be logged
-                    Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => break,
-                    Err(_) => {
-                        log::error!("UDP process remote error");
-                        break // should not happen
-                    }
-                }
-            }
-        }
-    }
-    */
 }

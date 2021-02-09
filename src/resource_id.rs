@@ -20,7 +20,7 @@ pub struct ResourceId {
 }
 
 impl ResourceId {
-    const RESOURCE_TYPE_BIT: usize = 1 << 63; // 1 bit
+    const RESOURCE_TYPE_BIT: usize = 1 << (Self::ADAPTER_ID_POS + 7); // 1 bit
     const ADAPTER_ID_POS: usize = 8 * 7; // 7 bytes
     const ADAPTER_ID_MASK: u8 = 0b01111111; // 7 bits
     const ADAPTER_ID_MASK_OVER_ID: usize = (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS;

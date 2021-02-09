@@ -4,12 +4,10 @@ pub use crate::util::{SendingStatus};
 
 use crate::engine::{NetworkEngine, AdapterLauncher};
 use crate::driver::{AdapterEvent};
-/*
 use crate::adapters::{
     tcp::{TcpAdapter},
     udp::{UdpAdapter},
 };
-*/
 
 use serde::{Serialize, Deserialize};
 
@@ -62,20 +60,20 @@ pub enum Transport {
 }
 
 impl Transport {
-    /// Returns the adapter id used for this transport
+    /// Returns the adapter id used for this transport.
+    /// It is equivalent to the position of the enum starting by 0
     pub fn id(self) -> u8 {
         self.into()
     }
 
     /// Associates a `Transport` to its adapter.
     /// This function mounts the adapter to be used in the `NetworkEngine`
-    fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>) {
-        /*
+    fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>)
+    where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static {
         match self {
             Transport::Tcp => launcher.mount(self.id(), TcpAdapter),
             Transport::Udp => launcher.mount(self.id(), UdpAdapter),
         };
-        */
     }
 }
 

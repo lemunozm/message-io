@@ -4,24 +4,34 @@
 [![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
 
 # message-io
-`message-io` is an asynchronous message library to build network applications **easy** and **fast**. The library manages and processes the socket data streams in order to offer a simple event message API to the user.
+`message-io` is an asynchronous message library to build network applications **easily** and **fast**.
+The library manages and processes the socket data streams in order to offer a simple
+event message API to the user.
+Working as a **generic network manager**, it allows you to implement your own protocol
+following some rules, delegating to the library the tedious asynchrony and thread management.
+See more [here](#custom-adapter).
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=653&h=305" width="653"/>
 </p>
 
-Also, it can be understanding as a **generic manager network**.
-This means that you can implement your own protocol following some rules
-and `message-io` will manage the tedious asynchrony and thread management for you.
-See more [here](#custom-adapter).
+If you find a problem using the library or you have an improvement idea, do not hesitate to open an issue. **Any contribution is welcome!**
 
-**Any contribution is welcome!**
+## Motivation
+Managing sockets is hard because you need to fight with threads, concurrency,
+IO errors that come from the OS (which are really difficult to understand in some situations),
+serialization, encoding...
+And if you make use of non-blocking sockets, it adds a new layer of complexity:
+synchronize the events that come asynchronously from the OS poll.
 
-## Who is this project for?
-- People who don't want to deal with concurrence or socket connection problems.
-- People who want to push the effort in the messages among the apps, not in how to transport them.
-- People who want to make a multiplayer game (server and/or client).
-- People who want to make an application that needs to communicate over TCP / UDP protocols.
+`message-io` offers an easy way to deal with all these mentioned problems,
+making them transparently for you,
+the programmer that wants to make your application with its own problems.
+For that, `message-io` offers a simple API and give only two concepts to understand:
+**messages** (the data you send and receive), and **endpoints** (the recipients of that data).
+This abstraction also offers the possibility to use the same API independently
+of the transport protocol used.
+You could change the protocol of your application in literally one line.
 
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
@@ -31,16 +41,18 @@ See more [here](#custom-adapter).
 - FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
-  - Abstraction from transport layer: do not think about sockets, think about data messages.
-  - Only two main entities: an extensible *event-queue* to manage all events,
-    and a *network manager* to manage all connections (connect, listen, remove, send, receive).
-  - Forget concurrence problems: handle thousands of active connections and listeners without any effort,
-    "One thread to rule them all".
+  - Abstraction from transport layer: do not think about sockets, think about messages and endpoints.
+  - Only two main entities to use:
+    - an extensible *event-queue* to manage all events synchronously,
+    - a *network* that manage all connections (connect, listen, remove, send, receive).
+  - Forget concurrence problems: handle thousands of active connections and listeners without any
+    effort, "One thread to rule them all".
   - Easy error handling.
-    Do not manage internals `std::io::Error` when send/receive from network.
+    Do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.
     - Binary serialization.
+    - Simultaneous reading/writing operations over same internal OS sockets.
     - Small runtime overhead over OS sockets.
 
 ## Getting started
@@ -142,7 +154,7 @@ If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#p
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you can found in [`src/adapter.rs`](src/adapter.rs).
+  traits that you can found in [`src/adapter.rs`](src/adapter.rs) (only 6 mandatory functions to implement).
 
 1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
 

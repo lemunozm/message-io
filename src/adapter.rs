@@ -74,7 +74,7 @@ pub trait EventHandler: Send {
     fn accept_event(
         &mut self,
         listener: &Self::Listener,
-        event_callback: &mut dyn FnMut(AcceptionEvent<'_, Self::Remote>),
+        event_callback: &mut dyn Fn(AcceptionEvent<'_, Self::Remote>),
     );
 
     /// Called when a remote endpoint received an event.
@@ -87,6 +87,6 @@ pub trait EventHandler: Send {
         &mut self,
         remote: &Self::Remote,
         addr: SocketAddr,
-        event_callback: &mut dyn FnMut(&[u8]),
+        event_callback: &mut dyn Fn(&[u8]),
     ) -> bool;
 }

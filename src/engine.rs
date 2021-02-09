@@ -27,7 +27,7 @@ pub struct AdapterLauncher<C> {
 }
 
 impl<C> Default for AdapterLauncher<C>
-where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
+where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
 {
     fn default() -> AdapterLauncher<C> {
         Self {
@@ -45,7 +45,7 @@ where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
 }
 
 impl<C> AdapterLauncher<C>
-where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static
+where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
 {
     pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
         let index = adapter_id as usize;
@@ -85,7 +85,7 @@ impl NetworkEngine {
     const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 
     pub fn new<C>(launcher: AdapterLauncher<C>, mut event_callback: C) -> Self
-    where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static {
+    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
         let thread_running = Arc::new(AtomicBool::new(true));
         let running = thread_running.clone();
 
@@ -175,7 +175,7 @@ impl ActionController for UnimplementedActionController {
 
 pub struct UnimplementedEventProcessor;
 impl<C> EventProcessor<C> for UnimplementedEventProcessor
-where C: FnMut(Endpoint, AdapterEvent<'_>)
+where C: Fn(Endpoint, AdapterEvent<'_>)
 {
     fn try_process(&mut self, _: ResourceId, _: &mut C) {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);

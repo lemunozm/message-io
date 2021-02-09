@@ -133,7 +133,7 @@ impl EventHandler for UdpEventHandler {
     fn accept_event(
         &mut self,
         socket: &UdpSocket,
-        event_callback: &mut dyn FnMut(AcceptionEvent<'_, Self::Remote>),
+        event_callback: &mut dyn Fn(AcceptionEvent<'_, Self::Remote>),
     )
     {
         loop {
@@ -155,7 +155,7 @@ impl EventHandler for UdpEventHandler {
         &mut self,
         socket: &UdpSocket,
         _: SocketAddr,
-        event_callback: &mut dyn FnMut(&[u8]),
+        event_callback: &mut dyn Fn(&[u8]),
     ) -> bool
     {
         loop {

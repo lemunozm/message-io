@@ -69,7 +69,7 @@ impl Transport {
     /// Associates a `Transport` to its adapter.
     /// This function mounts the adapter to be used in the `NetworkEngine`
     fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>)
-    where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static {
+    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
         match self {
             Transport::Tcp => launcher.mount(self.id(), TcpAdapter),
             Transport::Udp => launcher.mount(self.id(), UdpAdapter),

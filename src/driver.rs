@@ -102,10 +102,10 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
                 match remotes.get(&endpoint.resource_id()) {
                     Some((resource, _)) => self.action_handler.send(resource, data),
-                    // TODO: currently there is not a safe way to know if it this is
+
+                    // TODO: currently there is not a safe way to know if this is
                     // reached because of a user API error (send over already removed endpoint)
-                    // or because a disconnection was happened but the user has not processed
-                    // it yet.
+                    // or because of a disconnection happened but not processed yet.
                     // It could be better to panics in the first case to distinguish
                     // the programming error from the second case.
                     None => SendingStatus::RemovedEndpoint,
@@ -172,7 +172,7 @@ impl<R: Source, L: Source> Drop for GenericActionController<R, L> {
 }
 
 pub trait EventProcessor<C>
-where C: FnMut(Endpoint, AdapterEvent<'_>)
+where C: Fn(Endpoint, AdapterEvent<'_>)
 {
     fn try_process(&mut self, id: ResourceId, event_callback: &mut C);
 }
@@ -199,7 +199,7 @@ impl<R: Source, L: Source> GenericEventProcessor<R, L> {
 }
 
 impl<C, R: Source, L: Source> EventProcessor<C> for GenericEventProcessor<R, L>
-where C: FnMut(Endpoint, AdapterEvent<'_>)
+where C: Fn(Endpoint, AdapterEvent<'_>)
 {
     fn try_process(&mut self, id: ResourceId, event_callback: &mut C) {
         match id.resource_type() {

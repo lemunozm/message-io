@@ -114,7 +114,7 @@ impl EventHandler for TcpEventHandler {
     fn accept_event(
         &mut self,
         listener: &TcpListener,
-        event_callback: &mut dyn FnMut(AcceptionEvent<'_, TcpStream>),
+        event_callback: &mut dyn Fn(AcceptionEvent<'_, TcpStream>),
     )
     {
         loop {
@@ -134,7 +134,7 @@ impl EventHandler for TcpEventHandler {
         &mut self,
         stream: &TcpStream,
         addr: SocketAddr,
-        event_callback: &mut dyn FnMut(&[u8]),
+        event_callback: &mut dyn Fn(&[u8]),
     ) -> bool
     {
         let removed = loop {

@@ -57,8 +57,8 @@ impl ActionHandler for UdpActionHandler {
         Ok((socket, real_addr))
     }
 
-    fn remove_listener(&mut self, socket: UdpSocket) {
-        if let SocketAddr::V4(addr) = socket.local_addr().unwrap() {
+    fn remove_listener(&mut self, socket: UdpSocket, local_addr: SocketAddr) {
+        if let SocketAddr::V4(addr) = local_addr {
             if addr.ip().is_multicast() {
                 socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
             }
@@ -130,7 +130,7 @@ impl EventHandler for UdpEventHandler {
     type Remote = UdpSocket;
     type Listener = UdpSocket;
 
-    fn accept_event(
+    fn acception_event(
         &mut self,
         socket: &UdpSocket,
         event_callback: &mut dyn Fn(AcceptionEvent<'_, Self::Remote>),

@@ -6,39 +6,49 @@ use std::net::{SocketAddr};
 use std::io::{self};
 
 /// High level trait to represent an adapter for a transport protocol.
-/// The adapter is used to pack a [`Controller`] and [`Adapter`].
-/// Two traits to describes how an adapter behaves.
+/// The adapter is used to pack an [`ActionHandler`] and an [`EventHandler`],
+/// two traits that describes how an adapter behaves.
 pub trait Adapter {
+    /// Resource type used to send/receive from remote endpoints (e.g. TcpStream)
     type Remote: Source + Send + Sync;
+
+    /// Resource type used to accept new connections (e.g. TcpListener)
     type Listener: Source + Send + Sync;
+
+    /// See trait ActionHandler
     type ActionHandler: ActionHandler<Remote = Self::Remote, Listener = Self::Listener>;
+
+    /// See trait EventHandler
     type EventHandler: EventHandler<Remote = Self::Remote, Listener = Self::Listener>;
 
-    /// Creates a [`Controller`] and [`Processor`] that represents the adapter.
-    /// The **implementator** must create their [`Controller`] and [`Processor`] here.
+    /// Creates am [`ActionHandler`] and [`EventHandler`] that represents the adapter.
+    /// The **implementator** must create both instances here.
     fn split(self) -> (Self::ActionHandler, Self::EventHandler);
 }
 
-/// It is in change to perform direct actions from the user.
+/// This entity is in change to perform direct actions from the user to the network.
 pub trait ActionHandler: Send {
     type Remote: Source;
     type Listener: Source;
 
     /// The user performs a connection request to an specific address.
-    /// The **implementator** is in change of creating the corresponding instance in order
-    /// to manage it later.
+    /// The **implementator** is in change of creating the corresponding remote resource.
     fn connect(&mut self, addr: SocketAddr) -> io::Result<Self::Remote>;
 
     /// The user performs a listening request from an specific address.
-    /// The **implementator** is in change of creating the corresponding instance in order
-    /// to manage it later.
+    /// The **implementator** is in change of creating the corresponding listener resource.
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(Self::Listener, SocketAddr)>;
 
-    /// Sends a raw message by the specific endpoint.
-    /// The **implementator** is in charge to send the `data` using the instance represented by
-    /// `endpoint.resource_id()`.
+    /// Sends a raw data from a resource.
+    /// The **implementator** is in charge to send the `data` using the `resource`.
+    /// The [`SendingStatus`] will contain the status of this sending attempt.
     fn send(&mut self, resource: &Self::Remote, data: &[u8]) -> SendingStatus;
 
+    /// Similar to [`ActionHandler::Send()`] but the resource that send the data is a listener.
+    /// The **implementator** must **only** implement this if the listener resource can
+    /// also send data.
+    /// This behaviour usually happens when the transport to implement is not connection oriented.
+    /// The param `target_addr` represents the address to send that data.
     fn send_by_listener(
         &mut self,
         _resource: &Self::Listener,
@@ -49,40 +59,49 @@ pub trait ActionHandler: Send {
         panic!("Error: You are sending a message from a listener resource");
     }
 
-    fn remove_remote(&mut self, _resource: Self::Remote, _addr: SocketAddr) {}
-    fn remove_listener(&mut self, _resource: Self::Listener) {}
+    /// A remote resource that has been removed from the registers is moved to this function.
+    /// The user can overwrite this empty behaviour to perform some action of this resource.
+    /// The `peer_addr` is given because a disconnected resource could not have it available.
+    fn remove_remote(&mut self, _resource: Self::Remote, _peer_addr: SocketAddr) {}
+
+    /// Similar to [ActionHandler::remove_remote()] but for a listener resource.
+    /// The `local_addr` is given because a disconnected resource could not have it available.
+    fn remove_listener(&mut self, _resource: Self::Listener, _local_addr: SocketAddr) {}
 }
 
+/// Used by [EventHandler::accept_event()]
 pub enum AcceptionEvent<'a, R> {
     Remote(SocketAddr, R),
     Data(SocketAddr, &'a [u8]),
 }
 
-/// It is in change to perform eventual actions comming from the internal network engine.
-/// The `event_callback` is the action that will be performed when an [AdapterEvent] is
-/// generated for some `Endpoint`.
-/// This function will be produce the [create::network::NetEvent].
+/*
+/// Used by [EventHandler::accept_event()]
+pub enum ReadEvent<'a, R> {
+    Data(&'a [u8]),
+    Disconnected,
+}
+*/
+
+/// This entity is in change to perform eventual actions comming from the internal network engine.
+/// The associated function will generates indirectly the [create::network::NetEvent] to the user.
 pub trait EventHandler: Send {
     type Remote: Source;
     type Listener: Source;
 
-    /// Called when a listener received an event.
-    /// It means that an endpoint has try to connect and the connection should accept.
-    /// The `id` represents the listener that have generated the event.
-    /// The **implementator** is in charge of retrive the instance represented by this `id`
-    /// to accept that connection.
-    fn accept_event(
+    /// Called when a listener resource received an event.
+    /// It means that some resource have tried to connect.
+    /// The **implementator** is in charge of accepting this connection and returns [AcceptionEvent].
+    fn acception_event(
         &mut self,
         listener: &Self::Listener,
         event_callback: &mut dyn Fn(AcceptionEvent<'_, Self::Remote>),
     );
 
     /// Called when a remote endpoint received an event.
-    /// It means that the endpoint has available data to read,
+    /// It means that the resource has available data to read,
     /// or there is some connection related issue, as a disconnection.
-    /// The `id` represents the remote entity that has generated the event.
-    /// The **implementator** is in charge of retrive the instance represented by this `id`
-    /// and process the event.
+    /// The **implementator** is in charge of processing that action and returns a [`ReadEvent`].
     fn read_event(
         &mut self,
         remote: &Self::Remote,

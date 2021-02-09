@@ -111,7 +111,7 @@ impl EventHandler for TcpEventHandler {
     type Remote = TcpStream;
     type Listener = TcpListener;
 
-    fn accept_event(
+    fn acception_event(
         &mut self,
         listener: &TcpListener,
         event_callback: &mut dyn Fn(AcceptionEvent<'_, TcpStream>),

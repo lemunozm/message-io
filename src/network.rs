@@ -87,7 +87,7 @@ pub struct Network {
 }
 
 impl Network {
-    /// Creates a new [`Network`].
+    /// Creates a new `Network` instance.
     /// The user must register an event_callback that can be called
     /// each time the network generate and [`NetEvent`].
     pub fn new<M, C>(event_callback: C) -> Network
@@ -193,7 +193,7 @@ impl Network {
     /// When there are severals endpoints to send the data,
     /// this function is faster than consecutive calls to [`Network::send()`]
     /// since the encoding and serialization is performed only one time for all endpoints.
-    /// The funcion panics if some of endpoints do not exists in the [`Network`].
+    /// The funcion returns a list of [`SendingStatus`] associated to each endpoint.
     pub fn send_all<'b, M: Serialize>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,

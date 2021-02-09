@@ -21,7 +21,10 @@ pub enum AdapterEvent<'a> {
 }
 
 pub struct ResourceRegister<S> {
-    // We store the local addr because if the resource disconnects, it can not be retrieved.
+    // We store the most significant addr of the resource because if the resource disconnects,
+    // it can not be retrieved.
+    // If the resource is a remote resource, the addr will be the peer addr.
+    // If the resource is a listen resource, the addr will be the local addr.
     resources: RwLock<HashMap<ResourceId, (S, SocketAddr)>>,
     poll_register: PollRegister,
 }
@@ -135,7 +138,7 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
             ResourceType::Listener => self
                 .listener_register
                 .remove(id)
-                .map(|(resource, _)| action_handler.remove_listener(resource)),
+                .map(|(resource, addr)| action_handler.remove_listener(resource, addr)),
         }
     }
 
@@ -226,7 +229,7 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
 
                 if let Some((resource, _)) = listeners.get(&id) {
                     log::trace!("Processing event (accept) for {}", id);
-                    self.event_handler.accept_event(&resource, &mut |event| match event {
+                    self.event_handler.acception_event(&resource, &mut |event| match event {
                         AcceptionEvent::Remote(addr, remote) => {
                             let id = remotes.add(remote, addr);
                             let endpoint = Endpoint::new(id, addr);

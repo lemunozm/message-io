@@ -59,7 +59,6 @@ pub trait ActionController {
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
     fn remove(&mut self, id: ResourceId) -> Option<()>;
-    fn local_addr(&self, id: ResourceId) -> Option<SocketAddr>;
 }
 
 pub struct GenericActionController<R: Source, L: Source> {
@@ -140,25 +139,6 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
                 .listener_register
                 .remove(id)
                 .map(|(resource, addr)| action_handler.remove_listener(resource, addr)),
-        }
-    }
-
-    fn local_addr(&self, id: ResourceId) -> Option<SocketAddr> {
-        match id.resource_type() {
-            ResourceType::Remote => self
-                .remote_register
-                .resources()
-                .read()
-                .expect(OTHER_THREAD_ERR)
-                .get(&id)
-                .map(|(_, addr)| *addr),
-            ResourceType::Listener => self
-                .listener_register
-                .resources()
-                .read()
-                .expect(OTHER_THREAD_ERR)
-                .get(&id)
-                .map(|(_, addr)| *addr),
         }
     }
 }

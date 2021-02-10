@@ -128,10 +128,6 @@ impl NetworkEngine {
         self.controllers[id.adapter_id() as usize].remove(id)
     }
 
-    pub fn local_addr(&self, id: ResourceId) -> Option<SocketAddr> {
-        self.controllers[id.adapter_id() as usize].local_addr(id)
-    }
-
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data)
     }
@@ -166,10 +162,6 @@ impl ActionController for UnimplementedActionController {
     }
 
     fn remove(&mut self, _: ResourceId) -> Option<()> {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
-    }
-
-    fn local_addr(&self, _: ResourceId) -> Option<SocketAddr> {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 }

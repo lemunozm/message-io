@@ -104,5 +104,5 @@ pub trait EventHandler: Send {
     /// The resource returned is already removed from the internal OS registers.
     /// Note that since the listener can only be removed by the user, the `EventHandler` has not
     /// a dedicated method for that. See [ActionHandler::remove_listener].
-    fn remove_remote(&mut self, _resource: Self::Remote, _peer_addr: SocketAddr) { }
+    fn remove_remote(&mut self, _resource: Self::Remote, _peer_addr: SocketAddr) {}
 }

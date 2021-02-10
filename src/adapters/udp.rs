@@ -99,7 +99,7 @@ impl UdpActionHandler {
             length,
             MAX_UDP_PAYLOAD_LEN
         );
-        return SendStatus::MaxPacketSizeExceeded(length, MAX_UDP_PAYLOAD_LEN)
+        SendStatus::MaxPacketSizeExceeded(length, MAX_UDP_PAYLOAD_LEN)
     }
 
     fn sending_status(result: io::Result<usize>) -> SendStatus {
@@ -145,16 +145,12 @@ impl EventHandler for UdpEventHandler {
         }
     }
 
-    fn read_event(
-        &mut self,
-        socket: &UdpSocket,
-        process_data: &dyn Fn(&[u8]),
-    ) -> ReadStatus {
+    fn read_event(&mut self, socket: &UdpSocket, process_data: &dyn Fn(&[u8])) -> ReadStatus {
         match socket.recv(&mut self.input_buffer) {
             Ok(size) => {
                 process_data(&mut self.input_buffer[..size]);
                 ReadStatus::WaitNextEvent // recv gives only one datagram
-            },
+            }
             Err(ref err) if err.kind() == ErrorKind::WouldBlock => ReadStatus::WaitNextEvent,
             // Avoid ICMP generated error to be logged
             Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => ReadStatus::Disconnected,

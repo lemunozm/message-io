@@ -64,4 +64,3 @@ pub enum ReadStatus {
     /// See [`AcceptionStatus::WaitNextEvent`]
     WaitNextEvent,
 }
-

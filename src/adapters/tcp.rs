@@ -124,11 +124,7 @@ impl EventHandler for TcpEventHandler {
         }
     }
 
-    fn read_event(
-        &mut self,
-        stream: &TcpStream,
-        process_data: &dyn Fn(&[u8]),
-    ) -> ReadStatus {
+    fn read_event(&mut self, stream: &TcpStream, process_data: &dyn Fn(&[u8])) -> ReadStatus {
         match stream.deref().read(&mut self.input_buffer) {
             Ok(0) => ReadStatus::Disconnected,
             Ok(size) => {

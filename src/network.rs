@@ -81,7 +81,7 @@ impl Transport {
 /// and manages the different adapters for you.
 pub struct Network {
     engine: NetworkEngine,
-    output_buffer: Vec<u8>,              //cached for preformance
+    output_buffer: Vec<u8>,           //cached for preformance
     send_all_status: Vec<SendStatus>, //cached for performance
 }
 

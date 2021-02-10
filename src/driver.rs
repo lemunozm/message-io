@@ -146,7 +146,7 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
 impl<R: Source, L: Source> Drop for GenericActionController<R, L> {
     fn drop(&mut self) {
         let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
-        let ids = remotes.keys().map(|id| *id).collect::<Vec<_>>();
+        let ids = remotes.keys().cloned().collect::<Vec<_>>();
         drop(remotes);
 
         for id in ids {
@@ -192,7 +192,7 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
                 let to_remove = if let Some((resource, addr)) = remotes.get(&id) {
                     let endpoint = Endpoint::new(id, *addr);
                     loop {
-                        let status = self.event_handler.read_event(&resource, &mut |data| {
+                        let status = self.event_handler.read_event(&resource, &|data| {
                             log::trace!("Read {} bytes from {}", data.len(), id);
                             event_callback(endpoint, AdapterEvent::Data(data));
                         });
@@ -204,7 +204,10 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
                             ReadStatus::Interrupted => continue,
                         };
                     }
-                } else { None };
+                }
+                else {
+                    None
+                };
 
                 drop(remotes);
 

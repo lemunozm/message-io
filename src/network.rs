@@ -1,6 +1,6 @@
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
-pub use crate::status::{SendingStatus};
+pub use crate::status::{SendStatus};
 
 use crate::engine::{NetworkEngine, AdapterLauncher};
 use crate::driver::{AdapterEvent};
@@ -83,7 +83,7 @@ impl Transport {
 pub struct Network {
     engine: NetworkEngine,
     output_buffer: Vec<u8>,              //cached for preformance
-    send_all_status: Vec<SendingStatus>, //cached for performance
+    send_all_status: Vec<SendStatus>, //cached for performance
 }
 
 impl Network {
@@ -179,8 +179,8 @@ impl Network {
     /// use [`Network::send_all()`] to get a better performance.
     /// The funcion panics if the endpoint do not exists in the [`Network`].
     /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
-    /// A [`SendingStatus`] is returned with the information about the sending.
-    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendingStatus {
+    /// A [`SendStatus`] is returned with the information about the sending.
+    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendStatus {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
 
@@ -193,12 +193,12 @@ impl Network {
     /// When there are severals endpoints to send the data,
     /// this function is faster than consecutive calls to [`Network::send()`]
     /// since the encoding and serialization is performed only one time for all endpoints.
-    /// The funcion returns a list of [`SendingStatus`] associated to each endpoint.
+    /// The funcion returns a list of [`SendStatus`] associated to each endpoint.
     pub fn send_all<'b, M: Serialize>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,
         message: M,
-    ) -> &Vec<SendingStatus>
+    ) -> &Vec<SendStatus>
     {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();

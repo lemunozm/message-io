@@ -6,7 +6,7 @@ use crate::driver::{
     AdapterEvent, ActionController, EventProcessor, ResourceRegister, GenericActionController,
     GenericEventProcessor,
 };
-use crate::status::{SendingStatus};
+use crate::status::{SendStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
 use std::time::{Duration};
@@ -132,7 +132,7 @@ impl NetworkEngine {
         self.controllers[id.adapter_id() as usize].local_addr(id)
     }
 
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data)
     }
 }
@@ -161,7 +161,7 @@ impl ActionController for UnimplementedActionController {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 
-    fn send(&mut self, _: Endpoint, _: &[u8]) -> SendingStatus {
+    fn send(&mut self, _: Endpoint, _: &[u8]) -> SendStatus {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 

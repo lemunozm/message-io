@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 /// The library do not encourage to perform the check of this status for each `send()` call,
 /// Only in that cases where you need extra information about how the sending method was.
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub enum SendingStatus {
+pub enum SendStatus {
     /// This status is received when the entire data has been sent.
     /// It does not guarantees that the packet have been successfully received by the endpoint.
     /// It means that the correspond adapter has sent the message to the OS without errors.

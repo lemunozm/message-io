@@ -58,7 +58,7 @@ You could change the protocol of your application in literally one line.
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.6"
+message-io = "0.7"
 ```
 
 ### Documentation

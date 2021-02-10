@@ -1,4 +1,4 @@
-use crate::status::{SendingStatus, ReadStatus, AcceptStatus};
+use crate::status::{SendStatus, ReadStatus, AcceptStatus};
 
 use mio::event::{Source};
 
@@ -41,8 +41,8 @@ pub trait ActionHandler: Send {
 
     /// Sends a raw data from a resource.
     /// The **implementator** is in charge to send the `data` using the `resource`.
-    /// The [`SendingStatus`] will contain the status of this sending attempt.
-    fn send(&mut self, resource: &Self::Remote, data: &[u8]) -> SendingStatus;
+    /// The [`SendStatus`] will contain the status of this sending attempt.
+    fn send(&mut self, resource: &Self::Remote, data: &[u8]) -> SendStatus;
 
     /// Similar to [`ActionHandler::Send()`] but the resource that send the data is a listener.
     /// The **implementator** must **only** implement this if the listener resource can
@@ -54,7 +54,7 @@ pub trait ActionHandler: Send {
         _resource: &Self::Listener,
         _target_addr: SocketAddr,
         _data: &[u8],
-    ) -> SendingStatus
+    ) -> SendStatus
     {
         panic!("Error: You are sending a message from a listener resource");
     }

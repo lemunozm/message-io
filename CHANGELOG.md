@@ -1,6 +1,6 @@
 # Changelog
 
-## Release 0.6.1
+## Release 0.7.0
 - Internal improvements in order to use one thread for all adapters.
 - Clean architecture to implement new adapters easier.
 - Increase the UDP packet size that can be sent.
@@ -8,6 +8,8 @@
 - Correcty notified when remove a multicast udp connection.
 - Fixed some cases when udp multicast was not leaving.
 - Fixed some memory leaks at decoding pool.
+- Removed unused `Network::local_addr`.
+- Renamed from `SendingStatus` to `SendStatus`.
 
 ## Release 0.6.0
 - Added concurrent writing and reading from socket/streams in UDP and TCP protocols.

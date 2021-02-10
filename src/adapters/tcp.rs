@@ -1,6 +1,6 @@
 use crate::adapter::{Adapter, ActionHandler, EventHandler};
 use crate::encoding::{self, DecodingPool};
-use crate::status::{SendingStatus, AcceptStatus, ReadStatus};
+use crate::status::{SendStatus, AcceptStatus, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
 use mio::net::{TcpListener, TcpStream};
@@ -52,7 +52,7 @@ impl ActionHandler for TcpActionHandler {
         Ok((listener, real_addr))
     }
 
-    fn send(&mut self, stream: &TcpStream, data: &[u8]) -> SendingStatus {
+    fn send(&mut self, stream: &TcpStream, data: &[u8]) -> SendStatus {
         let encode_value = encoding::encode(data);
 
         // TODO: The current implementation implies an active waiting,
@@ -71,7 +71,7 @@ impl ActionHandler for TcpActionHandler {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
                     if total_bytes_sent == total_bytes {
-                        break SendingStatus::Sent
+                        break SendStatus::Sent
                     }
                     // We get sending to data, but not the totality.
                     // We start waiting actively.
@@ -87,7 +87,7 @@ impl ActionHandler for TcpActionHandler {
                 // an Event::Disconnection will be generated later.
                 // It is possible to reach this point if the sending method is produced
                 // before the disconnection/reset event is generated.
-                Err(_) => break SendingStatus::RemovedEndpoint,
+                Err(_) => break SendStatus::RemovedEndpoint,
             }
         }
     }

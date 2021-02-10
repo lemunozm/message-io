@@ -1,5 +1,5 @@
 use message_io::events::{EventQueue};
-use message_io::network::{Network, NetEvent, Transport, SendingStatus};
+use message_io::network::{Network, NetEvent, Transport, SendStatus};
 use message_io::{MAX_UDP_LEN};
 
 use std::net::{TcpStream, Shutdown};
@@ -33,7 +33,7 @@ fn simple_connection_data_disconnection_by_tcp() {
                     assert_eq!(*client_endpoint.as_ref().unwrap(), endpoint);
                     assert_eq!(message, SMALL_MESSAGE);
                     let status = network.send(endpoint, message);
-                    assert_eq!(status, SendingStatus::Sent);
+                    assert_eq!(status, SendStatus::Sent);
                 }
                 NetEvent::AddedEndpoint(endpoint) => {
                     assert!(client_endpoint.is_none());
@@ -56,7 +56,7 @@ fn simple_connection_data_disconnection_by_tcp() {
 
         let server_endpoint = network.connect(Transport::Tcp, server_addr).unwrap();
         let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
-        assert_eq!(status, SendingStatus::Sent);
+        assert_eq!(status, SendStatus::Sent);
         loop {
             match event_queue.receive_timeout(Duration::from_secs(TIMEOUT)).unwrap() {
                 NetEvent::Message(endpoint, message) => {
@@ -96,7 +96,7 @@ fn simple_data_by_udp() {
                     assert_eq!(upd_listen_resource_id, endpoint.resource_id());
                     assert_eq!(message, SMALL_MESSAGE);
                     let status = network.send(endpoint, message);
-                    assert_eq!(status, SendingStatus::Sent);
+                    assert_eq!(status, SendStatus::Sent);
                     break //Exit from thread
                 }
                 _ => unreachable!(),
@@ -111,7 +111,7 @@ fn simple_data_by_udp() {
 
         let server_endpoint = network.connect(Transport::Udp, server_addr).unwrap();
         let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
-        assert_eq!(status, SendingStatus::Sent);
+        assert_eq!(status, SendStatus::Sent);
         loop {
             match event_queue.receive_timeout(Duration::from_secs(TIMEOUT)).unwrap() {
                 NetEvent::Message(endpoint, message) => {
@@ -165,7 +165,7 @@ fn long_tcp_message() {
     let receiver = network.connect(Transport::Tcp, receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
     let status = network.send(receiver, message.clone());
-    assert_eq!(status, SendingStatus::Sent);
+    assert_eq!(status, SendStatus::Sent);
 
     receiver_handle.join().unwrap();
 }
@@ -206,7 +206,7 @@ fn max_udp_size_message() {
     let receiver = network.connect(Transport::Udp, receiver_addr).unwrap();
     let message = std::iter::repeat(VALUE).take(MESSAGE_SIZE).collect::<Vec<_>>();
     let status = network.send(receiver, message);
-    assert_eq!(status, SendingStatus::Sent);
+    assert_eq!(status, SendStatus::Sent);
 
     receiver_handle.join().unwrap();
 }

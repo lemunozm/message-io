@@ -2,7 +2,7 @@ use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{PollRegister};
 use crate::adapter::{ActionHandler, EventHandler};
-use crate::status::{SendingStatus, AcceptStatus, ReadStatus};
+use crate::status::{SendStatus, AcceptStatus, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
 use mio::event::{Source};
@@ -57,7 +57,7 @@ impl<S: Source> ResourceRegister<S> {
 pub trait ActionController {
     fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint>;
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus;
+    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
     fn remove(&mut self, id: ResourceId) -> Option<()>;
     fn local_addr(&self, id: ResourceId) -> Option<SocketAddr>;
 }
@@ -100,7 +100,7 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
             .map(|(resource_id, real_addr)| (resource_id, real_addr))
     }
 
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendingStatus {
+    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         match endpoint.resource_id().resource_type() {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
@@ -112,7 +112,7 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
                     // or because of a disconnection happened but not processed yet.
                     // It could be better to panics in the first case to distinguish
                     // the programming error from the second case.
-                    None => SendingStatus::RemovedEndpoint,
+                    None => SendStatus::RemovedEndpoint,
                 }
             }
             ResourceType::Listener => {

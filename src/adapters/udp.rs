@@ -1,5 +1,5 @@
 use crate::adapter::{Adapter, ActionHandler, EventHandler};
-use crate::status::{SendingStatus, AcceptStatus, ReadStatus};
+use crate::status::{SendStatus, AcceptStatus, ReadStatus};
 
 use mio::net::{UdpSocket};
 
@@ -65,7 +65,7 @@ impl ActionHandler for UdpActionHandler {
         }
     }
 
-    fn send(&mut self, socket: &UdpSocket, data: &[u8]) -> SendingStatus {
+    fn send(&mut self, socket: &UdpSocket, data: &[u8]) -> SendStatus {
         if data.len() > MAX_UDP_LEN {
             Self::udp_length_exceeded(data.len())
         }
@@ -79,7 +79,7 @@ impl ActionHandler for UdpActionHandler {
         socket: &UdpSocket,
         addr: SocketAddr,
         data: &[u8],
-    ) -> SendingStatus
+    ) -> SendStatus
     {
         if data.len() > MAX_UDP_LEN {
             Self::udp_length_exceeded(data.len())
@@ -91,26 +91,26 @@ impl ActionHandler for UdpActionHandler {
 }
 
 impl UdpActionHandler {
-    fn udp_length_exceeded(length: usize) -> SendingStatus {
+    fn udp_length_exceeded(length: usize) -> SendStatus {
         log::error!(
             "The UDP message could not be sent because it exceeds the MTU. \
             Current size: {}, MTU: {}",
             length,
             MAX_UDP_LEN
         );
-        return SendingStatus::MaxPacketSizeExceeded(length, MAX_UDP_LEN)
+        return SendStatus::MaxPacketSizeExceeded(length, MAX_UDP_LEN)
     }
 
-    fn sending_status(result: io::Result<usize>) -> SendingStatus {
+    fn sending_status(result: io::Result<usize>) -> SendStatus {
         match result {
-            Ok(_) => SendingStatus::Sent,
+            Ok(_) => SendStatus::Sent,
             // Avoid ICMP generated error to be logged
             Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
-                SendingStatus::RemovedEndpoint
+                SendStatus::RemovedEndpoint
             }
             Err(_) => {
                 log::error!("UDP send remote error");
-                SendingStatus::RemovedEndpoint
+                SendStatus::RemovedEndpoint
             }
         }
     }

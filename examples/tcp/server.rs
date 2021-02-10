@@ -44,7 +44,7 @@ pub fn run() {
                         network.send(endpoint, Message::Greetings(msg));
                     }
                 },
-                NetEvent::AddedEndpoint(endpoint) => {
+                NetEvent::Connected(endpoint) => {
                     clients.insert(endpoint, ClientInfo { count: 0 });
                     println!(
                         "Client ({}) connected (total clients: {})",
@@ -52,7 +52,7 @@ pub fn run() {
                         clients.len()
                     );
                 }
-                NetEvent::RemovedEndpoint(endpoint) => {
+                NetEvent::Disconnected(endpoint) => {
                     clients.remove(&endpoint).unwrap();
                     println!(
                         "Client ({}) disconnected (total clients: {})",

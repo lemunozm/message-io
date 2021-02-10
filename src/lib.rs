@@ -12,4 +12,4 @@ pub mod adapter;
 pub mod network;
 pub mod events;
 
-pub use adapters::udp::MAX_UDP_LEN;
+pub use adapters::udp::MAX_UDP_PAYLOAD_LEN;

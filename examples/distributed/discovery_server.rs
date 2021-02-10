@@ -55,8 +55,8 @@ impl DiscoveryServer {
                         }
                         _ => unreachable!(),
                     },
-                    NetEvent::AddedEndpoint(_) => (),
-                    NetEvent::RemovedEndpoint(endpoint) => {
+                    NetEvent::Connected(_) => (),
+                    NetEvent::Disconnected(endpoint) => {
                         // Participant disconection without explict unregistration.
                         // We must remove from the registry too.
                         let participant_name = self.participants.iter().find_map(|(name, info)| {

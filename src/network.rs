@@ -26,23 +26,21 @@ where M: for<'b> Deserialize<'b> + Send + 'static
     /// Input message received by the network.
     Message(Endpoint, M),
 
-    /// New endpoint added to a listener.
-    /// It is sent when a new connection is accepted by the listener.
-    /// This event will be sent only in connection oriented protocols as TCP.
-    AddedEndpoint(Endpoint),
+    /// New endpoint has been connected to a listener.
+    /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
+    Connected(Endpoint),
 
-    /// A connection lost event.
     /// This event is only dispatched when a connection is lost.
     /// Call to [`Network::remove_resource()`] will NOT generate the event.
-    /// After this event, the resource is considered removed.
-    /// A Message event will never be generated after this event from the endpoint.
-    /// This event will be sent only in connection oriented protocols as TCP.
+    /// When this event is received, the resource is considered already removed.
+    /// A [`NetEvent::Message`] event will never be generated after this event from the endpoint.
+    /// This event will be sent only in connection oriented protocols as [`Transport::TCP`].
     /// Because UDP is not connection oriented, the event can no be detected.
-    RemovedEndpoint(Endpoint),
+    Disconnected(Endpoint),
 
     /// This event shows that there was a problem during the deserialization of a message.
-    /// The problem is mainly due by a programming issue reading data from an outdated endpoint.
-    /// For example: different protocol version.
+    /// The problem is mainly due by a programming issue reading data from
+    /// an unknown or outdated endpoint.
     /// In production it could be that other application is writing in your application port.
     /// This error means that a message has been lost (the erroneous message),
     /// but the endpoint remains connected for its usage.
@@ -50,7 +48,8 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 }
 
 /// Enum to identified the underlying transport used.
-/// It can be passed to `connect()` and `listen()` functions to specify the transport
+/// It can be passed to [`Network::connect()]` and [`Network::listen()`] methods to specify
+/// the transport.
 #[derive(IntoPrimitive, EnumIter)]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -67,7 +66,7 @@ impl Transport {
     }
 
     /// Associates a `Transport` to its adapter.
-    /// This function mounts the adapter to be used in the `NetworkEngine`
+    /// This method mounts the adapter to be used in the `NetworkEngine`
     fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>)
     where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
         match self {
@@ -102,7 +101,7 @@ impl Network {
             let event = match adapter_event {
                 AdapterEvent::Added => {
                     log::trace!("Endpoint connected: {}", endpoint);
-                    NetEvent::AddedEndpoint(endpoint)
+                    NetEvent::Connected(endpoint)
                 }
                 AdapterEvent::Data(data) => {
                     log::trace!("Data received from {}, {} bytes", endpoint, data.len());
@@ -113,7 +112,7 @@ impl Network {
                 }
                 AdapterEvent::Removed => {
                     log::trace!("Endpoint disconnected: {}", endpoint);
-                    NetEvent::RemovedEndpoint(endpoint)
+                    NetEvent::Disconnected(endpoint)
                 }
             };
             event_callback(event);
@@ -182,11 +181,11 @@ impl Network {
         status
     }
 
-    /// This functions performs the same actions as [`Network::send()`] but for several endpoints.
+    /// This method performs the same actions as [`Network::send()`] but for several endpoints.
     /// When there are severals endpoints to send the data,
-    /// this function is faster than consecutive calls to [`Network::send()`]
+    /// this method is faster than consecutive calls to [`Network::send()`]
     /// since the encoding and serialization is performed only one time for all endpoints.
-    /// The funcion returns a list of [`SendStatus`] associated to each endpoint.
+    /// The method returns a list of [`SendStatus`] associated to each endpoint.
     pub fn send_all<'b, M: Serialize>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,

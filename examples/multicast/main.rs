@@ -43,8 +43,8 @@ fn main() {
                 NetEvent::Message(_, message) => match message {
                     Message::HelloLan(name) => println!("{} greets to the network!", name),
                 },
-                NetEvent::AddedEndpoint(_) => (),
-                NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::Connected(_) => (),
+                NetEvent::Disconnected(_) => (),
                 NetEvent::DeserializationError(_) => (),
             },
             // Other events here

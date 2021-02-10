@@ -1,6 +1,6 @@
 use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, Transport, SendStatus};
-use message_io::{MAX_UDP_LEN};
+use message_io::{MAX_UDP_PAYLOAD_LEN};
 
 use std::net::{TcpStream, Shutdown};
 use std::time::{Duration};
@@ -35,11 +35,11 @@ fn simple_connection_data_disconnection_by_tcp() {
                     let status = network.send(endpoint, message);
                     assert_eq!(status, SendStatus::Sent);
                 }
-                NetEvent::AddedEndpoint(endpoint) => {
+                NetEvent::Connected(endpoint) => {
                     assert!(client_endpoint.is_none());
                     client_endpoint = Some(endpoint);
                 }
-                NetEvent::RemovedEndpoint(endpoint) => {
+                NetEvent::Disconnected(endpoint) => {
                     assert_eq!(client_endpoint.take().unwrap(), endpoint);
                     break //Exit from thread, the connection will be automatically close
                 }
@@ -64,10 +64,10 @@ fn simple_connection_data_disconnection_by_tcp() {
                     assert_eq!(message, SMALL_MESSAGE);
                     break //Exit from thread, the connection will be automatically close
                 }
-                NetEvent::AddedEndpoint(endpoint) => {
+                NetEvent::Connected(endpoint) => {
                     assert_eq!(server_endpoint, endpoint);
                 }
-                NetEvent::RemovedEndpoint(_) => unreachable!(),
+                NetEvent::Disconnected(_) => unreachable!(),
                 NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
@@ -151,8 +151,8 @@ fn long_tcp_message() {
                     assert!(message.iter().all(|&byte| byte == VALUE));
                     break
                 }
-                NetEvent::AddedEndpoint(_) => (),
-                NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::Connected(_) => (),
+                NetEvent::Disconnected(_) => (),
                 NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
@@ -178,7 +178,7 @@ fn max_udp_size_message() {
     let sender = event_queue.sender().clone();
     let mut network = Network::new(move |net_event| sender.send(net_event));
 
-    const MESSAGE_SIZE: usize = MAX_UDP_LEN - 8; // Vec<u8> header + encoding header
+    const MESSAGE_SIZE: usize = MAX_UDP_PAYLOAD_LEN - 8; // Vec<u8> header + encoding header
     const VALUE: u8 = 0xFF;
     let (_, receiver_addr) = network.listen(Transport::Udp, LOCAL_ADDR).unwrap();
 
@@ -192,8 +192,8 @@ fn max_udp_size_message() {
                     assert!(message.iter().all(|&byte| byte == VALUE));
                     break
                 }
-                NetEvent::AddedEndpoint(_) => (),
-                NetEvent::RemovedEndpoint(_) => (),
+                NetEvent::Connected(_) => (),
+                NetEvent::Disconnected(_) => (),
                 NetEvent::DeserializationError(_) => unreachable!(),
             }
         }
@@ -228,8 +228,8 @@ fn disconnection() {
         loop {
             match event_queue.receive_timeout(Duration::from_secs(TIMEOUT)).unwrap() {
                 NetEvent::Message(..) => unreachable!(),
-                NetEvent::AddedEndpoint(_) => connected = true,
-                NetEvent::RemovedEndpoint(_) => {
+                NetEvent::Connected(_) => connected = true,
+                NetEvent::Disconnected(_) => {
                     assert_eq!(connected, true);
                     break
                 }

@@ -59,12 +59,12 @@ pub trait ActionHandler: Send {
         panic!("Error: You are sending a message from a listener resource");
     }
 
-    /// When a user removes a remote resource it is moved to this function.
+    /// When a user removes a remote resource it is moved to this method.
     /// The **implementor** can overwrite this empty behaviour to perform some action over
     /// this resource.
     /// The `peer_addr` is given because a disconnected resource could not have it available.
-    /// Note that this function is only called when the user explicitally removes the resource,
-    /// this function will not be called if a [ReadStatus::Disconnected] event is processed.
+    /// Note that this method is only called when the user explicitally removes the resource,
+    /// this method will not be called if a [ReadStatus::Disconnected] event is processed.
     /// If you need to perform some action in this case,
     /// implements into [`EventHandler::read_event`].
     fn remove_remote(&mut self, _resource: Self::Remote, _peer_addr: SocketAddr) {}
@@ -76,7 +76,7 @@ pub trait ActionHandler: Send {
 }
 
 /// This entity is in change to perform eventual actions comming from the internal network engine.
-/// The associated function will generates indirectly the [`create::network::NetEvent`] to the user.
+/// The associated methods will generates indirectly the [`create::network::NetEvent`] to the user.
 pub trait EventHandler: Send {
     type Remote: Source;
     type Listener: Source;
@@ -94,15 +94,15 @@ pub trait EventHandler: Send {
     /// This `process_data` function will produce a `Message` API event.
     fn read_event(&mut self, remote: &Self::Remote, process_data: &dyn Fn(&[u8])) -> ReadStatus;
 
-    /// This function is called when [`ReadStatus::Disconnected`].
+    /// This method is called when [`ReadStatus::Disconnected`].
     /// The **implementor** can overwrite this empty behaviour to perform
     /// some action over this resource.
     /// The `peer_addr` is given because a disconnected resource could not have it available.
-    /// Note that this function is only called when `Disconnected` event is generated,
+    /// Note that this method is only called when `Disconnected` event is generated,
     /// not when the user remove explicitelly the resource.
     /// For the last case, use [`ActionHandler::remove_remote`].
     /// The resource returned is already removed from the internal OS registers.
     /// Note that since the listener can only be removed by the user, the `EventHandler` has not
-    /// a dedicated function for that. See [ActionHandler::remove_listener].
+    /// a dedicated method for that. See [ActionHandler::remove_listener].
     fn remove_remote(&mut self, _resource: Self::Remote, _peer_addr: SocketAddr) { }
 }

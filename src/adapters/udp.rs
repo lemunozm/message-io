@@ -13,9 +13,10 @@ use std::io::{self, ErrorKind};
 /// - 20: max IP header
 /// - 8: max udp header
 /// The serialization of your message must not exceed this value.
-pub const MAX_UDP_LEN: usize = 9216 - 20 - 8;
+pub const MAX_UDP_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 
-const MAX_BUFFER_UDP_LEN: usize = 65535 - 20 - 8; // Defined by the UDP standard
+// The reception buffer reach the UDP standard size.
+const MAX_UDP_PAYLOAD_BUFFER_LEN: usize = 65535 - 20 - 8;
 
 pub struct UdpAdapter;
 
@@ -66,7 +67,7 @@ impl ActionHandler for UdpActionHandler {
     }
 
     fn send(&mut self, socket: &UdpSocket, data: &[u8]) -> SendStatus {
-        if data.len() > MAX_UDP_LEN {
+        if data.len() > MAX_UDP_PAYLOAD_LEN {
             Self::udp_length_exceeded(data.len())
         }
         else {
@@ -81,7 +82,7 @@ impl ActionHandler for UdpActionHandler {
         data: &[u8],
     ) -> SendStatus
     {
-        if data.len() > MAX_UDP_LEN {
+        if data.len() > MAX_UDP_PAYLOAD_LEN {
             Self::udp_length_exceeded(data.len())
         }
         else {
@@ -96,9 +97,9 @@ impl UdpActionHandler {
             "The UDP message could not be sent because it exceeds the MTU. \
             Current size: {}, MTU: {}",
             length,
-            MAX_UDP_LEN
+            MAX_UDP_PAYLOAD_LEN
         );
-        return SendStatus::MaxPacketSizeExceeded(length, MAX_UDP_LEN)
+        return SendStatus::MaxPacketSizeExceeded(length, MAX_UDP_PAYLOAD_LEN)
     }
 
     fn sending_status(result: io::Result<usize>) -> SendStatus {
@@ -117,12 +118,12 @@ impl UdpActionHandler {
 }
 
 pub struct UdpEventHandler {
-    input_buffer: [u8; MAX_BUFFER_UDP_LEN],
+    input_buffer: [u8; MAX_UDP_PAYLOAD_BUFFER_LEN],
 }
 
 impl Default for UdpEventHandler {
     fn default() -> Self {
-        Self { input_buffer: [0; MAX_BUFFER_UDP_LEN] }
+        Self { input_buffer: [0; MAX_UDP_PAYLOAD_BUFFER_LEN] }
     }
 }
 

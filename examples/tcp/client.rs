@@ -31,8 +31,8 @@ pub fn run(name: &str) {
                     NetEvent::Message(_, message) => match message {
                         Message::Greetings(text) => println!("Server says: {}", text),
                     },
-                    NetEvent::AddedEndpoint(_) => unreachable!(),
-                    NetEvent::RemovedEndpoint(_) => {
+                    NetEvent::Connected(_) => unreachable!(),
+                    NetEvent::Disconnected(_) => {
                         println!("Server is disconnected");
                         return
                     }

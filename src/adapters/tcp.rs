@@ -87,7 +87,7 @@ impl ActionHandler for TcpActionHandler {
                 // an Event::Disconnection will be generated later.
                 // It is possible to reach this point if the sending method is produced
                 // before the disconnection/reset event is generated.
-                Err(_) => break SendStatus::RemovedEndpoint,
+                Err(_) => break SendStatus::ResourceRemoved,
             }
         }
     }
@@ -112,7 +112,7 @@ impl EventHandler for TcpEventHandler {
     type Remote = TcpStream;
     type Listener = TcpListener;
 
-    fn acception_event(&mut self, listener: &TcpListener) -> AcceptStatus<'_, Self::Remote> {
+    fn accept_event(&mut self, listener: &TcpListener) -> AcceptStatus<'_, Self::Remote> {
         match listener.accept() {
             Ok((stream, addr)) => AcceptStatus::AcceptedRemote(addr, stream),
             Err(ref err) if err.kind() == ErrorKind::WouldBlock => AcceptStatus::WaitNextEvent,
@@ -142,6 +142,7 @@ impl EventHandler for TcpEventHandler {
             }
             Err(ref err) if err.kind() == ErrorKind::WouldBlock => ReadStatus::WaitNextEvent,
             Err(ref err) if err.kind() == ErrorKind::Interrupted => ReadStatus::Interrupted,
+            Err(ref err) if err.kind() == ErrorKind::ConnectionReset => ReadStatus::Disconnected,
             Err(_) => {
                 log::error!("TCP process stream error");
                 ReadStatus::Disconnected // should not happen

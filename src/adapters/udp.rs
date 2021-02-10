@@ -107,11 +107,11 @@ impl UdpActionHandler {
             Ok(_) => SendStatus::Sent,
             // Avoid ICMP generated error to be logged
             Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
-                SendStatus::RemovedEndpoint
+                SendStatus::ResourceRemoved
             }
             Err(_) => {
                 log::error!("UDP send remote error");
-                SendStatus::RemovedEndpoint
+                SendStatus::ResourceRemoved
             }
         }
     }
@@ -131,7 +131,7 @@ impl EventHandler for UdpEventHandler {
     type Remote = UdpSocket;
     type Listener = UdpSocket;
 
-    fn acception_event(&mut self, socket: &UdpSocket) -> AcceptStatus<'_, Self::Remote> {
+    fn accept_event(&mut self, socket: &UdpSocket) -> AcceptStatus<'_, Self::Remote> {
         match socket.recv_from(&mut self.input_buffer) {
             Ok((size, addr)) => {
                 let data = &mut self.input_buffer[..size];

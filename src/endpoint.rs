@@ -23,9 +23,7 @@ impl Endpoint {
         self.resource_id
     }
 
-    /// Returns the remote address of the endpoint
-    /// Note that if you need to retrive the local address,
-    /// you can use [crate::network::Network::local_addr()] for that.
+    /// Returns the remote address of the endpoint.
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }

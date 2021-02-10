@@ -34,8 +34,8 @@ where M: for<'b> Deserialize<'b> + Send + 'static
     /// Call to [`Network::remove_resource()`] will NOT generate the event.
     /// When this event is received, the resource is considered already removed.
     /// A [`NetEvent::Message`] event will never be generated after this event from the endpoint.
-    /// This event will be sent only in connection oriented protocols as [`Transport::TCP`].
-    /// Because UDP is not connection oriented, the event can no be detected.
+    /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
+    /// Because `UDP` is not connection oriented, the event can no be detected.
     Disconnected(Endpoint),
 
     /// This event shows that there was a problem during the deserialization of a message.

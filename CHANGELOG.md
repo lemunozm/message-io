@@ -10,6 +10,7 @@
 - Fixed some memory leaks at decoding pool.
 - Removed unused `Network::local_addr`.
 - Renamed from `SendingStatus` to `SendStatus`.
+- Renamed from `SendingStatus::RemovedEndpoint` to `SendingStatus::ResourceRemoved`.
 - Renamed from `MAX_UDP_LEN` to `MAX_UDP_PAYLOAD_LEN`.
 - Renamed from `AddedEndpoint` to `Connected`.
 - Renamed from `RemovedEndpoint` to `Disconnected`.

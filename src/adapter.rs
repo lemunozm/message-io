@@ -44,7 +44,7 @@ pub trait ActionHandler: Send {
     /// The [`SendStatus`] will contain the status of this sending attempt.
     fn send(&mut self, resource: &Self::Remote, data: &[u8]) -> SendStatus;
 
-    /// Similar to [`ActionHandler::Send()`] but the resource that send the data is a listener.
+    /// Similar to [`ActionHandler::send()`] but the resource that send the data is a listener.
     /// The **implementator** must **only** implement this if the listener resource can
     /// also send data.
     /// This behaviour usually happens when the transport to implement is not connection oriented.
@@ -76,7 +76,7 @@ pub trait ActionHandler: Send {
 }
 
 /// This entity is in change to perform eventual actions comming from the internal network engine.
-/// The associated methods will generates indirectly the [`create::network::NetEvent`] to the user.
+/// The associated methods will generates indirectly the [`crate::network::NetEvent`] to the user.
 pub trait EventHandler: Send {
     type Remote: Source;
     type Listener: Source;
@@ -84,7 +84,7 @@ pub trait EventHandler: Send {
     /// Called when a listener resource received an event.
     /// It means that some resource have tried to connect.
     /// The **implementator** is in charge of accepting this connection and returns [AcceptStatus].
-    fn acception_event(&mut self, listener: &Self::Listener) -> AcceptStatus<'_, Self::Remote>;
+    fn accept_event(&mut self, listener: &Self::Listener) -> AcceptStatus<'_, Self::Remote>;
 
     /// Called when a remote endpoint received an event.
     /// It means that the resource has available data to read,

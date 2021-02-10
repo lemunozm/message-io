@@ -107,11 +107,11 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
                     Some((resource, _)) => self.action_handler.send(resource, data),
 
                     // TODO: currently there is not a safe way to know if this is
-                    // reached because of a user API error (send over already removed endpoint)
+                    // reached because of a user API error (send over already resource removed)
                     // or because of a disconnection happened but not processed yet.
                     // It could be better to panics in the first case to distinguish
                     // the programming error from the second case.
-                    None => SendStatus::RemovedEndpoint,
+                    None => SendStatus::ResourceRemoved,
                 }
             }
             ResourceType::Listener => {
@@ -223,7 +223,7 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
 
                 if let Some((resource, _)) = listeners.get(&id) {
                     loop {
-                        let status = self.event_handler.acception_event(&resource);
+                        let status = self.event_handler.accept_event(&resource);
                         log::trace!("Processing accept event {} from {}", status, id);
                         match status {
                             AcceptStatus::AcceptedRemote(addr, remote) => {

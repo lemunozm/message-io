@@ -17,18 +17,19 @@ pub enum SendStatus {
     MaxPacketSizeExceeded(usize, usize),
 
     /// It means that the connection is not able for sending the message.
-    /// This implies that a [crate::network::NetEvent::RemovedEndpoint] has been or will be
+    /// This implies that a [`crate::network::NetEvent::Disconnected`] has been or will be
     /// generated.
     /// The library encourage to manage the disconnection error in the event queue based with
     /// the RemoveEndpoint received, and left this status to determinated in some cases
     /// if the message was not sent.
-    RemovedEndpoint,
+    ResourceRemoved,
 }
 
-/// Returned as a result of [`EventHandler::acception_event()`]
+/// Returned as a result of [`crate::adapter::EventHandler::accept_event()`]
 pub enum AcceptStatus<'a, R> {
     /// The listener has accepted a remote (`R`) the specified addr.
-    /// The remote will be registered for generate calls to [`read_event`].
+    /// The remote will be registered for generate calls to
+    /// [`crate::adapter::EventHandler::read_event()`].
     AcceptedRemote(SocketAddr, R),
 
     /// The listener has accepted data that can be packed into a message from a specified addr.
@@ -46,7 +47,7 @@ pub enum AcceptStatus<'a, R> {
     WaitNextEvent,
 }
 
-/// Returned as a result of [`EventHandler::read_event()`]
+/// Returned as a result of [`crate::adapter::EventHandler::read_event()`]
 pub enum ReadStatus {
     /// This status must be returned if data was read until the end.
     /// It means that the remote could contain more data to read.
@@ -55,12 +56,13 @@ pub enum ReadStatus {
 
     /// This status must be returned if the resource has been disconnected or there was an error.
     /// The resource will be removed after this call.
-    /// No more [`read_event`] calls will be produced by this resource.
+    /// No more [`crate::adapter::EventHandler::read_event()`] calls will be produced
+    /// by this resource.
     Disconnected,
 
-    /// See [`AcceptionStatus::Interrupted`]
+    /// See [`AcceptStatus::Interrupted`]
     Interrupted,
 
-    /// See [`AcceptionStatus::WaitNextEvent`]
+    /// See [`AcceptStatus::WaitNextEvent`]
     WaitNextEvent,
 }

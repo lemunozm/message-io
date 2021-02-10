@@ -32,6 +32,8 @@ lazy_static = "1.4.0"
 criterion = "0.3"
 serde-big-array = "0.3"
 simple_logger = "1.11.0"
+test-case = "1.1.0"
+rand = "0.8.3"
 
 [[bench]]
 name = "performance"

@@ -14,7 +14,7 @@ pub enum ResourceType {
 /// - The type, that can be a value of [ResourceType].
 /// - The adapter id, that represent the adapter that creates this id
 /// - The base value: that is an unique identifier of the resource inside of its adapter.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResourceId {
     id: usize,
 }
@@ -82,10 +82,16 @@ impl ResourceId {
 impl std::fmt::Display for ResourceId {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let resource_type = match self.resource_type() {
-            ResourceType::Listener => "l",
-            ResourceType::Remote => "r",
+            ResourceType::Listener => "L",
+            ResourceType::Remote => "R",
         };
-        write!(f, "{}-{}-{}", self.adapter_id(), resource_type, self.base_value())
+        write!(f, "{}.{}.{}", self.adapter_id(), resource_type, self.base_value())
+    }
+}
+
+impl std::fmt::Debug for ResourceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 

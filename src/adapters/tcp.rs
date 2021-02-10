@@ -1,6 +1,7 @@
-use crate::adapter::{Adapter, ActionHandler, EventHandler, AcceptionEvent};
+use crate::adapter::{Adapter, ActionHandler, EventHandler};
 use crate::encoding::{self, DecodingPool};
-use crate::util::{SendingStatus, OTHER_THREAD_ERR};
+use crate::status::{SendingStatus, AcceptStatus, ReadStatus};
+use crate::util::{OTHER_THREAD_ERR};
 
 use mio::net::{TcpListener, TcpStream};
 
@@ -111,21 +112,14 @@ impl EventHandler for TcpEventHandler {
     type Remote = TcpStream;
     type Listener = TcpListener;
 
-    fn acception_event(
-        &mut self,
-        listener: &TcpListener,
-        event_callback: &mut dyn Fn(AcceptionEvent<'_, TcpStream>),
-    )
-    {
-        loop {
-            match listener.accept() {
-                Ok((stream, addr)) => event_callback(AcceptionEvent::Remote(addr, stream)),
-                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(_) => {
-                    log::trace!("TCP process listener error");
-                    break // should not happen
-                }
+    fn acception_event(&mut self, listener: &TcpListener) -> AcceptStatus<'_, Self::Remote> {
+        match listener.accept() {
+            Ok((stream, addr)) => AcceptStatus::AcceptedRemote(addr, stream),
+            Err(ref err) if err.kind() == ErrorKind::WouldBlock => AcceptStatus::WaitNextEvent,
+            Err(ref err) if err.kind() == ErrorKind::Interrupted => AcceptStatus::Interrupted,
+            Err(_) => {
+                log::trace!("TCP process listener error");
+                AcceptStatus::WaitNextEvent // Should not happen
             }
         }
     }
@@ -133,37 +127,33 @@ impl EventHandler for TcpEventHandler {
     fn read_event(
         &mut self,
         stream: &TcpStream,
-        addr: SocketAddr,
-        event_callback: &mut dyn Fn(&[u8]),
-    ) -> bool
-    {
-        let removed = loop {
-            match stream.deref().read(&mut self.input_buffer) {
-                Ok(0) => break true,
-                Ok(size) => {
-                    let data = &self.input_buffer[..size];
-                    log::trace!("Decoding data from {}, {} bytes", addr, data.len());
-                    self.decoding_pool.lock().expect(OTHER_THREAD_ERR).decode_from(
-                        data,
-                        addr,
-                        |decoded_data| {
-                            event_callback(decoded_data);
-                        },
-                    );
-                }
-                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break false,
-                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(_) => {
-                    log::error!("TCP process stream error");
-                    break true // should not happen
-                }
+        process_data: &dyn Fn(&[u8]),
+    ) -> ReadStatus {
+        match stream.deref().read(&mut self.input_buffer) {
+            Ok(0) => ReadStatus::Disconnected,
+            Ok(size) => {
+                let data = &self.input_buffer[..size];
+                let addr = stream.peer_addr().unwrap();
+                log::trace!("Decoding data from {}, {} bytes", addr, data.len());
+                self.decoding_pool.lock().expect(OTHER_THREAD_ERR).decode_from(
+                    data,
+                    addr,
+                    |decoded_data| {
+                        process_data(decoded_data);
+                    },
+                );
+                ReadStatus::MoreData
             }
-        };
-
-        if removed {
-            self.decoding_pool.lock().expect(OTHER_THREAD_ERR).remove_if_exists(addr);
+            Err(ref err) if err.kind() == ErrorKind::WouldBlock => ReadStatus::WaitNextEvent,
+            Err(ref err) if err.kind() == ErrorKind::Interrupted => ReadStatus::Interrupted,
+            Err(_) => {
+                log::error!("TCP process stream error");
+                ReadStatus::Disconnected // should not happen
+            }
         }
+    }
 
-        removed
+    fn remove_remote(&mut self, _: Self::Remote, peer_addr: SocketAddr) {
+        self.decoding_pool.lock().expect(OTHER_THREAD_ERR).remove_if_exists(peer_addr);
     }
 }

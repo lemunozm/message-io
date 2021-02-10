@@ -6,7 +6,8 @@ use crate::driver::{
     AdapterEvent, ActionController, EventProcessor, ResourceRegister, GenericActionController,
     GenericEventProcessor,
 };
-use crate::util::{OTHER_THREAD_ERR, SendingStatus};
+use crate::status::{SendingStatus};
+use crate::util::{OTHER_THREAD_ERR};
 
 use std::time::{Duration};
 use std::net::{SocketAddr};

@@ -1,6 +1,6 @@
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
-pub use crate::util::{SendingStatus};
+pub use crate::status::{SendingStatus};
 
 use crate::engine::{NetworkEngine, AdapterLauncher};
 use crate::driver::{AdapterEvent};

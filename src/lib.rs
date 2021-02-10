@@ -3,11 +3,12 @@ mod resource_id;
 mod endpoint;
 mod encoding;
 mod poll;
-mod adapter;
 mod adapters;
 mod driver;
 mod engine;
 
+pub mod status;
+pub mod adapter;
 pub mod network;
 pub mod events;
 

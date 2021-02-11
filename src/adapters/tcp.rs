@@ -87,7 +87,7 @@ impl ActionHandler for TcpActionHandler {
                 // an Event::Disconnection will be generated later.
                 // It is possible to reach this point if the sending method is produced
                 // before the disconnection/reset event is generated.
-                Err(_) => break SendStatus::ResourceRemoved,
+                Err(_) => break SendStatus::ResourceNotFound,
             }
         }
     }

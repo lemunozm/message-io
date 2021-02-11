@@ -111,7 +111,7 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
                     // or because of a disconnection happened but not processed yet.
                     // It could be better to panics in the first case to distinguish
                     // the programming error from the second case.
-                    None => SendStatus::ResourceRemoved,
+                    None => SendStatus::ResourceNotFound,
                 }
             }
             ResourceType::Listener => {

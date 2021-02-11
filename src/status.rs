@@ -22,7 +22,7 @@ pub enum SendStatus {
     /// The library encourage to manage the disconnection error in the event queue based with
     /// the RemoveEndpoint received, and left this status to determinated in some cases
     /// if the message was not sent.
-    ResourceRemoved,
+    ResourceNotFound,
 }
 
 /// Returned as a result of [`crate::adapter::EventHandler::accept_event()`]

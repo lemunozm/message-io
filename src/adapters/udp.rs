@@ -107,11 +107,11 @@ impl UdpActionHandler {
             Ok(_) => SendStatus::Sent,
             // Avoid ICMP generated error to be logged
             Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
-                SendStatus::ResourceRemoved
+                SendStatus::ResourceNotFound
             }
             Err(_) => {
                 log::error!("UDP send remote error");
-                SendStatus::ResourceRemoved
+                SendStatus::ResourceNotFound
             }
         }
     }

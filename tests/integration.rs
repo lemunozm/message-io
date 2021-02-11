@@ -35,6 +35,7 @@ mod util {
     // Used to init the log only one time for all tests;
     static INIT: Once = Once::new();
 
+    #[allow(dead_code)]
     pub fn init_logger() {
         INIT.call_once(|| SimpleLogger::new().init().unwrap());
     }
@@ -128,8 +129,10 @@ fn ping_pong_client_manager_handle(
             let mut network = Network::new(move |net_event| sender.send(net_event));
             let mut clients = HashSet::new();
 
-            for _ in 0..clients_number {
+            for i in 0..clients_number {
+                println!("{}", i);
                 let server_endpoint = network.connect(transport, server_addr).unwrap();
+                std::thread::sleep(Duration::from_millis(1));
                 let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
                 assert_eq!(status, SendStatus::Sent);
                 assert!(clients.insert(server_endpoint));
@@ -155,11 +158,13 @@ fn ping_pong_client_manager_handle(
 }
 
 #[test_case(Transport::Udp, 1)]
-#[test_case(Transport::Udp, 100)]
+#[test_case(Transport::Udp, 10)]
 #[test_case(Transport::Tcp, 1)]
 #[test_case(Transport::Tcp, 100)]
+// NOTE: A medium-high clients value can exceeds the open file limits of any OS in CI,
+// with a very obfuscated error message.
 fn ping_pong(transport: Transport, clients: usize) {
-    util::init_logger();
+    //util::init_logger();
 
     let (server_handle, server_addr) = ping_pong_server_handle(transport, clients);
     let client_handle = ping_pong_client_manager_handle(transport, server_addr, clients);
@@ -171,7 +176,7 @@ fn ping_pong(transport: Transport, clients: usize) {
 #[test_case(Transport::Udp, MAX_SIZE_BY_UDP)] //8 bytes of Vec head serialization
 #[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
 fn message_size(transport: Transport, message_size: usize) {
-    util::init_logger();
+    //util::init_logger();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();

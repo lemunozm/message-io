@@ -40,6 +40,5 @@ name = "performance"
 harness = false
 
 [[example]]
-name = "adapter_skeleton"
+name = "adapter_template"
 crate-type = ["staticlib"]
-rustflags = ["-A", "unused_variables"]

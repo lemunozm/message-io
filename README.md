@@ -62,8 +62,8 @@ message-io = "0.7"
 ```
 
 ### Documentation
-- [Basic concepts](#basic-concepts)
 - [API documentation](https://docs.rs/message-io/)
+- [Basic concepts](docs/basic_concepts.md)
 - [Examples](examples):
 
   - [Basic TCP client and server](examples/tcp)
@@ -150,9 +150,9 @@ cargo run --example tcp client <name>
 
 ## Do you need a transport protocol that `message-io` doesn't have? Add an adapter! <span id="custom-adapter"><span>
 
-`message-io` offers two *kind* of APIs.
-The *user API*, that controls `message-io` itself as an user that want to use the library,
-and the internal *adapter API* for those who want to add their protocol adapters into the library.
+`message-io` offers two *kinds* of APIs.
+The **user API**, that talks to `message-io` itself as an user that want to use the library,
+and the internal **adapter API** for those who want to add their protocol adapters into the library.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vRMwZsL8Tki3Sq9Zc2hpZ8L3bJPuj38zgiMKzBCXsX3wrPnfyG2hp-ijmDFUPqicEQZFeyUFxhcdJMB/pub?w=703&h=328"/>
@@ -162,42 +162,11 @@ If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#p
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you can found in [`src/adapter.rs`](src/adapter.rs) (only 6 mandatory functions to implement).
+  traits that you find in [`src/adapter.rs`](src/adapter.rs) (only 6 mandatory functions to implement, see the [template](examples/adapter_template.rs) from examples).
 
 1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
 
 That's all! You can use your new transport with the `message-io` API like any other.
 
-Oops, one step more, you can make a *Pull request* for everyone to use it :)
-
-## Basic concepts
-The library has two main modules:
-
-- **`EventQueue`**:
-It is a generic and synchronized queue where all the network events, among others, are sent.
-The user must be read these events in order to dispatch actions.
-
-<p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vQr06OL40IWagXWHoyytUIlR1SHoahYE0Pkj6r0HmokaUMW4ojC5MV2OViFO9m-2jDqrDokPJ62oSzg/pub?w=837&h=313"/>
-</p>
-
-- **`Network`**:
-It is an abstraction layer of the transport protocols that works over *non-blocking* sockets.
-It allows to create/remove connections, send and receive messages (defined by the user).
-
-To manage the connections, the `Network` offers an *`Endpoint`*
-that is an unique identifier of the connection. It can be used
-send, remove, or identify received messages.
-It can be understood as the remitter/recipient of the message.
-
-<p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vS3y1BKwPHjoFqtHm2pqfmvxr0JRQIzeRJim9s2UOrOIS74cGwlyqxnH4_DHVXTverziCjPzl6FtQMe/pub?w=586&h=273"/>
-</p>
-
-The power comes when both pieces joins together, allowing to process all actions from one thread.
-To reach this, the user has to connect the `Network` to the `EventQueue` sending the `NetEvent` produced by the first one.
-
-<p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vT6IuBVr4mLbdNfs2yZayqqUJ04PsuqG27Ce3Vdr0ZG8ItX3slISoKVxyndybaYPIS5oFZ6N4TljrKQ/pub?w=701&h=383"/>
-</p>
+Oops, one step more, make a *Pull request* for everyone to use it :)
 

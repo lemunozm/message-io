@@ -129,10 +129,8 @@ fn ping_pong_client_manager_handle(
             let mut network = Network::new(move |net_event| sender.send(net_event));
             let mut clients = HashSet::new();
 
-            for i in 0..clients_number {
-                println!("{}", i);
+            for _ in 0..clients_number {
                 let server_endpoint = network.connect(transport, server_addr).unwrap();
-                std::thread::sleep(Duration::from_millis(1));
                 let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
                 assert_eq!(status, SendStatus::Sent);
                 assert!(clients.insert(server_endpoint));
@@ -158,10 +156,10 @@ fn ping_pong_client_manager_handle(
 }
 
 #[test_case(Transport::Udp, 1)]
-#[test_case(Transport::Udp, 10)]
+#[test_case(Transport::Udp, 100)]
 #[test_case(Transport::Tcp, 1)]
 #[test_case(Transport::Tcp, 100)]
-// NOTE: A medium-high clients value can exceeds the open file limits of any OS in CI,
+// NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with a very obfuscated error message.
 fn ping_pong(transport: Transport, clients: usize) {
     //util::init_logger();
@@ -173,7 +171,7 @@ fn ping_pong(transport: Transport, clients: usize) {
     client_handle.join().unwrap();
 }
 
-#[test_case(Transport::Udp, MAX_SIZE_BY_UDP)] //8 bytes of Vec head serialization
+#[test_case(Transport::Udp, MAX_SIZE_BY_UDP)]
 #[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
 fn message_size(transport: Transport, message_size: usize) {
     //util::init_logger();

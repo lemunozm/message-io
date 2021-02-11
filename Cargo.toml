@@ -1,6 +1,6 @@
 [package]
 name = "message-io"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["lemunozm <lemunozm@gmail.com>"]
 edition = "2018"
 readme = "README.md"
@@ -38,3 +38,8 @@ rand = "0.8.3"
 [[bench]]
 name = "performance"
 harness = false
+
+[[example]]
+name = "adapter_skeleton"
+crate-type = ["staticlib"]
+rustflags = ["-A", "unused_variables"]

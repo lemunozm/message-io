@@ -59,6 +59,7 @@ mod util {
         match transport {
             Transport::Udp => false,
             Transport::Tcp => true,
+            Transport::Ws => true,
         }
     }
 }
@@ -179,6 +180,7 @@ fn ping_pong_client_manager_handle(
 #[test_case(Transport::Udp, 100)]
 #[test_case(Transport::Tcp, 1)]
 #[test_case(Transport::Tcp, 100)]
+#[test_case(Transport::Ws, 1)]
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with a very obfuscated error message.
 fn ping_pong(transport: Transport, clients: usize) {

@@ -26,10 +26,8 @@ impl Poll {
                     }
                     break
                 }
-                Err(e) => match e.kind() {
-                    ErrorKind::Interrupted => continue,
-                    _ => Err(e).expect("No error here"),
-                },
+                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(ref err) => Err(err).expect("No error here"),
             }
         }
     }

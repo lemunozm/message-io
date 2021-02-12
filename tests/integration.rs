@@ -28,8 +28,6 @@ pub const TIMEOUT_MSG_EXPECTED_ERR: &'static str = "Timeout, but a message was e
 mod util {
     use message_io::network::{Transport};
 
-    use simple_logger::{SimpleLogger};
-
     use std::sync::{Once};
 
     // Used to init the log only one time for all tests;
@@ -37,7 +35,24 @@ mod util {
 
     #[allow(dead_code)]
     pub fn init_logger() {
-        INIT.call_once(|| SimpleLogger::new().init().unwrap());
+        INIT.call_once(|| configure_logger().unwrap());
+    }
+
+    fn configure_logger() -> Result<(), fern::InitError> {
+        fern::Dispatch::new()
+            .format(|out, message, record| {
+                out.finish(format_args!(
+                    "[{}][{}][{}][{}] {}",
+                    chrono::Local::now().format("%H:%M:%S"),
+                    record.level(),
+                    record.target(),
+                    std::thread::current().name().unwrap(),
+                    message
+                ))
+            })
+            .chain(std::io::stdout())
+            .apply()?;
+        Ok(())
     }
 
     pub const fn is_connection_oriented(transport: Transport) -> bool {
@@ -64,7 +79,7 @@ fn ping_pong_server_handle(
     let mut clients = HashSet::new();
 
     let handle = thread::Builder::new()
-        .name("message-io: test: server".into())
+        .name("test-server".into())
         .spawn(move || {
             loop {
                 match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
@@ -122,7 +137,7 @@ fn ping_pong_client_manager_handle(
 ) -> JoinHandle<()>
 {
     thread::Builder::new()
-        .name("message-io: test: client".into())
+        .name("test-client".into())
         .spawn(move || {
             let mut event_queue = EventQueue::<NetEvent<String>>::new();
             let sender = event_queue.sender().clone();

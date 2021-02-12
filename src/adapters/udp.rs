@@ -139,7 +139,7 @@ impl EventHandler for UdpEventHandler {
             }
             Err(ref err) if err.kind() == ErrorKind::WouldBlock => AcceptStatus::WaitNextEvent,
             Err(_) => {
-                log::trace!("UDP process listener error");
+                log::trace!("UDP accept event error");
                 AcceptStatus::WaitNextEvent // Should not happen
             }
         }
@@ -155,7 +155,7 @@ impl EventHandler for UdpEventHandler {
             // Avoid ICMP generated error to be logged
             Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => ReadStatus::Disconnected,
             Err(_) => {
-                log::error!("UDP process remote error");
+                log::error!("UDP read event error");
                 ReadStatus::Disconnected // Should not happen
             }
         }

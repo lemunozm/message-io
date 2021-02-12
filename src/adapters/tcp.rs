@@ -118,7 +118,7 @@ impl EventHandler for TcpEventHandler {
             Err(ref err) if err.kind() == ErrorKind::WouldBlock => AcceptStatus::WaitNextEvent,
             Err(ref err) if err.kind() == ErrorKind::Interrupted => AcceptStatus::Interrupted,
             Err(_) => {
-                log::trace!("TCP process listener error");
+                log::trace!("TCP accept event error");
                 AcceptStatus::WaitNextEvent // Should not happen
             }
         }
@@ -144,7 +144,7 @@ impl EventHandler for TcpEventHandler {
             Err(ref err) if err.kind() == ErrorKind::Interrupted => ReadStatus::Interrupted,
             Err(ref err) if err.kind() == ErrorKind::ConnectionReset => ReadStatus::Disconnected,
             Err(_) => {
-                log::error!("TCP process stream error");
+                log::error!("TCP read event error");
                 ReadStatus::Disconnected // should not happen
             }
         }

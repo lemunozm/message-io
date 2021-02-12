@@ -7,7 +7,6 @@ mod adapters;
 mod driver;
 mod engine;
 
-pub mod status;
 pub mod adapter;
 pub mod network;
 pub mod events;

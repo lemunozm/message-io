@@ -1,12 +1,11 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{Poll};
-use crate::adapter::{Adapter};
+use crate::adapter::{Adapter, SendStatus};
 use crate::driver::{
     AdapterEvent, ActionController, EventProcessor, ResourceRegister, GenericActionController,
     GenericEventProcessor,
 };
-use crate::status::{SendStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
 use std::time::{Duration};

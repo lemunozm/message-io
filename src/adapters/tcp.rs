@@ -1,6 +1,5 @@
-use crate::adapter::{Adapter, ActionHandler, EventHandler};
+use crate::adapter::{Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
 use crate::encoding::{self, DecodingPool};
-use crate::status::{SendStatus, AcceptStatus, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
 use mio::net::{TcpListener, TcpStream};
@@ -112,40 +111,49 @@ impl EventHandler for TcpEventHandler {
     type Remote = TcpStream;
     type Listener = TcpListener;
 
-    fn accept_event(&mut self, listener: &TcpListener) -> AcceptStatus<'_, Self::Remote> {
-        match listener.accept() {
-            Ok((stream, addr)) => AcceptStatus::AcceptedRemote(addr, stream),
-            Err(ref err) if err.kind() == ErrorKind::WouldBlock => AcceptStatus::WaitNextEvent,
-            Err(ref err) if err.kind() == ErrorKind::Interrupted => AcceptStatus::Interrupted,
-            Err(_) => {
-                log::trace!("TCP accept event error");
-                AcceptStatus::WaitNextEvent // Should not happen
+    fn accept_event(
+        &mut self,
+        listener: &TcpListener,
+        accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>),
+    )
+    {
+        loop {
+            match listener.accept() {
+                Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream)),
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(_) => break log::trace!("TCP accept event error"), // Should not happen
             }
         }
     }
 
     fn read_event(&mut self, stream: &TcpStream, process_data: &dyn Fn(&[u8])) -> ReadStatus {
-        match stream.deref().read(&mut self.input_buffer) {
-            Ok(0) => ReadStatus::Disconnected,
-            Ok(size) => {
-                let data = &self.input_buffer[..size];
-                let addr = stream.peer_addr().unwrap();
-                log::trace!("Decoding data from {}, {} bytes", addr, data.len());
-                self.decoding_pool.lock().expect(OTHER_THREAD_ERR).decode_from(
-                    data,
-                    addr,
-                    |decoded_data| {
-                        process_data(decoded_data);
-                    },
-                );
-                ReadStatus::MoreData
-            }
-            Err(ref err) if err.kind() == ErrorKind::WouldBlock => ReadStatus::WaitNextEvent,
-            Err(ref err) if err.kind() == ErrorKind::Interrupted => ReadStatus::Interrupted,
-            Err(ref err) if err.kind() == ErrorKind::ConnectionReset => ReadStatus::Disconnected,
-            Err(_) => {
-                log::error!("TCP read event error");
-                ReadStatus::Disconnected // should not happen
+        loop {
+            match stream.deref().read(&mut self.input_buffer) {
+                Ok(0) => break ReadStatus::Disconnected,
+                Ok(size) => {
+                    let data = &self.input_buffer[..size];
+                    let addr = stream.peer_addr().unwrap();
+                    log::trace!("Decoding data from {}, {} bytes", addr, data.len());
+                    self.decoding_pool.lock().expect(OTHER_THREAD_ERR).decode_from(
+                        data,
+                        addr,
+                        |decoded_data| {
+                            process_data(decoded_data);
+                        },
+                    );
+                }
+                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
+                    break ReadStatus::WaitNextEvent
+                }
+                Err(ref err) if err.kind() == ErrorKind::ConnectionReset => {
+                    break ReadStatus::Disconnected
+                }
+                Err(_) => {
+                    log::error!("TCP read event error");
+                    break ReadStatus::Disconnected // should not happen
+                }
             }
         }
     }

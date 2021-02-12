@@ -1,8 +1,7 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{PollRegister};
-use crate::adapter::{ActionHandler, EventHandler};
-use crate::status::{SendStatus, AcceptStatus, ReadStatus};
+use crate::adapter::{ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
 use mio::event::{Source};
@@ -189,25 +188,18 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
         match id.resource_type() {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
-                let to_remove = if let Some((resource, addr)) = remotes.get(&id) {
+                let mut to_remove: Option<Endpoint> = None;
+                if let Some((resource, addr)) = remotes.get(&id) {
                     let endpoint = Endpoint::new(id, *addr);
-                    loop {
-                        let status = self.event_handler.read_event(&resource, &|data| {
-                            log::trace!("Read {} bytes from {}", data.len(), id);
-                            event_callback(endpoint, AdapterEvent::Data(data));
-                        });
-                        log::trace!("Processing read event {}, from {}", status, endpoint);
-                        match status {
-                            ReadStatus::MoreData => continue,
-                            ReadStatus::Disconnected => break Some(endpoint),
-                            ReadStatus::WaitNextEvent => break None,
-                            ReadStatus::Interrupted => continue,
-                        };
+                    let status = self.event_handler.read_event(&resource, &|data| {
+                        log::trace!("Read {} bytes from {}", data.len(), id);
+                        event_callback(endpoint, AdapterEvent::Data(data));
+                    });
+                    log::trace!("Processing read_event {}, for {}", status, endpoint);
+                    if let ReadStatus::Disconnected = status {
+                        to_remove = Some(endpoint);
                     }
                 }
-                else {
-                    None
-                };
 
                 drop(remotes);
 
@@ -222,23 +214,20 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
                 let remotes = &mut self.remote_register;
 
                 if let Some((resource, _)) = listeners.get(&id) {
-                    loop {
-                        let status = self.event_handler.accept_event(&resource);
-                        log::trace!("Processing accept event {} from {}", status, id);
-                        match status {
-                            AcceptStatus::AcceptedRemote(addr, remote) => {
+                    self.event_handler.accept_event(&resource, &|accepted| {
+                        log::trace!("Processing accept_event {} for {}", accepted, id);
+                        match accepted {
+                            AcceptedType::Remote(addr, remote) => {
                                 let id = remotes.add(remote, addr);
                                 let endpoint = Endpoint::new(id, addr);
                                 event_callback(endpoint, AdapterEvent::Added);
                             }
-                            AcceptStatus::AcceptedData(addr, data) => {
+                            AcceptedType::Data(addr, data) => {
                                 let endpoint = Endpoint::new(id, addr);
                                 event_callback(endpoint, AdapterEvent::Data(data));
                             }
-                            AcceptStatus::WaitNextEvent => break,
-                            AcceptStatus::Interrupted => continue,
                         }
-                    }
+                    });
                 }
             }
         }
@@ -248,23 +237,19 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
 impl std::fmt::Display for ReadStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            ReadStatus::MoreData => "MoreData",
             ReadStatus::Disconnected => "Disconnected",
             ReadStatus::WaitNextEvent => "WaitNextEvent",
-            ReadStatus::Interrupted => "Interrupted",
         };
         write!(f, "ReadStatus::{}", string)
     }
 }
 
-impl<R> std::fmt::Display for AcceptStatus<'_, R> {
+impl<R> std::fmt::Display for AcceptedType<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            AcceptStatus::AcceptedRemote(addr, _) => format!("AcceptedRemote({})", addr),
-            AcceptStatus::AcceptedData(addr, _) => format!("AcceptedData({})", addr),
-            AcceptStatus::WaitNextEvent => "WaitNextEvent".into(),
-            AcceptStatus::Interrupted => "Interrupted".into(),
+            AcceptedType::Remote(addr, _) => format!("AcceptedRemote({})", addr),
+            AcceptedType::Data(addr, _) => format!("AcceptedData({})", addr),
         };
-        write!(f, "AcceptStatus::{}", string)
+        write!(f, "AcceptedType::{}", string)
     }
 }

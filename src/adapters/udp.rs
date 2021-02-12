@@ -1,5 +1,4 @@
-use crate::adapter::{Adapter, ActionHandler, EventHandler};
-use crate::status::{SendStatus, AcceptStatus, ReadStatus};
+use crate::adapter::{Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
 
 use mio::net::{UdpSocket};
 
@@ -131,32 +130,39 @@ impl EventHandler for UdpEventHandler {
     type Remote = UdpSocket;
     type Listener = UdpSocket;
 
-    fn accept_event(&mut self, socket: &UdpSocket) -> AcceptStatus<'_, Self::Remote> {
-        match socket.recv_from(&mut self.input_buffer) {
-            Ok((size, addr)) => {
-                let data = &mut self.input_buffer[..size];
-                AcceptStatus::AcceptedData(addr, data)
-            }
-            Err(ref err) if err.kind() == ErrorKind::WouldBlock => AcceptStatus::WaitNextEvent,
-            Err(_) => {
-                log::trace!("UDP accept event error");
-                AcceptStatus::WaitNextEvent // Should not happen
-            }
+    fn accept_event(
+        &mut self,
+        socket: &UdpSocket,
+        accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>),
+    )
+    {
+        loop {
+            match socket.recv_from(&mut self.input_buffer) {
+                Ok((size, addr)) => {
+                    let data = &mut self.input_buffer[..size];
+                    accept_remote(AcceptedType::Data(addr, data))
+                }
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                Err(_) => break log::trace!("UDP accept event error"), // Should never happen
+            };
         }
     }
 
     fn read_event(&mut self, socket: &UdpSocket, process_data: &dyn Fn(&[u8])) -> ReadStatus {
-        match socket.recv(&mut self.input_buffer) {
-            Ok(size) => {
-                process_data(&mut self.input_buffer[..size]);
-                ReadStatus::WaitNextEvent // recv gives only one datagram
-            }
-            Err(ref err) if err.kind() == ErrorKind::WouldBlock => ReadStatus::WaitNextEvent,
-            // Avoid ICMP generated error to be logged
-            Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => ReadStatus::Disconnected,
-            Err(_) => {
-                log::error!("UDP read event error");
-                ReadStatus::Disconnected // Should not happen
+        loop {
+            match socket.recv(&mut self.input_buffer) {
+                Ok(size) => process_data(&mut self.input_buffer[..size]),
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
+                    break ReadStatus::WaitNextEvent
+                }
+                Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
+                    // Avoid ICMP generated error to be logged
+                    break ReadStatus::Disconnected
+                }
+                Err(_) => {
+                    log::error!("UDP read event error");
+                    break ReadStatus::Disconnected // Should not happen
+                }
             }
         }
     }

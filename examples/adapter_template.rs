@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
 
-use message_io::adapter::{Adapter, ActionHandler, EventHandler};
-use message_io::status::{SendStatus, AcceptStatus, ReadStatus};
+use message_io::adapter::{Adapter, ActionHandler, EventHandler, SendStatus, ReadStatus, AcceptedType};
 
 use std::net::{SocketAddr};
 use std::io::{self};
@@ -43,7 +42,12 @@ impl EventHandler for MyEventHandler {
     type Remote = resource::MyRemote;
     type Listener = resource::MyListener;
 
-    fn accept_event(&mut self, listener: &Self::Listener) -> AcceptStatus<'_, Self::Remote> {
+    fn accept_event(
+        &mut self,
+        listener: &Self::Listener,
+        accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>),
+    )
+    {
         todo!();
     }
 

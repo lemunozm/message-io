@@ -137,7 +137,7 @@ fn main() {
 ```
 
 ## Test yourself!
-Clone the repository and test the TCP example that you can found in [`examples/tcp`](examples/tcp):
+Clone the repository and test the TCP example that you can find in [`examples/tcp`](examples/tcp):
 
 Run the server:
 ```

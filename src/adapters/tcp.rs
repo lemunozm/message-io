@@ -1,48 +1,82 @@
 use crate::adapter::{Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
-use crate::encoding::{self, DecodingPool};
-use crate::util::{OTHER_THREAD_ERR};
+use crate::encoding::{self, Decoder};
 
 use mio::net::{TcpListener, TcpStream};
+use mio::{Interest, Token, Registry};
+use mio::event::{Source};
 
-use std::sync::{Arc, Mutex};
 use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
+use std::cell::{RefCell};
 
 const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
+
+pub struct TcpStreamResource {
+    stream: TcpStream,
+    decoder: RefCell<Decoder>,
+}
+
+/// We are totally sure that RefCell<Decoder> can be used with Sync
+/// because it is only used in the read_event.
+unsafe impl Sync for TcpStreamResource {}
+
+impl From<TcpStream> for TcpStreamResource {
+    fn from(stream: TcpStream) -> Self {
+        Self {
+            stream, decoder: RefCell::new(Decoder::new())
+        }
+    }
+}
+
+impl Source for TcpStreamResource {
+    fn register(
+        &mut self,
+        registry: &Registry,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()>
+    {
+        self.stream.register(registry, token, interests)
+    }
+
+    fn reregister(
+        &mut self,
+        registry: &Registry,
+        token: Token,
+        interests: Interest,
+    ) -> io::Result<()>
+    {
+        self.stream.reregister(registry, token, interests)
+    }
+
+    fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
+        self.stream.deregister(registry)
+    }
+}
 
 pub struct TcpAdapter;
 
 impl Adapter for TcpAdapter {
-    type Remote = TcpStream;
+    type Remote = TcpStreamResource;
     type Listener = TcpListener;
     type ActionHandler = TcpActionHandler;
     type EventHandler = TcpEventHandler;
 
     fn split(self) -> (TcpActionHandler, TcpEventHandler) {
-        let decoding_pool = Arc::new(Mutex::new(DecodingPool::new()));
-        (TcpActionHandler::new(decoding_pool.clone()), TcpEventHandler::new(decoding_pool))
+        (TcpActionHandler, TcpEventHandler::default())
     }
 }
 
-pub struct TcpActionHandler {
-    decoding_pool: Arc<Mutex<DecodingPool<SocketAddr>>>,
-}
-
-impl TcpActionHandler {
-    fn new(decoding_pool: Arc<Mutex<DecodingPool<SocketAddr>>>) -> Self {
-        Self { decoding_pool }
-    }
-}
-
+pub struct TcpActionHandler;
 impl ActionHandler for TcpActionHandler {
-    type Remote = TcpStream;
+    type Remote = TcpStreamResource;
     type Listener = TcpListener;
 
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<TcpStream> {
+    fn connect(&mut self, addr: SocketAddr) -> io::Result<TcpStreamResource> {
         let stream = StdTcpStream::connect(addr)?;
         stream.set_nonblocking(true)?;
-        Ok(TcpStream::from_std(stream))
+        Ok(TcpStream::from_std(stream).into())
     }
 
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(TcpListener, SocketAddr)> {
@@ -51,8 +85,8 @@ impl ActionHandler for TcpActionHandler {
         Ok((listener, real_addr))
     }
 
-    fn send(&mut self, stream: &TcpStream, data: &[u8]) -> SendStatus {
-        let encode_value = encoding::encode(data);
+    fn send(&mut self, remote: &TcpStreamResource, data: &[u8]) -> SendStatus {
+        let encoded_size = encoding::encode_size(data);
 
         // TODO: The current implementation implies an active waiting,
         // improve it using POLLIN instead to avoid active waiting.
@@ -62,10 +96,11 @@ impl ActionHandler for TcpActionHandler {
         let total_bytes = encoding::PADDING + data.len();
         loop {
             let data_to_send = match total_bytes_sent < encoding::PADDING {
-                true => &encode_value[total_bytes_sent..],
+                true => &encoded_size[total_bytes_sent..],
                 false => &data[(total_bytes_sent - encoding::PADDING)..],
             };
 
+            let stream = &remote.stream;
             match stream.deref().write(data_to_send) {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
@@ -90,25 +125,20 @@ impl ActionHandler for TcpActionHandler {
             }
         }
     }
-
-    fn remove_remote(&mut self, _resource: Self::Remote, addr: SocketAddr) {
-        self.decoding_pool.lock().expect(OTHER_THREAD_ERR).remove_if_exists(addr);
-    }
 }
 
 pub struct TcpEventHandler {
-    decoding_pool: Arc<Mutex<DecodingPool<SocketAddr>>>,
     input_buffer: [u8; INPUT_BUFFER_SIZE],
 }
 
-impl TcpEventHandler {
-    fn new(decoding_pool: Arc<Mutex<DecodingPool<SocketAddr>>>) -> Self {
-        Self { input_buffer: [0; INPUT_BUFFER_SIZE], decoding_pool }
+impl Default for TcpEventHandler {
+    fn default() -> Self {
+        Self { input_buffer: [0; INPUT_BUFFER_SIZE] }
     }
 }
 
 impl EventHandler for TcpEventHandler {
-    type Remote = TcpStream;
+    type Remote = TcpStreamResource;
     type Listener = TcpListener;
 
     fn accept_event(
@@ -119,7 +149,7 @@ impl EventHandler for TcpEventHandler {
     {
         loop {
             match listener.accept() {
-                Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream)),
+                Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream.into())),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                 Err(_) => break log::trace!("TCP accept event error"), // Should not happen
@@ -127,21 +157,18 @@ impl EventHandler for TcpEventHandler {
         }
     }
 
-    fn read_event(&mut self, stream: &TcpStream, process_data: &dyn Fn(&[u8])) -> ReadStatus {
+    fn read_event(&mut self, remote: &TcpStreamResource, process_data: &dyn Fn(&[u8])) -> ReadStatus {
         loop {
+            let stream = &remote.stream;
             match stream.deref().read(&mut self.input_buffer) {
                 Ok(0) => break ReadStatus::Disconnected,
                 Ok(size) => {
                     let data = &self.input_buffer[..size];
-                    let addr = stream.peer_addr().unwrap();
+                    let addr = remote.stream.peer_addr().unwrap();
                     log::trace!("Decoding data from {}, {} bytes", addr, data.len());
-                    self.decoding_pool.lock().expect(OTHER_THREAD_ERR).decode_from(
-                        data,
-                        addr,
-                        |decoded_data| {
-                            process_data(decoded_data);
-                        },
-                    );
+                    remote.decoder.borrow_mut().decode(data, |decoded_data| {
+                        process_data(decoded_data);
+                    });
                 }
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
@@ -156,9 +183,5 @@ impl EventHandler for TcpEventHandler {
                 }
             }
         }
-    }
-
-    fn remove_remote(&mut self, _: Self::Remote, peer_addr: SocketAddr) {
-        self.decoding_pool.lock().expect(OTHER_THREAD_ERR).remove_if_exists(peer_addr);
     }
 }

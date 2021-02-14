@@ -14,6 +14,7 @@
 - Renamed from `MAX_UDP_LEN` to `MAX_UDP_PAYLOAD_LEN`.
 - Renamed from `AddedEndpoint` to `Connected`.
 - Renamed from `RemovedEndpoint` to `Disconnected`.
+- Added `RemoteAddr` for replace `SocketAddr` in connections.
 
 ## Release 0.6.0
 - Added concurrent writing and reading from socket/streams in UDP and TCP protocols.

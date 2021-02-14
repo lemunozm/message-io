@@ -1,6 +1,7 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{PollRegister};
+use crate::remote_addr::{RemoteAddr};
 use crate::adapter::{Resource, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
@@ -52,7 +53,7 @@ impl<S: Resource> ResourceRegister<S> {
 }
 
 pub trait ActionController {
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint>;
+    fn connect(&mut self, addr: RemoteAddr) -> io::Result<Endpoint>;
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
     fn remove(&mut self, id: ResourceId) -> Option<()>;
@@ -80,12 +81,11 @@ impl<R: Resource, L: Resource> GenericActionController<R, L> {
 }
 
 impl<R: Resource, L: Resource> ActionController for GenericActionController<R, L> {
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
+    fn connect(&mut self, addr: RemoteAddr) -> io::Result<Endpoint> {
         let remotes = &mut self.remote_register;
         self.action_handler
             .connect(addr)
-            .map(|resource| remotes.add(resource, addr))
-            .map(|resource_id| Endpoint::new(resource_id, addr))
+            .map(|(resource, addr)| Endpoint::new(remotes.add(resource, addr), addr))
     }
 
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
@@ -93,7 +93,6 @@ impl<R: Resource, L: Resource> ActionController for GenericActionController<R, L
         self.action_handler
             .listen(addr)
             .map(|(resource, addr)| (listeners.add(resource, addr), addr))
-            .map(|(resource_id, real_addr)| (resource_id, real_addr))
     }
 
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {

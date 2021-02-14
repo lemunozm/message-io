@@ -2,6 +2,7 @@ use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{Poll};
 use crate::adapter::{Adapter, SendStatus};
+use crate::remote_addr::{RemoteAddr};
 use crate::driver::{
     AdapterEvent, ActionController, EventProcessor, ResourceRegister, GenericActionController,
     GenericEventProcessor,
@@ -110,7 +111,7 @@ impl NetworkEngine {
         Self { thread: Some(thread), thread_running, controllers }
     }
 
-    pub fn connect(&mut self, adapter_id: u8, addr: SocketAddr) -> io::Result<Endpoint> {
+    pub fn connect(&mut self, adapter_id: u8, addr: RemoteAddr) -> io::Result<Endpoint> {
         self.controllers[adapter_id as usize].connect(addr)
     }
 
@@ -148,7 +149,7 @@ const UNIMPLEMENTED_ADAPTER_ERR: &str = "The adapter id used do not reference an
 
 pub struct UnimplementedActionController;
 impl ActionController for UnimplementedActionController {
-    fn connect(&mut self, _: SocketAddr) -> io::Result<Endpoint> {
+    fn connect(&mut self, _: RemoteAddr) -> io::Result<Endpoint> {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 

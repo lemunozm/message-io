@@ -1,6 +1,7 @@
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
 pub use crate::adapter::{SendStatus};
+pub use crate::remote_addr::{RemoteAddr, ToRemoteAddr};
 
 use crate::engine::{NetworkEngine, AdapterLauncher};
 use crate::driver::{AdapterEvent};
@@ -125,13 +126,13 @@ impl Network {
     /// The endpoint, an identified of the new connection, will be returned.
     /// If the connection can not be performed (e.g. the address is not reached)
     /// the corresponding IO error is returned.
-    pub fn connect<A: ToSocketAddrs>(
+    pub fn connect(
         &mut self,
         transport: Transport,
-        addr: A,
+        addr: impl ToRemoteAddr,
     ) -> io::Result<Endpoint>
     {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+        let addr = addr.to_remote_addr().unwrap();
         self.engine.connect(transport.id(), addr)
     }
 
@@ -143,10 +144,10 @@ impl Network {
     /// when a `0` port is specified, the OS will give a value.
     /// If the protocol is UDP and the address is Ipv4 in the range of multicast ips
     /// (from `224.0.0.0` to `239.255.255.255`) it will be listening is multicast mode.
-    pub fn listen<A: ToSocketAddrs>(
+    pub fn listen(
         &mut self,
         transport: Transport,
-        addr: A,
+        addr: impl ToSocketAddrs,
     ) -> io::Result<(ResourceId, SocketAddr)>
     {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();

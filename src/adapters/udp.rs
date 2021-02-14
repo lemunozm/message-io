@@ -1,3 +1,4 @@
+use crate::remote_addr::{RemoteAddr};
 use crate::adapter::{
     Resource, Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus,
 };
@@ -61,10 +62,11 @@ impl ActionHandler for UdpActionHandler {
     type Remote = ClientResource;
     type Listener = ServerResource;
 
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<ClientResource> {
+    fn connect(&mut self, remote_addr: RemoteAddr) -> io::Result<(ClientResource, SocketAddr)> {
         let socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
-        socket.connect(addr)?;
-        Ok(ClientResource(socket))
+        let addr = remote_addr.socket_addr();
+        socket.connect(*addr)?;
+        Ok((ClientResource(socket), *addr))
     }
 
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ServerResource, SocketAddr)> {

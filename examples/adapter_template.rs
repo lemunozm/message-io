@@ -1,5 +1,6 @@
 #![allow(unused_variables)]
 
+use message_io::remote_addr::{RemoteAddr};
 use message_io::adapter::{
     Resource, Adapter, ActionHandler, EventHandler, SendStatus, ReadStatus, AcceptedType,
 };
@@ -40,7 +41,7 @@ impl ActionHandler for MyActionHandler {
     type Remote = ClientResource;
     type Listener = ServerResource;
 
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<ClientResource> {
+    fn connect(&mut self, remote_addr: RemoteAddr) -> io::Result<(ClientResource, SocketAddr)> {
         todo!();
     }
 

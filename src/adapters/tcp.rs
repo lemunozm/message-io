@@ -1,6 +1,7 @@
 use crate::adapter::{
     Resource, Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus,
 };
+use crate::remote_addr::{RemoteAddr};
 use crate::encoding::{self, Decoder};
 
 use mio::net::{TcpListener, TcpStream};
@@ -59,10 +60,11 @@ impl ActionHandler for TcpActionHandler {
     type Remote = ClientResource;
     type Listener = ServerResource;
 
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<ClientResource> {
+    fn connect(&mut self, remote_addr: RemoteAddr) -> io::Result<(ClientResource, SocketAddr)> {
+        let addr = remote_addr.socket_addr();
         let stream = StdTcpStream::connect(addr)?;
         stream.set_nonblocking(true)?;
-        Ok(TcpStream::from_std(stream).into())
+        Ok((TcpStream::from_std(stream).into(), *addr))
     }
 
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ServerResource, SocketAddr)> {

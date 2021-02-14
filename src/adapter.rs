@@ -1,3 +1,5 @@
+use crate::remote_addr::{RemoteAddr};
+
 use mio::event::{Source};
 
 use std::net::{SocketAddr};
@@ -66,12 +68,16 @@ pub trait ActionHandler: Send {
     type Remote: Resource;
     type Listener: Resource;
 
-    /// The user performs a connection request to an specific address.
+    /// The user performs a connection request to an specific remote address.
     /// The **implementator** is in change of creating the corresponding remote resource.
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<Self::Remote>;
+    /// The [`RemoteAddr`] contains either a [`SocketAddr`] or a [`url::Url`].
+    /// It is in charge of the implementator to decide what to do in both cases.
+    /// It also must returned the address as `SocketAddr`.
+    fn connect(&mut self, remote_addr: RemoteAddr) -> io::Result<(Self::Remote, SocketAddr)>;
 
     /// The user performs a listening request from an specific address.
     /// The **implementator** is in change of creating the corresponding listener resource.
+    /// It also must returned the address since it could not be the same as param `addr`.
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(Self::Listener, SocketAddr)>;
 
     /// Sends a raw data from a resource.

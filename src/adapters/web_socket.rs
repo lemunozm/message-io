@@ -4,8 +4,10 @@ use crate::util::{OTHER_THREAD_ERR};
 use mio::event::{Source};
 use mio::net::{TcpStream, TcpListener};
 
-use tungstenite::protocol::{WebSocket, Role, Message};
+use tungstenite::protocol::{WebSocket, Message};
 use tungstenite::server::{accept as ws_accept};
+use tungstenite::client::{client as ws_client};
+use tungstenite::handshake::{HandshakeError};
 use tungstenite::error::{Error};
 
 use std::sync::{Mutex};
@@ -44,10 +46,24 @@ impl ActionHandler for WsActionHandler {
     type Listener = ServerResource;
 
     fn connect(&mut self, addr: SocketAddr) -> io::Result<ClientResource> {
+        // Synchronous tcp handshake
         let stream = StdTcpStream::connect(addr)?;
+
+        // Make it an asynchronous mio TcpStream
         stream.set_nonblocking(true)?;
         let stream = TcpStream::from_std(stream);
-        Ok(ClientResource(Mutex::new(WebSocket::from_raw_socket(stream, Role::Client, None))))
+
+        // Synchronous waiting for web socket handshake
+        let mut handshake_result = ws_client(format!("ws://{}/socket", addr), stream);
+        loop {
+            match handshake_result {
+                Ok((ws_socket, _)) => break Ok(ClientResource(Mutex::new(ws_socket))),
+                Err(HandshakeError::Interrupted(mid_handshake)) => {
+                    handshake_result = mid_handshake.handshake();
+                }
+                Err(HandshakeError::Failure(error)) => panic!("Unexpected ws error: {}", error),
+            }
+        }
     }
 
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ServerResource, SocketAddr)> {

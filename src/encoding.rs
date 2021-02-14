@@ -39,7 +39,7 @@ impl Decoder {
                 if remaining.len() >= expected_size {
                     let (ready, remaining) = remaining.split_at(expected_size);
                     decoded_callback(ready);
-                    if remaining.len() > 0 {
+                    if !remaining.is_empty() {
                         next_data = remaining;
                         continue
                     }
@@ -92,7 +92,7 @@ impl Decoder {
     /// If the content data is not enough to decoding a message, the data will be stored
     /// and used when more data is decoded (successives calls).
     pub fn decode(&mut self, data: &[u8], mut decoded_callback: impl FnMut(&[u8])) {
-        if self.stored.len() == 0 {
+        if self.stored.is_empty() {
             self.try_decode(data, decoded_callback);
         }
         else {

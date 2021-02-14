@@ -49,7 +49,7 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 
 /// Enum to identified the underlying transport used.
 /// It can be passed to [`Network::connect()]` and [`Network::listen()`] methods to specify
-/// the transport.
+/// the transport used.
 #[derive(IntoPrimitive, EnumIter)]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

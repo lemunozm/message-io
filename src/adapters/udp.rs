@@ -1,6 +1,9 @@
-use crate::adapter::{Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{
+    Resource, Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus,
+};
 
 use mio::net::{UdpSocket};
+use mio::event::{Source};
 
 use net2::{UdpBuilder};
 
@@ -17,11 +20,34 @@ pub const MAX_UDP_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 // The reception buffer reach the UDP standard size.
 const MAX_UDP_PAYLOAD_BUFFER_LEN: usize = 65535 - 20 - 8;
 
-pub struct UdpAdapter;
+pub struct ClientResource(UdpSocket);
+impl Resource for ClientResource {
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.0
+    }
+}
 
+pub struct ServerResource(UdpSocket);
+impl Resource for ServerResource {
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.0
+    }
+}
+
+impl Drop for ServerResource {
+    fn drop(&mut self) {
+        if let SocketAddr::V4(addr) = self.0.local_addr().unwrap() {
+            if addr.ip().is_multicast() {
+                self.0.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
+            }
+        }
+    }
+}
+
+pub struct UdpAdapter;
 impl Adapter for UdpAdapter {
-    type Remote = UdpSocket;
-    type Listener = UdpSocket;
+    type Remote = ClientResource;
+    type Listener = ServerResource;
     type ActionHandler = UdpActionHandler;
     type EventHandler = UdpEventHandler;
 
@@ -32,16 +58,16 @@ impl Adapter for UdpAdapter {
 
 pub struct UdpActionHandler;
 impl ActionHandler for UdpActionHandler {
-    type Remote = UdpSocket;
-    type Listener = UdpSocket;
+    type Remote = ClientResource;
+    type Listener = ServerResource;
 
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<UdpSocket> {
+    fn connect(&mut self, addr: SocketAddr) -> io::Result<ClientResource> {
         let socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
         socket.connect(addr)?;
-        Ok(socket)
+        Ok(ClientResource(socket))
     }
 
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(UdpSocket, SocketAddr)> {
+    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ServerResource, SocketAddr)> {
         let socket = match addr {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
@@ -54,29 +80,21 @@ impl ActionHandler for UdpActionHandler {
         };
 
         let real_addr = socket.local_addr().unwrap();
-        Ok((socket, real_addr))
+        Ok((ServerResource(socket), real_addr))
     }
 
-    fn remove_listener(&mut self, socket: UdpSocket, local_addr: SocketAddr) {
-        if let SocketAddr::V4(addr) = local_addr {
-            if addr.ip().is_multicast() {
-                socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
-            }
-        }
-    }
-
-    fn send(&mut self, socket: &UdpSocket, data: &[u8]) -> SendStatus {
+    fn send(&mut self, socket: &ClientResource, data: &[u8]) -> SendStatus {
         if data.len() > MAX_UDP_PAYLOAD_LEN {
             Self::udp_length_exceeded(data.len())
         }
         else {
-            Self::sending_status(socket.send(data))
+            Self::sending_status(socket.0.send(data))
         }
     }
 
     fn send_by_listener(
         &mut self,
-        socket: &UdpSocket,
+        socket: &ServerResource,
         addr: SocketAddr,
         data: &[u8],
     ) -> SendStatus
@@ -85,7 +103,7 @@ impl ActionHandler for UdpActionHandler {
             Self::udp_length_exceeded(data.len())
         }
         else {
-            Self::sending_status(socket.send_to(data, addr))
+            Self::sending_status(socket.0.send_to(data, addr))
         }
     }
 }
@@ -127,17 +145,17 @@ impl Default for UdpEventHandler {
 }
 
 impl EventHandler for UdpEventHandler {
-    type Remote = UdpSocket;
-    type Listener = UdpSocket;
+    type Remote = ClientResource;
+    type Listener = ServerResource;
 
     fn accept_event(
         &mut self,
-        socket: &UdpSocket,
+        socket: &ServerResource,
         accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>),
     )
     {
         loop {
-            match socket.recv_from(&mut self.input_buffer) {
+            match socket.0.recv_from(&mut self.input_buffer) {
                 Ok((size, addr)) => {
                     let data = &mut self.input_buffer[..size];
                     accept_remote(AcceptedType::Data(addr, data))
@@ -148,9 +166,9 @@ impl EventHandler for UdpEventHandler {
         }
     }
 
-    fn read_event(&mut self, socket: &UdpSocket, process_data: &dyn Fn(&[u8])) -> ReadStatus {
+    fn read_event(&mut self, socket: &ClientResource, process_data: &dyn Fn(&[u8])) -> ReadStatus {
         loop {
-            match socket.recv(&mut self.input_buffer) {
+            match socket.0.recv(&mut self.input_buffer) {
                 Ok(size) => process_data(&mut self.input_buffer[..size]),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
                     break ReadStatus::WaitNextEvent

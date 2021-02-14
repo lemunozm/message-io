@@ -1,16 +1,32 @@
 #![allow(unused_variables)]
 
-use message_io::adapter::{Adapter, ActionHandler, EventHandler, SendStatus, ReadStatus, AcceptedType};
+use message_io::adapter::{
+    Resource, Adapter, ActionHandler, EventHandler, SendStatus, ReadStatus, AcceptedType,
+};
+
+use mio::event::{Source};
 
 use std::net::{SocketAddr};
 use std::io::{self};
 
-use resource::{MyRemote, MyListener};
+pub struct ClientResource;
+impl Resource for ClientResource {
+    fn source(&mut self) -> &mut dyn Source {
+        todo!();
+    }
+}
+
+pub struct ServerResource;
+impl Resource for ServerResource {
+    fn source(&mut self) -> &mut dyn Source {
+        todo!();
+    }
+}
 
 pub struct MyAdapter;
 impl Adapter for MyAdapter {
-    type Remote = MyRemote;
-    type Listener = MyListener;
+    type Remote = ClientResource;
+    type Listener = ServerResource;
     type ActionHandler = MyActionHandler;
     type EventHandler = MyEventHandler;
 
@@ -21,26 +37,26 @@ impl Adapter for MyAdapter {
 
 pub struct MyActionHandler;
 impl ActionHandler for MyActionHandler {
-    type Remote = resource::MyRemote;
-    type Listener = resource::MyListener;
+    type Remote = ClientResource;
+    type Listener = ServerResource;
 
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<MyRemote> {
+    fn connect(&mut self, addr: SocketAddr) -> io::Result<ClientResource> {
         todo!();
     }
 
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(MyListener, SocketAddr)> {
+    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ServerResource, SocketAddr)> {
         todo!();
     }
 
-    fn send(&mut self, stream: &MyRemote, data: &[u8]) -> SendStatus {
+    fn send(&mut self, resource: &ClientResource, data: &[u8]) -> SendStatus {
         todo!();
     }
 }
 
 pub struct MyEventHandler;
 impl EventHandler for MyEventHandler {
-    type Remote = resource::MyRemote;
-    type Listener = resource::MyListener;
+    type Remote = ClientResource;
+    type Listener = ServerResource;
 
     fn accept_event(
         &mut self,
@@ -51,72 +67,7 @@ impl EventHandler for MyEventHandler {
         todo!();
     }
 
-    fn read_event(&mut self, stream: &MyRemote, process_data: &dyn Fn(&[u8])) -> ReadStatus {
+    fn read_event(&mut self, stream: &ClientResource, process_data: &dyn Fn(&[u8])) -> ReadStatus {
         todo!();
-    }
-}
-
-// You NOT need to create this module if your Remote/Listener already implements Source
-
-mod resource {
-
-    use mio::{
-        event::{Source},
-        Interest, Token, Registry,
-    };
-    use std::io::{self};
-
-    pub struct MyRemote;
-    impl Source for MyRemote {
-        fn register(
-            &mut self,
-            registry: &Registry,
-            token: Token,
-            interests: Interest,
-        ) -> io::Result<()>
-        {
-            todo!();
-        }
-
-        fn reregister(
-            &mut self,
-            registry: &Registry,
-            token: Token,
-            interests: Interest,
-        ) -> io::Result<()>
-        {
-            todo!();
-        }
-
-        fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
-            todo!();
-        }
-    }
-
-    pub struct MyListener;
-    impl Source for MyListener {
-        fn register(
-            &mut self,
-            registry: &Registry,
-            token: Token,
-            interests: Interest,
-        ) -> io::Result<()>
-        {
-            todo!();
-        }
-
-        fn reregister(
-            &mut self,
-            registry: &Registry,
-            token: Token,
-            interests: Interest,
-        ) -> io::Result<()>
-        {
-            todo!();
-        }
-
-        fn deregister(&mut self, registry: &Registry) -> io::Result<()> {
-            todo!();
-        }
     }
 }

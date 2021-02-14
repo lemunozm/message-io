@@ -1,10 +1,8 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{PollRegister};
-use crate::adapter::{ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{Resource, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
-
-use mio::event::{Source};
 
 use std::collections::{HashMap};
 use std::net::{SocketAddr};
@@ -29,13 +27,13 @@ pub struct ResourceRegister<S> {
     poll_register: PollRegister,
 }
 
-impl<S: Source> ResourceRegister<S> {
+impl<S: Resource> ResourceRegister<S> {
     pub fn new(poll_register: PollRegister) -> ResourceRegister<S> {
         ResourceRegister { resources: RwLock::new(HashMap::new()), poll_register }
     }
 
     pub fn add(&self, mut resource: S, addr: SocketAddr) -> ResourceId {
-        let id = self.poll_register.add(&mut resource);
+        let id = self.poll_register.add(resource.source());
         self.resources.write().expect(OTHER_THREAD_ERR).insert(id, (resource, addr));
         id
     }
@@ -43,7 +41,7 @@ impl<S: Source> ResourceRegister<S> {
     pub fn remove(&self, id: ResourceId) -> Option<(S, SocketAddr)> {
         let poll_register = &self.poll_register;
         self.resources.write().expect(OTHER_THREAD_ERR).remove(&id).map(|(mut resource, addr)| {
-            poll_register.remove(&mut resource);
+            poll_register.remove(resource.source());
             (resource, addr)
         })
     }
@@ -60,13 +58,13 @@ pub trait ActionController {
     fn remove(&mut self, id: ResourceId) -> Option<()>;
 }
 
-pub struct GenericActionController<R: Source, L: Source> {
+pub struct GenericActionController<R: Resource, L: Resource> {
     remote_register: Arc<ResourceRegister<R>>,
     listener_register: Arc<ResourceRegister<L>>,
     action_handler: Box<dyn ActionHandler<Remote = R, Listener = L>>,
 }
 
-impl<R: Source, L: Source> GenericActionController<R, L> {
+impl<R: Resource, L: Resource> GenericActionController<R, L> {
     pub fn new(
         remote_register: Arc<ResourceRegister<R>>,
         listener_register: Arc<ResourceRegister<L>>,
@@ -81,7 +79,7 @@ impl<R: Source, L: Source> GenericActionController<R, L> {
     }
 }
 
-impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
+impl<R: Resource, L: Resource> ActionController for GenericActionController<R, L> {
     fn connect(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
         let remotes = &mut self.remote_register;
         self.action_handler
@@ -128,21 +126,14 @@ impl<R: Source, L: Source> ActionController for GenericActionController<R, L> {
     }
 
     fn remove(&mut self, id: ResourceId) -> Option<()> {
-        let action_handler = &mut self.action_handler;
         match id.resource_type() {
-            ResourceType::Remote => self
-                .remote_register
-                .remove(id)
-                .map(|(resource, addr)| action_handler.remove_remote(resource, addr)),
-            ResourceType::Listener => self
-                .listener_register
-                .remove(id)
-                .map(|(resource, addr)| action_handler.remove_listener(resource, addr)),
+            ResourceType::Remote => self.remote_register.remove(id).map(|_| ()),
+            ResourceType::Listener => self.listener_register.remove(id).map(|_| ()),
         }
     }
 }
 
-impl<R: Source, L: Source> Drop for GenericActionController<R, L> {
+impl<R: Resource, L: Resource> Drop for GenericActionController<R, L> {
     fn drop(&mut self) {
         let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
         let ids = remotes.keys().cloned().collect::<Vec<_>>();
@@ -166,7 +157,7 @@ pub struct GenericEventProcessor<R, L> {
     event_handler: Box<dyn EventHandler<Remote = R, Listener = L>>,
 }
 
-impl<R: Source, L: Source> GenericEventProcessor<R, L> {
+impl<R: Resource, L: Resource> GenericEventProcessor<R, L> {
     pub fn new(
         remote_register: Arc<ResourceRegister<R>>,
         listener_register: Arc<ResourceRegister<L>>,
@@ -181,7 +172,7 @@ impl<R: Source, L: Source> GenericEventProcessor<R, L> {
     }
 }
 
-impl<C, R: Source, L: Source> EventProcessor<C> for GenericEventProcessor<R, L>
+impl<C, R: Resource, L: Resource> EventProcessor<C> for GenericEventProcessor<R, L>
 where C: Fn(Endpoint, AdapterEvent<'_>)
 {
     fn try_process(&mut self, id: ResourceId, event_callback: &mut C) {

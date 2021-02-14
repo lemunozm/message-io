@@ -1,4 +1,7 @@
-use crate::adapter::{Resource, Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{
+    Resource, Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus,
+};
+use crate::remote_addr::{RemoteAddr};
 use crate::util::{OTHER_THREAD_ERR};
 
 use mio::event::{Source};
@@ -6,13 +9,19 @@ use mio::net::{TcpStream, TcpListener};
 
 use tungstenite::protocol::{WebSocket, Message};
 use tungstenite::server::{accept as ws_accept};
-use tungstenite::client::{client as ws_client};
+use tungstenite::client::{client as ws_connect};
 use tungstenite::handshake::{HandshakeError};
 use tungstenite::error::{Error};
+
+use url::Url;
 
 use std::sync::{Mutex};
 use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::io::{self, ErrorKind};
+
+/// Max message size
+// From https://docs.rs/tungstenite/0.13.0/src/tungstenite/protocol/mod.rs.html#65
+pub const MAX_WS_PAYLOAD_LEN: usize = 64 << 20;
 
 pub struct ClientResource(Mutex<WebSocket<TcpStream>>);
 impl Resource for ClientResource {
@@ -45,7 +54,18 @@ impl ActionHandler for WsActionHandler {
     type Remote = ClientResource;
     type Listener = ServerResource;
 
-    fn connect(&mut self, addr: SocketAddr) -> io::Result<ClientResource> {
+    fn connect(&mut self, remote_addr: RemoteAddr) -> io::Result<(ClientResource, SocketAddr)> {
+        let (addr, url) = match remote_addr {
+            RemoteAddr::SocketAddr(addr) => (addr, Url::parse(&format!("ws://{}/message-io-default", addr)).unwrap()),
+            RemoteAddr::Url(url) => {
+                let addr = url.socket_addrs(|| match url.scheme() {
+                    "ws" => Some(80), // Plain
+                    "wss" => Some(443), //Tls
+                    _ => None,
+                }).unwrap()[0];
+                (addr, url)
+            }
+        };
         // Synchronous tcp handshake
         let stream = StdTcpStream::connect(addr)?;
 
@@ -54,10 +74,10 @@ impl ActionHandler for WsActionHandler {
         let stream = TcpStream::from_std(stream);
 
         // Synchronous waiting for web socket handshake
-        let mut handshake_result = ws_client(format!("ws://{}/socket", addr), stream);
+        let mut handshake_result = ws_connect(url, stream);
         loop {
             match handshake_result {
-                Ok((ws_socket, _)) => break Ok(ClientResource(Mutex::new(ws_socket))),
+                Ok((ws_socket, _)) => break Ok((ClientResource(Mutex::new(ws_socket)), addr)),
                 Err(HandshakeError::Interrupted(mid_handshake)) => {
                     handshake_result = mid_handshake.handshake();
                 }
@@ -79,7 +99,7 @@ impl ActionHandler for WsActionHandler {
         loop {
             match result {
                 Ok(_) => break SendStatus::Sent,
-                Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock  => {
+                Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
                     result = socket.write_pending();
                 }
                 Err(_) => break SendStatus::ResourceNotFound,
@@ -115,15 +135,16 @@ impl EventHandler for WsEventHandler {
     fn read_event(
         &mut self,
         resource: &ClientResource,
-        process_data: &dyn Fn(&[u8])
-    ) -> ReadStatus {
+        process_data: &dyn Fn(&[u8]),
+    ) -> ReadStatus
+    {
         loop {
             match resource.0.lock().expect(OTHER_THREAD_ERR).read_message() {
                 Ok(message) => match message {
                     Message::Binary(data) => process_data(&data),
                     Message::Close(_) => break ReadStatus::Disconnected,
                     _ => continue,
-                }
+                },
                 Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
                     break ReadStatus::WaitNextEvent
                 }

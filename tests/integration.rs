@@ -17,6 +17,7 @@ pub const BIG_MESSAGE_SIZE: usize = 1 << 20; // 1MB
 
 // 8 is the Vec head offset added in serialization.
 pub const MAX_SIZE_BY_UDP: usize = MAX_UDP_PAYLOAD_LEN - 8;
+pub const MAX_SIZE_BY_WS: usize = MAX_UDP_PAYLOAD_LEN - 8;
 
 lazy_static::lazy_static! {
     pub static ref TIMEOUT: Duration = Duration::from_millis(5000);
@@ -181,6 +182,7 @@ fn ping_pong_client_manager_handle(
 #[test_case(Transport::Tcp, 1)]
 #[test_case(Transport::Tcp, 100)]
 #[test_case(Transport::Ws, 1)]
+#[test_case(Transport::Ws, 100)]
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with a very obfuscated error message.
 fn ping_pong(transport: Transport, clients: usize) {
@@ -193,8 +195,9 @@ fn ping_pong(transport: Transport, clients: usize) {
     client_handle.join().unwrap();
 }
 
-#[test_case(Transport::Udp, MAX_SIZE_BY_UDP)]
 #[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
+#[test_case(Transport::Udp, MAX_SIZE_BY_UDP)]
+#[test_case(Transport::Ws, MAX_SIZE_BY_WS + 10000)]
 fn message_size(transport: Transport, message_size: usize) {
     //util::init_logger();
 

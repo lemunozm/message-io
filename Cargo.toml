@@ -40,7 +40,3 @@ rand = "0.8.3"
 [[bench]]
 name = "performance"
 harness = false
-
-[[example]]
-name = "adapter_template"
-crate-type = ["staticlib"]

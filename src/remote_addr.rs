@@ -3,10 +3,10 @@ use url::{Url};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::io::{self};
 
-/// A struct that contains the a remote address.
-/// It is usually used in [`crate::network::Network::connect()`] to specify the server address.
+/// An struct that contains a remote address.
 /// It can be Either, an address similar to [`SocketAddr`] or an [`Url`] used for protocols
-/// that needs more than the address to get connected (e.g. WebSocket)
+/// that needs more than the `SocketAddr` to get connected (e.g. WebSocket)
+/// It is usually used in [`crate::network::Network::connect()`] to specify the remote address.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum RemoteAddr {
     SocketAddr(SocketAddr),
@@ -93,8 +93,13 @@ mod tests {
     }
 
     #[test]
-    fn string_to_socket_addr() {
+    fn str_to_socket_addr() {
         assert!("127.0.0.1:80".to_remote_addr().unwrap().is_socket_addr());
+    }
+
+    #[test]
+    fn string_to_socket_addr() {
+        assert!(String::from("127.0.0.1:80").to_remote_addr().unwrap().is_socket_addr());
     }
 
     #[test]

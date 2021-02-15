@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 
-use message_io::adapter::{Resource, Remote, Listener, Adapter, SendStatus, AcceptedType, ReadStatus};
-use message_io::remote_addr::{RemoteAddr};
+use crate::adapter::{Resource, Remote, Listener, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::remote_addr::{RemoteAddr};
 
 use mio::event::{Source};
 

@@ -69,14 +69,14 @@ pub enum ReadStatus {
     WaitNextEvent,
 }
 
-/// Resource is the element used as Remote or Listener into the whole adapter.
-/// It usually is a wrapper over a socket.
+/// The resource used to represent a remote.
+/// It usually is a wrapper over a socket/stream.
 pub trait Remote: Resource + Sized {
-    /// The user performs a connection request to an specific remote address.
+    /// Called when the user performs a connection request to an specific remote address.
     /// The **implementator** is in change of creating the corresponding remote resource.
     /// The [`RemoteAddr`] contains either a [`SocketAddr`] or a [`url::Url`].
-    /// It is in charge of the implementator to decide what to do in both cases.
-    /// It also must returned the address as `SocketAddr`.
+    /// It is in charge of deciding what to do in both cases.
+    /// It also must return the extracted address as `SocketAddr`.
     fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)>;
 
     /// Called when a remote endpoint received an event.
@@ -84,36 +84,46 @@ pub trait Remote: Resource + Sized {
     /// or there is some connection related issue, as a disconnection.
     /// The **implementator** is in charge of processing that action and returns a [`ReadStatus`].
     /// The `process_data` function must be called for each data chunk that represents a message.
-    /// This `process_data` function will produce a `Message` API event.
-    /// Note that a read event could imply more than one call to `read`.
+    /// This call will produce a `Message` API event.
+    /// Note that `receive()` could imply more than one call to `read`.
+    /// The implementator must be read all data from the resource.
+    /// For most of the cases it means read until the network resource returns `WouldBlock`.
     fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus;
 
     /// Sends a raw data from a resource.
-    /// The **implementator** is in charge to send the `data` using the `resource`.
-    /// The [`SendStatus`] will contain the status of this sending attempt.
+    /// The **implementator** is in charge to send the entire `data`.
+    /// The [`SendStatus`] will contain the status of this attempt.
     fn send(&self, data: &[u8]) -> SendStatus;
 }
 
-/// Used as a parameter callback in [`crate::adapter::EventHandler::accept_event()`]
+/// Used as a parameter callback in [`Listener::accept()`]
 pub enum AcceptedType<'a, R> {
-    /// The listener has accepted a remote (`R`) the specified addr.
-    /// The remote will be registered for generate calls to
-    /// [`crate::adapter::EventHandler::read_event()`].
+    /// The listener has accepted a remote (`R`) with the specified addr.
+    /// The remote will be registered in order to generate read events. (calls to
+    /// [`Remote::receive()`]).
     Remote(SocketAddr, R),
 
     /// The listener has accepted data that can be packed into a message from a specified addr.
+    /// Despite of `Remote`, accept as a `Data` will not register any Remote.
     /// This will produce a `Message` API event.
+    /// The endpoint along this event will be unique if base of the specified addr and the listener
+    /// whom generates it.
+    /// This means that the user can treat the [`crate::network::Endpoint`] as if
+    /// it was an internal resource.
     Data(SocketAddr, &'a [u8]),
 }
 
-/// Resource is the element used as Remote or Listener into the whole adapter.
-/// It usually is a wrapper over a socket.
+/// The resource used to represent a local listener.
+/// It usually is a wrapper over a socket/listener.
 pub trait Listener: Resource + Sized {
+    /// The type of the Remote accepted by the [`Self::accept()`] function.
+    /// It must be the same as the adapter's `Remote`.
     type Remote: Remote;
 
-    /// The user performs a listening request from an specific address.
+    /// Called when the user performs a listening request from an specific address.
     /// The **implementator** is in change of creating the corresponding listener resource.
-    /// It also must returned the address since it could not be the same as param `addr`.
+    /// It also must returned the listening address since it could not be the same as param `addr`
+    /// (e.g. listening from port `0`).
     fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)>;
 
     /// Called when a listener resource received an event.
@@ -122,14 +132,16 @@ pub trait Listener: Resource + Sized {
     /// The `accept_remote` must be called for each accept request in the listener.
     /// Note that an accept event could imply to process more than one remote.
     /// This function is called when the listener has one or more pending connections.
+    /// The **implementator** must process all these pending connections in this call.
+    /// For most of the cases it means accept connections until the network
+    /// resource returns `WouldBlock`.
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>));
 
     /// Sends a raw data from a resource.
-    /// Similar to [`ActionHandler::send()`] but the resource that send the data is a listener.
-    /// The **implementator** must **only** implement this if the listener resource can
+    /// Similar to [`Remote::send()`] but the resource that sends the data is a `Listener`.
+    /// The **implementator** must **only** implement this function if the listener resource can
     /// also send data.
     /// This behaviour usually happens when the transport to implement is not connection oriented.
-    /// The param `target_addr` represents the address to send that data.
     fn send_to(&self, _addr: SocketAddr, _data: &[u8]) -> SendStatus {
         panic!("Adapter not configured to send messages directly from the listener resource")
     }

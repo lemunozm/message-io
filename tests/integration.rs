@@ -197,7 +197,7 @@ fn ping_pong(transport: Transport, clients: usize) {
 
 #[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
 #[test_case(Transport::Udp, MAX_SIZE_BY_UDP)]
-#[test_case(Transport::Ws, MAX_SIZE_BY_WS + 10000)]
+#[test_case(Transport::Ws, MAX_SIZE_BY_WS)]
 fn message_size(transport: Transport, message_size: usize) {
     //util::init_logger();
 

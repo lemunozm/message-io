@@ -13,4 +13,4 @@ pub mod network;
 pub mod events;
 
 pub use adapters::udp::MAX_UDP_PAYLOAD_LEN;
-//pub use adapters::web_socket::MAX_WS_PAYLOAD_LEN;
+pub use adapters::web_socket::MAX_WS_PAYLOAD_LEN;

@@ -131,7 +131,8 @@ fn ping_pong_server_handle(
                 }
             })
             .unwrap();
-        }).unwrap();
+        })
+        .unwrap();
 
     let server_addr = rx.recv_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR);
     (handle, server_addr)
@@ -174,7 +175,8 @@ fn ping_pong_client_manager_handle(
                         NetEvent::DeserializationError(_) => unreachable!(),
                     }
                 }
-            }).unwrap();
+            })
+            .unwrap();
         })
         .unwrap()
 }
@@ -229,8 +231,10 @@ fn message_size(transport: Transport, message_size: usize) {
                         NetEvent::DeserializationError(_) => unreachable!(),
                     }
                 }
-            }).unwrap();
-        }).unwrap();
+            })
+            .unwrap();
+        })
+        .unwrap();
 
     server_handle.join().unwrap();
 }

@@ -27,8 +27,8 @@ impl Adapter for WsAdapter {
     type Local = LocalResource;
 }
 
-pub struct RemoteResource{
-    web_socket: Mutex<WebSocket<TcpStream>>
+pub struct RemoteResource {
+    web_socket: Mutex<WebSocket<TcpStream>>,
 }
 
 impl From<WebSocket<TcpStream>> for RemoteResource {
@@ -47,14 +47,17 @@ impl Resource for RemoteResource {
 impl Remote for RemoteResource {
     fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)> {
         let (addr, url) = match remote_addr {
-            RemoteAddr::SocketAddr(addr) =>
-                (addr, Url::parse(&format!("ws://{}/message-io-default", addr)).unwrap()),
+            RemoteAddr::SocketAddr(addr) => {
+                (addr, Url::parse(&format!("ws://{}/message-io-default", addr)).unwrap())
+            }
             RemoteAddr::Url(url) => {
-                let addr = url.socket_addrs(|| match url.scheme() {
-                    "ws" => Some(80), // Plain
-                    "wss" => Some(443), //Tls
-                    _ => None,
-                }).unwrap()[0];
+                let addr = url
+                    .socket_addrs(|| match url.scheme() {
+                        "ws" => Some(80),   // Plain
+                        "wss" => Some(443), //Tls
+                        _ => None,
+                    })
+                    .unwrap()[0];
                 (addr, url)
             }
         };
@@ -117,8 +120,8 @@ impl Remote for RemoteResource {
     }
 }
 
-pub struct LocalResource{
-    listener: TcpListener
+pub struct LocalResource {
+    listener: TcpListener,
 }
 
 impl Resource for LocalResource {
@@ -133,7 +136,7 @@ impl Local for LocalResource {
     fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
         let listener = TcpListener::bind(addr)?;
         let real_addr = listener.local_addr().unwrap();
-        Ok((LocalResource{listener}, real_addr))
+        Ok((LocalResource { listener }, real_addr))
     }
 
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
@@ -147,8 +150,9 @@ impl Local for LocalResource {
                             Err(HandshakeError::Interrupted(mid_handshake)) => {
                                 handshake_result = mid_handshake.handshake();
                             }
-                            Err(HandshakeError::Failure(err)) =>
-                                panic!("Ws accept handshake error: {}", err),
+                            Err(HandshakeError::Failure(err)) => {
+                                panic!("Ws accept handshake error: {}", err)
+                            }
                         }
                     };
 

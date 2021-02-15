@@ -3,6 +3,11 @@ use crossbeam::channel::{self, Sender, Receiver, select};
 use std::time::{Instant, Duration};
 use std::collections::{BTreeMap};
 
+/// It's a generic and synchronized queue where the user can send events.
+/// The user must be read these events in order to dispatch actions.
+/// See [`EventSender`] to see how send events.
+/// This entity can be used as an utility for the [`crate::network`] module redirecting the
+/// network events to process them later from here.
 pub struct EventQueue<E> {
     event_sender: EventSender<E>, // Should be before receiver in order to drop first.
     receiver: Receiver<E>,
@@ -144,7 +149,7 @@ where E: Send + 'static
     }
 
     /// Send instantly an event that would be process before any other event sent
-    /// by the [`send()] method.
+    /// by the [`crate::network::Network::send()] method.
     /// Successive calls to send_with_priority will maintain the order of arrival.
     pub fn send_with_priority(&self, event: E) {
         self.priority_sender.send(event).expect(Self::EVENT_SENDING_ERROR);

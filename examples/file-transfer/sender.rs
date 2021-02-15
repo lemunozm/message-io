@@ -44,8 +44,8 @@ pub fn run(file_path: &str) {
                         false => return println!("The receiver can not receive the file :("),
                     },
                 },
-                NetEvent::AddedEndpoint(_) => unreachable!(),
-                NetEvent::RemovedEndpoint(_) => return println!("\nReceiver disconnected"),
+                NetEvent::Connected(_) => unreachable!(),
+                NetEvent::Disconnected(_) => return println!("\nReceiver disconnected"),
                 NetEvent::DeserializationError(_) => (),
             },
             Event::SendChunk => {

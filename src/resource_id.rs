@@ -5,7 +5,7 @@ use std::sync::{
 /// Information about the type of resource
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ResourceType {
-    Listener,
+    Local,
     Remote,
 }
 
@@ -14,13 +14,13 @@ pub enum ResourceType {
 /// - The type, that can be a value of [ResourceType].
 /// - The adapter id, that represent the adapter that creates this id
 /// - The base value: that is an unique identifier of the resource inside of its adapter.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResourceId {
     id: usize,
 }
 
 impl ResourceId {
-    const RESOURCE_TYPE_BIT: usize = 1 << 63; // 1 bit
+    const RESOURCE_TYPE_BIT: usize = 1 << (Self::ADAPTER_ID_POS + 7); // 1 bit
     const ADAPTER_ID_POS: usize = 8 * 7; // 7 bytes
     const ADAPTER_ID_MASK: u8 = 0b01111111; // 7 bits
     const ADAPTER_ID_MASK_OVER_ID: usize = (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS;
@@ -28,7 +28,7 @@ impl ResourceId {
 
     pub const ADAPTER_ID_MAX: usize = Self::ADAPTER_ID_MASK as usize + 1; // 128
 
-    fn new(base_value: usize, resource_type: ResourceType, adapter_id: u8) -> Self {
+    fn new(adapter_id: u8, resource_type: ResourceType, base_value: usize) -> Self {
         assert_eq!(
             adapter_id & Self::ADAPTER_ID_MASK,
             adapter_id,
@@ -41,7 +41,7 @@ impl ResourceId {
         );
 
         let resource_type = match resource_type {
-            ResourceType::Listener => Self::RESOURCE_TYPE_BIT,
+            ResourceType::Local => Self::RESOURCE_TYPE_BIT,
             ResourceType::Remote => 0,
         };
 
@@ -61,7 +61,7 @@ impl ResourceId {
     /// Returns the [ResourceType] of this resource
     pub fn resource_type(&self) -> ResourceType {
         if self.id & Self::RESOURCE_TYPE_BIT != 0 {
-            ResourceType::Listener
+            ResourceType::Local
         }
         else {
             ResourceType::Remote
@@ -82,10 +82,16 @@ impl ResourceId {
 impl std::fmt::Display for ResourceId {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let resource_type = match self.resource_type() {
-            ResourceType::Listener => "l",
-            ResourceType::Remote => "r",
+            ResourceType::Local => "L",
+            ResourceType::Remote => "R",
         };
-        write!(f, "{}-{}-{}", resource_type, self.adapter_id(), self.base_value())
+        write!(f, "{}.{}.{}", self.adapter_id(), resource_type, self.base_value())
+    }
+}
+
+impl std::fmt::Debug for ResourceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 
@@ -93,18 +99,19 @@ impl std::fmt::Display for ResourceId {
 pub struct ResourceIdGenerator {
     last: AtomicUsize,
     adapter_id: u8,
+    resource_type: ResourceType,
 }
 
 impl ResourceIdGenerator {
-    pub fn new(adapter_id: u8) -> Self {
-        Self { last: AtomicUsize::new(0), adapter_id }
+    pub fn new(adapter_id: u8, resource_type: ResourceType) -> Self {
+        Self { last: AtomicUsize::new(0), adapter_id, resource_type }
     }
 
     /// Generates a new id.
     /// This id will contain information about the [ResourceType] and the associated adapter.
-    pub fn generate(&self, resource_type: ResourceType) -> ResourceId {
+    pub fn generate(&self) -> ResourceId {
         let last = self.last.fetch_add(1, Ordering::SeqCst);
-        ResourceId::new(last, resource_type, self.adapter_id)
+        ResourceId::new(self.adapter_id, self.resource_type, last)
     }
 }
 
@@ -116,19 +123,19 @@ mod tests {
     fn base_value() {
         let low_base_value = 0;
 
-        let resource_id = ResourceId::new(low_base_value, ResourceType::Listener, 1);
+        let resource_id = ResourceId::new(1, ResourceType::Local, low_base_value);
         assert_eq!(resource_id.base_value(), low_base_value);
 
         let high_base_value = ResourceId::BASE_VALUE_MASK_OVER_ID;
 
-        let resource_id = ResourceId::new(high_base_value, ResourceType::Listener, 1);
+        let resource_id = ResourceId::new(1, ResourceType::Local, high_base_value);
         assert_eq!(resource_id.base_value(), high_base_value);
     }
 
     #[test]
     fn resource_type() {
-        let resource_id = ResourceId::new(0, ResourceType::Listener, 0);
-        assert_eq!(resource_id.resource_type(), ResourceType::Listener);
+        let resource_id = ResourceId::new(0, ResourceType::Local, 0);
+        assert_eq!(resource_id.resource_type(), ResourceType::Local);
         assert_eq!(resource_id.adapter_id(), 0);
 
         let resource_id = ResourceId::new(0, ResourceType::Remote, 0);
@@ -140,11 +147,11 @@ mod tests {
     fn adapter_id() {
         let adapter_id = ResourceId::ADAPTER_ID_MASK;
 
-        let resource_id = ResourceId::new(0, ResourceType::Listener, adapter_id);
+        let resource_id = ResourceId::new(adapter_id, ResourceType::Local, 0);
         assert_eq!(resource_id.adapter_id(), adapter_id);
-        assert_eq!(resource_id.resource_type(), ResourceType::Listener);
+        assert_eq!(resource_id.resource_type(), ResourceType::Local);
 
-        let resource_id = ResourceId::new(0, ResourceType::Remote, adapter_id);
+        let resource_id = ResourceId::new(adapter_id, ResourceType::Remote, 0);
         assert_eq!(resource_id.adapter_id(), adapter_id);
         assert_eq!(resource_id.resource_type(), ResourceType::Remote);
     }

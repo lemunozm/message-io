@@ -1,6 +1,6 @@
 [package]
 name = "message-io"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["lemunozm <lemunozm@gmail.com>"]
 edition = "2018"
 readme = "README.md"
@@ -23,6 +23,7 @@ log = "0.4"
 net2 = "0.2.34"
 num_enum = "0.5.1"
 strum = { version = "0.20", features = ["derive"] }
+url = "2.2.0"
 
 #![cfg_attr(test, feature(proc_macro))]
 #[cfg(test)]
@@ -31,7 +32,10 @@ lazy_static = "1.4.0"
 [dev-dependencies]
 criterion = "0.3"
 serde-big-array = "0.3"
-simple_logger = "1.11.0"
+fern = "0.6.0"
+chrono = "0.4.19"
+test-case = "1.1.0"
+rand = "0.8.3"
 
 [[bench]]
 name = "performance"

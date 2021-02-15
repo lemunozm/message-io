@@ -99,8 +99,8 @@ impl Participant {
                         }
                         _ => unreachable!(),
                     },
-                    NetEvent::AddedEndpoint(_) => (),
-                    NetEvent::RemovedEndpoint(endpoint) => {
+                    NetEvent::Connected(_) => (),
+                    NetEvent::Disconnected(endpoint) => {
                         if endpoint == self.discovery_endpoint {
                             return println!("Discovery server disconnected, closing")
                         }

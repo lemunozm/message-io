@@ -1,9 +1,10 @@
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
-pub use crate::util::{SendingStatus};
+pub use crate::adapter::{SendStatus};
+pub use crate::remote_addr::{RemoteAddr, ToRemoteAddr};
 
 use crate::engine::{NetworkEngine, AdapterLauncher};
-use crate::adapter::{AdapterEvent};
+use crate::driver::{AdapterEvent};
 use crate::adapters::{
     tcp::{TcpAdapter},
     udp::{UdpAdapter},
@@ -26,23 +27,21 @@ where M: for<'b> Deserialize<'b> + Send + 'static
     /// Input message received by the network.
     Message(Endpoint, M),
 
-    /// New endpoint added to a listener.
-    /// It is sent when a new connection is accepted by the listener.
-    /// This event will be sent only in connection oriented protocols as TCP.
-    AddedEndpoint(Endpoint),
+    /// New endpoint has been connected to a listener.
+    /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
+    Connected(Endpoint),
 
-    /// A connection lost event.
     /// This event is only dispatched when a connection is lost.
     /// Call to [`Network::remove_resource()`] will NOT generate the event.
-    /// After this event, the resource is considered removed.
-    /// A Message event will never be generated after this event from the endpoint.
-    /// This event will be sent only in connection oriented protocols as TCP.
-    /// Because UDP is not connection oriented, the event can no be detected.
-    RemovedEndpoint(Endpoint),
+    /// When this event is received, the resource is considered already removed.
+    /// A [`NetEvent::Message`] event will never be generated after this event from the endpoint.
+    /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
+    /// Because `UDP` is not connection oriented, the event can no be detected.
+    Disconnected(Endpoint),
 
     /// This event shows that there was a problem during the deserialization of a message.
-    /// The problem is mainly due by a programming issue reading data from an outdated endpoint.
-    /// For example: different protocol version.
+    /// The problem is mainly due by a programming issue reading data from
+    /// an unknown or outdated endpoint.
     /// In production it could be that other application is writing in your application port.
     /// This error means that a message has been lost (the erroneous message),
     /// but the endpoint remains connected for its usage.
@@ -50,7 +49,8 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 }
 
 /// Enum to identified the underlying transport used.
-/// It can be passed to `connect()` and `listen()` functions to specify the transport
+/// It can be passed to [`Network::connect()]` and [`Network::listen()`] methods to specify
+/// the transport used.
 #[derive(IntoPrimitive, EnumIter)]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -60,15 +60,16 @@ pub enum Transport {
 }
 
 impl Transport {
-    /// Returns the adapter id used for this transport
+    /// Returns the adapter id used for this transport.
+    /// It is equivalent to the position of the enum starting by 0
     pub fn id(self) -> u8 {
         self.into()
     }
 
     /// Associates a `Transport` to its adapter.
-    /// This function mounts the adapter to be used in the `NetworkEngine`
+    /// This method mounts the adapter to be used in the `NetworkEngine`
     fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>)
-    where C: FnMut(Endpoint, AdapterEvent<'_>) + Send + 'static {
+    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
         match self {
             Transport::Tcp => launcher.mount(self.id(), TcpAdapter),
             Transport::Udp => launcher.mount(self.id(), UdpAdapter),
@@ -81,12 +82,12 @@ impl Transport {
 /// and manages the different adapters for you.
 pub struct Network {
     engine: NetworkEngine,
-    output_buffer: Vec<u8>,              //cached for preformance
-    send_all_status: Vec<SendingStatus>, //cached for performance
+    output_buffer: Vec<u8>,           //cached for preformance
+    send_all_status: Vec<SendStatus>, //cached for performance
 }
 
 impl Network {
-    /// Creates a new [`Network`].
+    /// Creates a new `Network` instance.
     /// The user must register an event_callback that can be called
     /// each time the network generate and [`NetEvent`].
     pub fn new<M, C>(event_callback: C) -> Network
@@ -101,7 +102,7 @@ impl Network {
             let event = match adapter_event {
                 AdapterEvent::Added => {
                     log::trace!("Endpoint connected: {}", endpoint);
-                    NetEvent::AddedEndpoint(endpoint)
+                    NetEvent::Connected(endpoint)
                 }
                 AdapterEvent::Data(data) => {
                     log::trace!("Data received from {}, {} bytes", endpoint, data.len());
@@ -112,7 +113,7 @@ impl Network {
                 }
                 AdapterEvent::Removed => {
                     log::trace!("Endpoint disconnected: {}", endpoint);
-                    NetEvent::RemovedEndpoint(endpoint)
+                    NetEvent::Disconnected(endpoint)
                 }
             };
             event_callback(event);
@@ -125,13 +126,13 @@ impl Network {
     /// The endpoint, an identified of the new connection, will be returned.
     /// If the connection can not be performed (e.g. the address is not reached)
     /// the corresponding IO error is returned.
-    pub fn connect<A: ToSocketAddrs>(
+    pub fn connect(
         &mut self,
         transport: Transport,
-        addr: A,
+        addr: impl ToRemoteAddr,
     ) -> io::Result<Endpoint>
     {
-        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+        let addr = addr.to_remote_addr().unwrap();
         self.engine.connect(transport.id(), addr)
     }
 
@@ -143,10 +144,10 @@ impl Network {
     /// when a `0` port is specified, the OS will give a value.
     /// If the protocol is UDP and the address is Ipv4 in the range of multicast ips
     /// (from `224.0.0.0` to `239.255.255.255`) it will be listening is multicast mode.
-    pub fn listen<A: ToSocketAddrs>(
+    pub fn listen(
         &mut self,
         transport: Transport,
-        addr: A,
+        addr: impl ToSocketAddrs,
     ) -> io::Result<(ResourceId, SocketAddr)>
     {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
@@ -166,20 +167,13 @@ impl Network {
         self.engine.remove(resource_id)
     }
 
-    /// Request a local address of a resource.
-    /// Returns `None` if the endpoint id does not exists.
-    /// Note: UDP endpoints generated by a listen from UDP shared the resource.
-    pub fn local_addr(&self, resource_id: ResourceId) -> Option<SocketAddr> {
-        self.engine.local_addr(resource_id)
-    }
-
     /// Serialize and send the message thought the connection represented by the given endpoint.
     /// If the same message should be sent to different endpoints,
     /// use [`Network::send_all()`] to get a better performance.
     /// The funcion panics if the endpoint do not exists in the [`Network`].
     /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
-    /// A [`SendingStatus`] is returned with the information about the sending.
-    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendingStatus {
+    /// A [`SendStatus`] is returned with the information about the sending.
+    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendStatus {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
 
@@ -188,16 +182,16 @@ impl Network {
         status
     }
 
-    /// This functions performs the same actions as [`Network::send()`] but for several endpoints.
+    /// This method performs the same actions as [`Network::send()`] but for several endpoints.
     /// When there are severals endpoints to send the data,
-    /// this function is faster than consecutive calls to [`Network::send()`]
+    /// this method is faster than consecutive calls to [`Network::send()`]
     /// since the encoding and serialization is performed only one time for all endpoints.
-    /// The funcion panics if some of endpoints do not exists in the [`Network`].
+    /// The method returns a list of [`SendStatus`] associated to each endpoint.
     pub fn send_all<'b, M: Serialize>(
         &mut self,
         endpoints: impl IntoIterator<Item = &'b Endpoint>,
         message: M,
-    ) -> &Vec<SendingStatus>
+    ) -> &Vec<SendStatus>
     {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();

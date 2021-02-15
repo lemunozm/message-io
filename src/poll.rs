@@ -26,16 +26,14 @@ impl Poll {
                     }
                     break
                 }
-                Err(e) => match e.kind() {
-                    ErrorKind::Interrupted => continue,
-                    _ => Err(e).expect("No error here"),
-                },
+                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(ref err) => Err(err).expect("No error here"),
             }
         }
     }
 
-    pub fn create_register(&mut self, adapter_id: u8) -> PollRegister {
-        PollRegister::new(adapter_id, self.mio_poll.registry().try_clone().unwrap())
+    pub fn create_register(&mut self, adapter_id: u8, resource_type: ResourceType) -> PollRegister {
+        PollRegister::new(adapter_id, resource_type, self.mio_poll.registry().try_clone().unwrap())
     }
 }
 
@@ -51,17 +49,20 @@ pub struct PollRegister {
 }
 
 impl PollRegister {
-    fn new(adapter_id: u8, registry: Registry) -> PollRegister {
-        PollRegister { id_generator: Arc::new(ResourceIdGenerator::new(adapter_id)), registry }
+    fn new(adapter_id: u8, resource_type: ResourceType, registry: Registry) -> PollRegister {
+        PollRegister {
+            id_generator: Arc::new(ResourceIdGenerator::new(adapter_id, resource_type)),
+            registry,
+        }
     }
 
-    pub fn add(&mut self, source: &mut dyn Source, resource_type: ResourceType) -> ResourceId {
-        let id = self.id_generator.generate(resource_type);
+    pub fn add(&self, source: &mut dyn Source) -> ResourceId {
+        let id = self.id_generator.generate();
         self.registry.register(source, Token(id.raw()), Interest::READABLE).unwrap();
         id
     }
 
-    pub fn remove(&mut self, source: &mut dyn Source) {
+    pub fn remove(&self, source: &mut dyn Source) {
         self.registry.deregister(source).unwrap()
     }
 }

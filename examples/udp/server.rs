@@ -28,8 +28,8 @@ pub fn run() {
                         network.send(endpoint, Message::Greetings("Hi, I hear you".into()));
                     }
                 },
-                NetEvent::AddedEndpoint(_) => unreachable!(), // Not be generated for UDP
-                NetEvent::RemovedEndpoint(_) => unreachable!(), // Not be generated for UDP
+                NetEvent::Connected(_) => unreachable!(), // Not be generated for UDP
+                NetEvent::Disconnected(_) => unreachable!(), // Not be generated for UDP
                 NetEvent::DeserializationError(_) => (),
             },
         }

@@ -154,14 +154,14 @@ The **user API**, that talks to `message-io` itself as an user that want to use 
 and the internal **adapter API** for those who want to add their protocol adapters into the library.
 
 <p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vRMwZsL8Tki3Sq9Zc2hpZ8L3bJPuj38zgiMKzBCXsX3wrPnfyG2hp-ijmDFUPqicEQZFeyUFxhcdJMB/pub?w=703&h=328"/>
+  <img src="https://docs.google.com/drawings/d/e/2PACX-1vRMwZsL8Tki3Sq9Zc2hpZ8L3bJPuj38zgiMKzBCXsX3wrPnfyG2hp-ijmDFUPqicEQZFeyUFxhcdJMB/pub?w=546&h=276"/>
 </p>
 
 If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#platforms)
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you can find in [`src/adapter.rs`](src/adapter.rs) (only 7 mandatory functions to implement, see the [template](src/adapters/template.rs)).
+  traits that you find [here](https://docs.rs/message-io/0.7.0/message_io/adapter/index.html) (only 7 mandatory functions to implement, see the [template](src/adapters/template.rs)).
 
 1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
 

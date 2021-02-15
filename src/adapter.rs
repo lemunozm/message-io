@@ -18,7 +18,7 @@ pub trait Adapter: Send + Sync {
     type Local: Local<Remote = Self::Remote>;
 }
 
-/// A `Resourcepp can be defined as an object that can return a mutable reference to a [`Source`].
+/// A `Resource` is defined as an object that can return a mutable reference to a [`Source`].
 /// `Source` is the trait that [`mio`] uses to register in the poll in order to wake up
 /// asynchronously from events.
 /// Your [`Remote`] and [`Local`] entities must implement `Resource`.
@@ -30,7 +30,8 @@ pub trait Resource: Send + Sync {
     fn source(&mut self) -> &mut dyn Source;
 }
 
-/// The following represents the posible status that a `send()`/`send_all()` call can return.
+/// The following represents the posible status that [`crate::network::Network::send()`]
+/// and [`crate::network::Network::send_all()`] calls can return.
 /// The library do not encourage to perform the check of this status for each `send()` call,
 /// Only in that cases where you need extra information about how the sending method was.
 #[derive(Clone, Copy, PartialEq, Debug)]

@@ -3,6 +3,7 @@ pub use crate::endpoint::{Endpoint};
 pub use crate::adapter::{SendStatus};
 pub use crate::remote_addr::{RemoteAddr, ToRemoteAddr};
 
+use crate::events::{EventQueue};
 use crate::engine::{NetworkEngine, AdapterLauncher};
 use crate::driver::{AdapterEvent};
 use crate::adapters::{
@@ -123,6 +124,20 @@ impl Network {
         });
 
         Network { engine, output_buffer: Vec::new(), send_all_status: Vec::new() }
+    }
+
+    /// Creates a network instance with an associated [`EventQueue`] where the input network
+    /// events can be read.
+    /// If you want to create a [`EventQueue`] that manages more events than `NetEvent`,
+    /// Yoy can create a custom network with [Network::new()].
+    /// This function shall be used if you only want to manage `NetEvent` in the EventQueue.
+    pub fn split<M>() -> (Network, EventQueue<NetEvent<M>>)
+    where M: for<'b> Deserialize<'b> + Send + 'static {
+        let mut event_queue = EventQueue::new();
+
+        let sender = event_queue.sender().clone();
+        let network = Network::new(move |net_event| sender.send(net_event));
+        (network, event_queue)
     }
 
     /// Creates a connection to the specific address.

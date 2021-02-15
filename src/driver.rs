@@ -2,7 +2,7 @@ use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{PollRegister};
 use crate::remote_addr::{RemoteAddr};
-use crate::adapter::{Resource, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{Resource, Adapter, Remote, Listener, SendStatus, AcceptedType, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
 
 use std::collections::{HashMap};
@@ -59,40 +59,48 @@ pub trait ActionController {
     fn remove(&mut self, id: ResourceId) -> Option<()>;
 }
 
-pub struct GenericActionController<R: Resource, L: Resource> {
-    remote_register: Arc<ResourceRegister<R>>,
-    listener_register: Arc<ResourceRegister<L>>,
-    action_handler: Box<dyn ActionHandler<Remote = R, Listener = L>>,
+pub trait EventProcessor<C>
+where C: Fn(Endpoint, AdapterEvent<'_>)
+{
+    fn try_process(&mut self, id: ResourceId, event_callback: &mut C);
 }
 
-impl<R: Resource, L: Resource> GenericActionController<R, L> {
+pub struct Driver<R: Remote, L: Listener> {
+    adapter: Arc<dyn Adapter<Remote = R, Listener = L>>,
+    remote_register: Arc<ResourceRegister<R>>,
+    listener_register: Arc<ResourceRegister<L>>,
+}
+
+impl<R: Remote, L: Listener> Driver<R, L> {
     pub fn new(
+        adapter: Arc<dyn Adapter<Remote = R, Listener = L>>,
         remote_register: Arc<ResourceRegister<R>>,
         listener_register: Arc<ResourceRegister<L>>,
-        action_handler: impl ActionHandler<Remote = R, Listener = L> + 'static,
-    ) -> GenericActionController<R, L>
+    ) -> Driver<R, L>
     {
-        GenericActionController {
-            remote_register,
-            listener_register,
-            action_handler: Box::new(action_handler),
+        Driver { adapter, remote_register, listener_register }
+    }
+}
+
+impl<R: Remote, L: Listener> Clone for Driver<R, L> {
+    fn clone(&self) -> Driver<R, L> {
+        Driver {
+            adapter: self.adapter.clone(),
+            remote_register: self.remote_register.clone(),
+            listener_register: self.listener_register.clone(),
         }
     }
 }
 
-impl<R: Resource, L: Resource> ActionController for GenericActionController<R, L> {
+impl<R: Remote, L: Listener> ActionController for Driver<R, L> {
     fn connect(&mut self, addr: RemoteAddr) -> io::Result<Endpoint> {
         let remotes = &mut self.remote_register;
-        self.action_handler
-            .connect(addr)
-            .map(|(resource, addr)| Endpoint::new(remotes.add(resource, addr), addr))
+        R::connect(addr).map(|(resource, addr)| Endpoint::new(remotes.add(resource, addr), addr))
     }
 
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         let listeners = &mut self.listener_register;
-        self.action_handler
-            .listen(addr)
-            .map(|(resource, addr)| (listeners.add(resource, addr), addr))
+        L::listen(addr).map(|(resource, addr)| (listeners.add(resource, addr), addr))
     }
 
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
@@ -100,7 +108,7 @@ impl<R: Resource, L: Resource> ActionController for GenericActionController<R, L
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
                 match remotes.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => self.action_handler.send(resource, data),
+                    Some((resource, _)) => resource.send(data),
 
                     // TODO: currently there is not a safe way to know if this is
                     // reached because of a user API error (send over already resource removed)
@@ -113,9 +121,7 @@ impl<R: Resource, L: Resource> ActionController for GenericActionController<R, L
             ResourceType::Listener => {
                 let listeners = self.listener_register.resources().read().expect(OTHER_THREAD_ERR);
                 match listeners.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => {
-                        self.action_handler.send_by_listener(resource, endpoint.addr(), data)
-                    }
+                    Some((resource, _)) => resource.send_to(endpoint.addr(), data),
                     None => {
                         panic!("Error: You are trying to send by a listener that does not exists")
                     }
@@ -132,46 +138,7 @@ impl<R: Resource, L: Resource> ActionController for GenericActionController<R, L
     }
 }
 
-impl<R: Resource, L: Resource> Drop for GenericActionController<R, L> {
-    fn drop(&mut self) {
-        let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
-        let ids = remotes.keys().cloned().collect::<Vec<_>>();
-        drop(remotes);
-
-        for id in ids {
-            self.remove(id);
-        }
-    }
-}
-
-pub trait EventProcessor<C>
-where C: Fn(Endpoint, AdapterEvent<'_>)
-{
-    fn try_process(&mut self, id: ResourceId, event_callback: &mut C);
-}
-
-pub struct GenericEventProcessor<R, L> {
-    remote_register: Arc<ResourceRegister<R>>,
-    listener_register: Arc<ResourceRegister<L>>,
-    event_handler: Box<dyn EventHandler<Remote = R, Listener = L>>,
-}
-
-impl<R: Resource, L: Resource> GenericEventProcessor<R, L> {
-    pub fn new(
-        remote_register: Arc<ResourceRegister<R>>,
-        listener_register: Arc<ResourceRegister<L>>,
-        event_handler: impl EventHandler<Remote = R, Listener = L> + 'static,
-    ) -> GenericEventProcessor<R, L>
-    {
-        GenericEventProcessor {
-            remote_register,
-            listener_register,
-            event_handler: Box::new(event_handler),
-        }
-    }
-}
-
-impl<C, R: Resource, L: Resource> EventProcessor<C> for GenericEventProcessor<R, L>
+impl<C, R: Remote, L: Listener<Remote = R>> EventProcessor<C> for Driver<R, L>
 where C: Fn(Endpoint, AdapterEvent<'_>)
 {
     fn try_process(&mut self, id: ResourceId, event_callback: &mut C) {
@@ -181,11 +148,11 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
                 let mut to_remove: Option<Endpoint> = None;
                 if let Some((resource, addr)) = remotes.get(&id) {
                     let endpoint = Endpoint::new(id, *addr);
-                    let status = self.event_handler.read_event(&resource, &|data| {
+                    let status = resource.receive(&|data| {
                         log::trace!("Read {} bytes from {}", data.len(), id);
                         event_callback(endpoint, AdapterEvent::Data(data));
                     });
-                    log::trace!("Processing read_event {}, for {}", status, endpoint);
+                    log::trace!("Processed receive {}, for {}", status, endpoint);
                     if let ReadStatus::Disconnected = status {
                         to_remove = Some(endpoint);
                     }
@@ -204,8 +171,8 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
                 let remotes = &mut self.remote_register;
 
                 if let Some((resource, _)) = listeners.get(&id) {
-                    self.event_handler.accept_event(&resource, &|accepted| {
-                        log::trace!("Processing accept_event {} for {}", accepted, id);
+                    resource.accept(&|accepted| {
+                        log::trace!("Processed accept {} for {}", accepted, id);
                         match accepted {
                             AcceptedType::Remote(addr, remote) => {
                                 let id = remotes.add(remote, addr);

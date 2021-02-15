@@ -3,10 +3,7 @@ use crate::resource_id::{ResourceId, ResourceType};
 use crate::poll::{Poll};
 use crate::adapter::{Adapter, SendStatus};
 use crate::remote_addr::{RemoteAddr};
-use crate::driver::{
-    AdapterEvent, ActionController, EventProcessor, ResourceRegister, GenericActionController,
-    GenericEventProcessor,
-};
+use crate::driver::{AdapterEvent, ActionController, EventProcessor, ResourceRegister, Driver};
 use crate::util::{OTHER_THREAD_ERR};
 
 use std::time::{Duration};
@@ -50,25 +47,18 @@ where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
 {
     pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
         let index = adapter_id as usize;
-        let (controller, processor) = adapter.split();
 
         let remote_poll_register = self.poll.create_register(adapter_id, ResourceType::Remote);
         let listener_poll_register = self.poll.create_register(adapter_id, ResourceType::Listener);
 
         let remote_register = Arc::new(ResourceRegister::new(remote_poll_register));
         let listener_register = Arc::new(ResourceRegister::new(listener_poll_register));
+        let adapter = Arc::new(adapter);
 
-        let action_controller = GenericActionController::new(
-            remote_register.clone(),
-            listener_register.clone(),
-            controller,
-        );
+        let driver = Driver::new(adapter, remote_register, listener_register);
 
-        let event_processor =
-            GenericEventProcessor::new(remote_register, listener_register, processor);
-
-        self.controllers[index] = Box::new(action_controller) as Box<(dyn ActionController + Send)>;
-        self.processors[index] = Box::new(event_processor) as Box<(dyn EventProcessor<C> + Send)>;
+        self.controllers[index] = Box::new(driver.clone()) as Box<(dyn ActionController + Send)>;
+        self.processors[index] = Box::new(driver) as Box<(dyn EventProcessor<C> + Send)>;
     }
 
     fn launch(self) -> (Poll, ActionControllers, EventProcessors<C>) {

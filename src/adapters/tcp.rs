@@ -1,6 +1,4 @@
-use crate::adapter::{
-    Resource, Adapter, ActionHandler, EventHandler, SendStatus, AcceptedType, ReadStatus,
-};
+use crate::adapter::{Resource, Remote, Listener, Adapter, SendStatus, AcceptedType, ReadStatus};
 use crate::remote_addr::{RemoteAddr};
 use crate::encoding::{self, Decoder};
 
@@ -11,10 +9,17 @@ use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 use std::cell::{RefCell};
+use std::mem::{MaybeUninit};
 
 const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 
-pub struct ClientResource {
+pub struct TcpAdapter;
+impl Adapter for TcpAdapter {
+    type Remote = RemoteResource;
+    type Listener = ListenerResource;
+}
+
+pub struct RemoteResource {
     stream: TcpStream,
     decoder: RefCell<Decoder>,
 }
@@ -22,58 +27,60 @@ pub struct ClientResource {
 /// We are totally sure that RefCell<Decoder> can be used with Sync
 /// because it is only used in the read_event.
 /// This way, we save the cost of a Mutex.
-unsafe impl Sync for ClientResource {}
+unsafe impl Sync for RemoteResource {}
 
-impl Resource for ClientResource {
-    fn source(&mut self) -> &mut dyn Source {
-        &mut self.stream
-    }
-}
-
-impl From<TcpStream> for ClientResource {
+impl From<TcpStream> for RemoteResource {
     fn from(stream: TcpStream) -> Self {
         Self { stream, decoder: RefCell::new(Decoder::default()) }
     }
 }
 
-pub struct ServerResource(TcpListener);
-impl Resource for ServerResource {
+impl Resource for RemoteResource {
     fn source(&mut self) -> &mut dyn Source {
-        &mut self.0
+        &mut self.stream
     }
 }
 
-pub struct TcpAdapter;
-impl Adapter for TcpAdapter {
-    type Remote = ClientResource;
-    type Listener = ServerResource;
-    type ActionHandler = TcpActionHandler;
-    type EventHandler = TcpEventHandler;
-
-    fn split(self) -> (TcpActionHandler, TcpEventHandler) {
-        (TcpActionHandler, TcpEventHandler::default())
-    }
-}
-
-pub struct TcpActionHandler;
-impl ActionHandler for TcpActionHandler {
-    type Remote = ClientResource;
-    type Listener = ServerResource;
-
-    fn connect(&mut self, remote_addr: RemoteAddr) -> io::Result<(ClientResource, SocketAddr)> {
+impl Remote for RemoteResource {
+    fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)> {
         let addr = remote_addr.socket_addr();
         let stream = StdTcpStream::connect(addr)?;
         stream.set_nonblocking(true)?;
         Ok((TcpStream::from_std(stream).into(), *addr))
     }
 
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ServerResource, SocketAddr)> {
-        let listener = TcpListener::bind(addr)?;
-        let real_addr = listener.local_addr().unwrap();
-        Ok((ServerResource(listener), real_addr))
+    fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
+        let buffer: MaybeUninit<[u8; INPUT_BUFFER_SIZE]> = MaybeUninit::uninit();
+        let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
+
+        loop {
+            let stream = &self.stream;
+            match stream.deref().read(&mut input_buffer) {
+                Ok(0) => break ReadStatus::Disconnected,
+                Ok(size) => {
+                    let data = &input_buffer[..size];
+                    let addr = self.stream.peer_addr().unwrap();
+                    log::trace!("Decoding data from {}, {} bytes", addr, data.len());
+                    self.decoder.borrow_mut().decode(data, |decoded_data| {
+                        process_data(decoded_data);
+                    });
+                }
+                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
+                    break ReadStatus::WaitNextEvent
+                }
+                Err(ref err) if err.kind() == ErrorKind::ConnectionReset => {
+                    break ReadStatus::Disconnected
+                }
+                Err(_) => {
+                    log::error!("TCP read event error");
+                    break ReadStatus::Disconnected // should not happen
+                }
+            }
+        }
     }
 
-    fn send(&mut self, remote: &ClientResource, data: &[u8]) -> SendStatus {
+    fn send(&self, data: &[u8]) -> SendStatus {
         let encoded_size = encoding::encode_size(data);
 
         // TODO: The current implementation implies an active waiting,
@@ -88,7 +95,7 @@ impl ActionHandler for TcpActionHandler {
                 false => &data[(total_bytes_sent - encoding::PADDING)..],
             };
 
-            let stream = &remote.stream;
+            let stream = &self.stream;
             match stream.deref().write(data_to_send) {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
@@ -115,60 +122,32 @@ impl ActionHandler for TcpActionHandler {
     }
 }
 
-pub struct TcpEventHandler {
-    input_buffer: [u8; INPUT_BUFFER_SIZE],
+pub struct ListenerResource {
+    listener: TcpListener,
 }
 
-impl Default for TcpEventHandler {
-    fn default() -> Self {
-        Self { input_buffer: [0; INPUT_BUFFER_SIZE] }
+impl Resource for ListenerResource {
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.listener
     }
 }
 
-impl EventHandler for TcpEventHandler {
-    type Remote = ClientResource;
-    type Listener = ServerResource;
+impl Listener for ListenerResource {
+    type Remote = RemoteResource;
 
-    fn accept_event(
-        &mut self,
-        listener: &ServerResource,
-        accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>),
-    )
-    {
+    fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
+        let listener = TcpListener::bind(addr)?;
+        let real_addr = listener.local_addr().unwrap();
+        Ok((ListenerResource { listener }, real_addr))
+    }
+
+    fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
         loop {
-            match listener.0.accept() {
+            match self.listener.accept() {
                 Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream.into())),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                 Err(_) => break log::trace!("TCP accept event error"), // Should not happen
-            }
-        }
-    }
-
-    fn read_event(&mut self, remote: &ClientResource, process_data: &dyn Fn(&[u8])) -> ReadStatus {
-        loop {
-            let stream = &remote.stream;
-            match stream.deref().read(&mut self.input_buffer) {
-                Ok(0) => break ReadStatus::Disconnected,
-                Ok(size) => {
-                    let data = &self.input_buffer[..size];
-                    let addr = remote.stream.peer_addr().unwrap();
-                    log::trace!("Decoding data from {}, {} bytes", addr, data.len());
-                    remote.decoder.borrow_mut().decode(data, |decoded_data| {
-                        process_data(decoded_data);
-                    });
-                }
-                Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
-                    break ReadStatus::WaitNextEvent
-                }
-                Err(ref err) if err.kind() == ErrorKind::ConnectionReset => {
-                    break ReadStatus::Disconnected
-                }
-                Err(_) => {
-                    log::error!("TCP read event error");
-                    break ReadStatus::Disconnected // should not happen
-                }
             }
         }
     }

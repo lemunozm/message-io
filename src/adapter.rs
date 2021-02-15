@@ -5,37 +5,29 @@ use mio::event::{Source};
 use std::net::{SocketAddr};
 use std::io::{self};
 
-/// Resource is the element used as Remote or Listener into the whole adapter.
-/// It usually is a wrapper over a socket.
-pub trait Resource: Send + Sync {
-    /// This is the only required method to make your element as resource.
-    /// Any `mio` net element implements [`Source`].
-    /// See [`mio::event::Source`].
-    fn source(&mut self) -> &mut dyn Source;
-}
-
 /// High level trait to represent an adapter for a transport protocol.
-/// The adapter is used to pack an [`ActionHandler`] and an [`EventHandler`],
-/// two traits that describes how an adapter behaves.
-pub trait Adapter {
+/// The adapter is only used to identify the resources of your adapter.
+pub trait Adapter: Send + Sync {
     /// Resource type used to identify remote connections and send/receive
     /// from remote this endpoints (e.g. TcpStream)
     /// This can be considerered the resource used for client connections.
-    type Remote: Resource;
+    type Remote: Remote;
 
     /// Resource type used to accept new connections (e.g. TcpListener)
     /// This can be considerered the resource used for server listenings.
-    type Listener: Resource;
+    type Listener: Listener<Remote = Self::Remote>;
+}
 
-    /// See `ActionHandler` trait
-    type ActionHandler: ActionHandler<Remote = Self::Remote, Listener = Self::Listener>;
-
-    /// See `EventHandler` trait
-    type EventHandler: EventHandler<Remote = Self::Remote, Listener = Self::Listener>;
-
-    /// Creates am [`ActionHandler`] and [`EventHandler`] that represents the adapter.
-    /// The **implementator** must create both instances here.
-    fn split(self) -> (Self::ActionHandler, Self::EventHandler);
+/// A `Resourcepp can be defined as an object that can return a mutable reference to a [`Source`].
+/// `Source` is the trait that [`mio`] uses to register in the poll in order to wake up
+/// asynchronously from events.
+/// Your [`Remote`] and [`Listener`] entities must implement `Resource`.
+pub trait Resource: Send + Sync {
+    /// This is the only method required to make your element a resource.
+    /// Note: Any `mio` network element implements [`Source`], you probably wants to use
+    /// one of them as a base for your non-blocking transport.
+    /// See [`Source`].
+    fn source(&mut self) -> &mut dyn Source;
 }
 
 /// The following represents the posible status that a `send()`/`send_all()` call can return.
@@ -63,42 +55,43 @@ pub enum SendStatus {
     ResourceNotFound,
 }
 
-/// This entity is in change to perform direct actions from the user to the network.
-pub trait ActionHandler: Send {
-    type Remote: Resource;
-    type Listener: Resource;
+/// Returned as a result of [`Remote::receive()`]
+pub enum ReadStatus {
+    /// This status must be returned if the resource has been disconnected or there was an error.
+    /// The resource will be removed after this call and
+    /// no more [`Remote::receive()`] calls will be produced by this resource.
+    Disconnected,
 
+    /// This status must be returned when a the resource (treated as a non-bloking) would wait for
+    /// process the next event.
+    /// Usually, this status is returned if the resource receives
+    /// a [`std::io::ErrorKind::WouldBlock`].
+    WaitNextEvent,
+}
+
+/// Resource is the element used as Remote or Listener into the whole adapter.
+/// It usually is a wrapper over a socket.
+pub trait Remote: Resource + Sized {
     /// The user performs a connection request to an specific remote address.
     /// The **implementator** is in change of creating the corresponding remote resource.
     /// The [`RemoteAddr`] contains either a [`SocketAddr`] or a [`url::Url`].
     /// It is in charge of the implementator to decide what to do in both cases.
     /// It also must returned the address as `SocketAddr`.
-    fn connect(&mut self, remote_addr: RemoteAddr) -> io::Result<(Self::Remote, SocketAddr)>;
+    fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)>;
 
-    /// The user performs a listening request from an specific address.
-    /// The **implementator** is in change of creating the corresponding listener resource.
-    /// It also must returned the address since it could not be the same as param `addr`.
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(Self::Listener, SocketAddr)>;
+    /// Called when a remote endpoint received an event.
+    /// It means that the resource has available data to read,
+    /// or there is some connection related issue, as a disconnection.
+    /// The **implementator** is in charge of processing that action and returns a [`ReadStatus`].
+    /// The `process_data` function must be called for each data chunk that represents a message.
+    /// This `process_data` function will produce a `Message` API event.
+    /// Note that a read event could imply more than one call to `read`.
+    fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus;
 
     /// Sends a raw data from a resource.
     /// The **implementator** is in charge to send the `data` using the `resource`.
     /// The [`SendStatus`] will contain the status of this sending attempt.
-    fn send(&mut self, resource: &Self::Remote, data: &[u8]) -> SendStatus;
-
-    /// Similar to [`ActionHandler::send()`] but the resource that send the data is a listener.
-    /// The **implementator** must **only** implement this if the listener resource can
-    /// also send data.
-    /// This behaviour usually happens when the transport to implement is not connection oriented.
-    /// The param `target_addr` represents the address to send that data.
-    fn send_by_listener(
-        &mut self,
-        _resource: &Self::Listener,
-        _target_addr: SocketAddr,
-        _data: &[u8],
-    ) -> SendStatus
-    {
-        panic!("Error: You are sending a message from a listener resource");
-    }
+    fn send(&self, data: &[u8]) -> SendStatus;
 }
 
 /// Used as a parameter callback in [`crate::adapter::EventHandler::accept_event()`]
@@ -113,25 +106,15 @@ pub enum AcceptedType<'a, R> {
     Data(SocketAddr, &'a [u8]),
 }
 
-/// Returned as a result of [`crate::adapter::EventHandler::read_event()`]
-pub enum ReadStatus {
-    /// This status must be returned if the resource has been disconnected or there was an error.
-    /// The resource will be removed after this call.
-    /// No more [`crate::adapter::EventHandler::read_event()`] calls will be produced
-    /// by this resource.
-    Disconnected,
+/// Resource is the element used as Remote or Listener into the whole adapter.
+/// It usually is a wrapper over a socket.
+pub trait Listener: Resource + Sized {
+    type Remote: Remote;
 
-    /// This status must be returned when a the resource (treated as a non-bloking) would wait for
-    /// process the next event.
-    /// Usually, this status is returned if the resource returns [`std::io::ErrorKind::WouldBlock`].
-    WaitNextEvent,
-}
-
-/// This entity is in change to perform eventual actions comming from the internal network engine.
-/// The associated methods will generates indirectly the [`crate::network::NetEvent`] to the user.
-pub trait EventHandler: Send {
-    type Remote: Resource;
-    type Listener: Resource;
+    /// The user performs a listening request from an specific address.
+    /// The **implementator** is in change of creating the corresponding listener resource.
+    /// It also must returned the address since it could not be the same as param `addr`.
+    fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)>;
 
     /// Called when a listener resource received an event.
     /// It means that some resource have tried to connect.
@@ -139,18 +122,15 @@ pub trait EventHandler: Send {
     /// The `accept_remote` must be called for each accept request in the listener.
     /// Note that an accept event could imply to process more than one remote.
     /// This function is called when the listener has one or more pending connections.
-    fn accept_event(
-        &mut self,
-        listener: &Self::Listener,
-        accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>),
-    );
+    fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>));
 
-    /// Called when a remote endpoint received an event.
-    /// It means that the resource has available data to read,
-    /// or there is some connection related issue, as a disconnection.
-    /// The **implementator** is in charge of processing that action and returns a [`ReadStatus`].
-    /// The `process_data` function must be called for each data chunk that represents a message.
-    /// This `process_data` function will produce a `Message` API event.
-    /// Note that a read event could imply more than one call to `read`.
-    fn read_event(&mut self, remote: &Self::Remote, process_data: &dyn Fn(&[u8])) -> ReadStatus;
+    /// Sends a raw data from a resource.
+    /// Similar to [`ActionHandler::send()`] but the resource that send the data is a listener.
+    /// The **implementator** must **only** implement this if the listener resource can
+    /// also send data.
+    /// This behaviour usually happens when the transport to implement is not connection oriented.
+    /// The param `target_addr` represents the address to send that data.
+    fn send_to(&self, _addr: SocketAddr, _data: &[u8]) -> SendStatus {
+        panic!("Adapter not configured to send messages directly from the listener resource")
+    }
 }

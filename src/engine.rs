@@ -1,9 +1,9 @@
 use crate::endpoint::{Endpoint};
-use crate::resource_id::{ResourceId, ResourceType};
+use crate::resource_id::{ResourceId};
 use crate::poll::{Poll};
 use crate::adapter::{Adapter, SendStatus};
 use crate::remote_addr::{RemoteAddr};
-use crate::driver::{AdapterEvent, ActionController, EventProcessor, ResourceRegister, Driver};
+use crate::driver::{AdapterEvent, ActionController, EventProcessor, Driver};
 use crate::util::{OTHER_THREAD_ERR};
 
 use std::time::{Duration};
@@ -48,14 +48,7 @@ where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
     pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
         let index = adapter_id as usize;
 
-        let remote_poll_register = self.poll.create_register(adapter_id, ResourceType::Remote);
-        let listener_poll_register = self.poll.create_register(adapter_id, ResourceType::Listener);
-
-        let remote_register = Arc::new(ResourceRegister::new(remote_poll_register));
-        let listener_register = Arc::new(ResourceRegister::new(listener_poll_register));
-        let adapter = Arc::new(adapter);
-
-        let driver = Driver::new(adapter, remote_register, listener_register);
+        let driver = Driver::new(adapter, adapter_id, &mut self.poll);
 
         self.controllers[index] = Box::new(driver.clone()) as Box<(dyn ActionController + Send)>;
         self.processors[index] = Box::new(driver) as Box<(dyn EventProcessor<C> + Send)>;
@@ -131,7 +124,7 @@ impl Drop for NetworkEngine {
 }
 
 // The following unimplemented controller/processor is used to fill
-// the invalid adapter id holes in the registers.
+// the invalid adapter id holes in the controllers / processors.
 // It is faster and cleanest than to use an option that always must to be unwrapped.
 // (Even the user can not use bad the API in this context)
 

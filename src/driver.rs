@@ -1,6 +1,6 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
-use crate::poll::{PollRegister};
+use crate::poll::{Poll, PollRegister};
 use crate::remote_addr::{RemoteAddr};
 use crate::adapter::{Resource, Adapter, Remote, Listener, SendStatus, AcceptedType, ReadStatus};
 use crate::util::{OTHER_THREAD_ERR};
@@ -66,26 +66,30 @@ where C: Fn(Endpoint, AdapterEvent<'_>)
 }
 
 pub struct Driver<R: Remote, L: Listener> {
-    adapter: Arc<dyn Adapter<Remote = R, Listener = L>>,
     remote_register: Arc<ResourceRegister<R>>,
     listener_register: Arc<ResourceRegister<L>>,
 }
 
 impl<R: Remote, L: Listener> Driver<R, L> {
     pub fn new(
-        adapter: Arc<dyn Adapter<Remote = R, Listener = L>>,
-        remote_register: Arc<ResourceRegister<R>>,
-        listener_register: Arc<ResourceRegister<L>>,
+        _: impl Adapter<Remote = R, Listener = L>,
+        adapter_id: u8,
+        poll: &mut Poll,
     ) -> Driver<R, L>
     {
-        Driver { adapter, remote_register, listener_register }
+        let remote_poll_register = poll.create_register(adapter_id, ResourceType::Remote);
+        let listener_poll_register = poll.create_register(adapter_id, ResourceType::Listener);
+
+        Driver {
+            remote_register: Arc::new(ResourceRegister::<R>::new(remote_poll_register)),
+            listener_register: Arc::new(ResourceRegister::<L>::new(listener_poll_register)),
+        }
     }
 }
 
 impl<R: Remote, L: Listener> Clone for Driver<R, L> {
     fn clone(&self) -> Driver<R, L> {
         Driver {
-            adapter: self.adapter.clone(),
             remote_register: self.remote_register.clone(),
             listener_register: self.listener_register.clone(),
         }

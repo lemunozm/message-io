@@ -70,66 +70,68 @@ fn ping_pong_server_handle(
     expected_clients: usize,
 ) -> (JoinHandle<()>, SocketAddr)
 {
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = crossbeam::channel::bounded(1);
     let handle = thread::Builder::new()
         .name("test-server".into())
         .spawn(move || {
-            let mut event_queue = EventQueue::<NetEvent<String>>::new();
-            let sender = event_queue.sender().clone();
-            let mut network = Network::new(move |net_event| sender.send(net_event));
+            std::panic::catch_unwind(|| {
+                let mut event_queue = EventQueue::<NetEvent<String>>::new();
+                let sender = event_queue.sender().clone();
+                let mut network = Network::new(move |net_event| sender.send(net_event));
 
-            let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
-            tx.send(server_addr).unwrap();
+                let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
+                tx.send(server_addr).unwrap();
 
-            let mut messages_received = 0;
-            let mut disconnections = 0;
-            let mut clients = HashSet::new();
+                let mut messages_received = 0;
+                let mut disconnections = 0;
+                let mut clients = HashSet::new();
 
-            loop {
-                match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-                    NetEvent::Message(endpoint, message) => {
-                        assert_eq!(message, SMALL_MESSAGE);
+                loop {
+                    match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+                        NetEvent::Message(endpoint, message) => {
+                            assert_eq!(message, SMALL_MESSAGE);
 
-                        let status = network.send(endpoint, message);
-                        assert_eq!(status, SendStatus::Sent);
+                            let status = network.send(endpoint, message);
+                            assert_eq!(status, SendStatus::Sent);
 
-                        messages_received += 1;
+                            messages_received += 1;
 
-                        if !util::is_connection_oriented(transport) {
-                            // We assume here that if the protocol is not connection oriented
-                            // it will no create a resource.
-                            // The remote will be managed from the listener resource
-                            assert_eq!(listener_id, endpoint.resource_id());
-                            if messages_received == expected_clients {
-                                break //Exit from thread.
-                            }
-                        }
-                    }
-                    NetEvent::Connected(endpoint) => {
-                        match util::is_connection_oriented(transport) {
-                            true => assert!(clients.insert(endpoint)),
-                            false => unreachable!(),
-                        }
-                    }
-                    NetEvent::Disconnected(endpoint) => {
-                        match util::is_connection_oriented(transport) {
-                            true => {
-                                disconnections += 1;
-                                assert!(clients.remove(&endpoint));
-                                if disconnections == expected_clients {
-                                    assert_eq!(expected_clients, messages_received);
-                                    assert_eq!(0, clients.len());
+                            if !util::is_connection_oriented(transport) {
+                                // We assume here that if the protocol is not connection oriented
+                                // it will no create a resource.
+                                // The remote will be managed from the listener resource
+                                assert_eq!(listener_id, endpoint.resource_id());
+                                if messages_received == expected_clients {
                                     break //Exit from thread.
                                 }
                             }
-                            false => unreachable!(),
                         }
+                        NetEvent::Connected(endpoint) => {
+                            match util::is_connection_oriented(transport) {
+                                true => assert!(clients.insert(endpoint)),
+                                false => unreachable!(),
+                            }
+                        }
+                        NetEvent::Disconnected(endpoint) => {
+                            match util::is_connection_oriented(transport) {
+                                true => {
+                                    disconnections += 1;
+                                    assert!(clients.remove(&endpoint));
+                                    if disconnections == expected_clients {
+                                        assert_eq!(expected_clients, messages_received);
+                                        assert_eq!(0, clients.len());
+                                        break //Exit from thread.
+                                    }
+                                }
+                                false => unreachable!(),
+                            }
+                        }
+                        NetEvent::DeserializationError(_) => unreachable!(),
                     }
-                    NetEvent::DeserializationError(_) => unreachable!(),
                 }
-            }
-        })
-        .unwrap();
+            })
+            .unwrap();
+        }).unwrap();
 
     let server_addr = rx.recv_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR);
     (handle, server_addr)

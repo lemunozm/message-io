@@ -74,7 +74,7 @@ impl Remote for RemoteResource {
                 Err(HandshakeError::Interrupted(mid_handshake)) => {
                     handshake_result = mid_handshake.handshake();
                 }
-                Err(HandshakeError::Failure(error)) => panic!("Unexpected ws error: {}", error),
+                Err(HandshakeError::Failure(err)) => panic!("WS connect handshak error: {}", err),
             }
         }
     }
@@ -93,8 +93,8 @@ impl Remote for RemoteResource {
                 Err(Error::Io(ref err)) if err.kind() == ErrorKind::ConnectionReset => {
                     break ReadStatus::Disconnected
                 }
-                Err(_) => {
-                    log::error!("TCP read event error");
+                Err(err) => {
+                    log::error!("WS receive error: {}", err);
                     break ReadStatus::Disconnected // should not happen
                 }
             }
@@ -140,12 +140,23 @@ impl Local for LocalResource {
         loop {
             match self.listener.accept() {
                 Ok((stream, addr)) => {
-                    let resource = RemoteResource::from(ws_accept(stream).unwrap());
-                    accept_remote(AcceptedType::Remote(addr, resource));
+                    let mut handshake_result = ws_accept(stream);
+                    let ws_socket = loop {
+                        match handshake_result {
+                            Ok(ws_socket) => break RemoteResource::from(ws_socket),
+                            Err(HandshakeError::Interrupted(mid_handshake)) => {
+                                handshake_result = mid_handshake.handshake();
+                            }
+                            Err(HandshakeError::Failure(err)) =>
+                                panic!("Ws accept handshake error: {}", err),
+                        }
+                    };
+
+                    accept_remote(AcceptedType::Remote(addr, ws_socket));
                 }
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(err) => break log::trace!("WS accept error: {}", err), // Should not happen
+                Err(err) => break log::error!("WS accept error: {}", err), // Should not happen
             }
         }
     }

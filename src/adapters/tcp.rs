@@ -116,10 +116,7 @@ impl Remote for RemoteResource {
                 // an Event::Disconnection will be generated later.
                 // It is possible to reach this point if the sending method is produced
                 // before the disconnection/reset event is generated.
-                Err(err) => {
-                    log::error!("TCP send error: {}", err);
-                    break SendStatus::ResourceNotFound
-                }
+                Err(_) => break SendStatus::ResourceNotFound
             }
         }
     }
@@ -150,7 +147,7 @@ impl Local for LocalResource {
                 Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream.into())),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(err) => break log::trace!("TCP accept error: {}", err), // Should not happen
+                Err(err) => break log::error!("TCP accept error: {}", err), // Should not happen
             }
         }
     }

@@ -116,7 +116,7 @@ impl Local for LocalResource {
                     accept_remote(AcceptedType::Data(addr, data))
                 }
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                Err(err) => break log::trace!("UDP accept error: {}", err), // Should never happen
+                Err(err) => break log::error!("UDP accept error: {}", err), // Should never happen
             };
         }
     }

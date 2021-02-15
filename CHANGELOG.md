@@ -15,6 +15,8 @@
 - Renamed from `AddedEndpoint` to `Connected`.
 - Renamed from `RemovedEndpoint` to `Disconnected`.
 - Added `RemoteAddr` for replace `SocketAddr` in connections.
+- Renamed from `Listener` to `Local` in resource contexts.
+- Improvement speed in TCP framing.
 
 ## Release 0.6.0
 - Added concurrent writing and reading from socket/streams in UDP and TCP protocols.

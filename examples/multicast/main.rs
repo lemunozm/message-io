@@ -30,7 +30,7 @@ fn main() {
             println!("Notifying on the network");
             network.send(endpoint, Message::HelloLan(my_name.into()));
         }
-        Err(_) => return eprintln!("Could not connecto to {}", addr),
+        Err(_) => return eprintln!("Could not connect to {}", addr),
     }
 
     // Since the addrs belongs to the multicast range (from 224.0.0.0 to 239.255.255.255)

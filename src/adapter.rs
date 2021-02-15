@@ -15,13 +15,13 @@ pub trait Adapter: Send + Sync {
 
     /// Resource type used to accept new connections (e.g. TcpListener)
     /// This can be considerered the resource used for server listenings.
-    type Listener: Listener<Remote = Self::Remote>;
+    type Local: Local<Remote = Self::Remote>;
 }
 
 /// A `Resourcepp can be defined as an object that can return a mutable reference to a [`Source`].
 /// `Source` is the trait that [`mio`] uses to register in the poll in order to wake up
 /// asynchronously from events.
-/// Your [`Remote`] and [`Listener`] entities must implement `Resource`.
+/// Your [`Remote`] and [`Local`] entities must implement `Resource`.
 pub trait Resource: Send + Sync {
     /// This is the only method required to make your element a resource.
     /// Note: Any `mio` network element implements [`Source`], you probably wants to use
@@ -96,7 +96,7 @@ pub trait Remote: Resource + Sized {
     fn send(&self, data: &[u8]) -> SendStatus;
 }
 
-/// Used as a parameter callback in [`Listener::accept()`]
+/// Used as a parameter callback in [`Local::accept()`]
 pub enum AcceptedType<'a, R> {
     /// The listener has accepted a remote (`R`) with the specified addr.
     /// The remote will be registered in order to generate read events. (calls to
@@ -115,34 +115,34 @@ pub enum AcceptedType<'a, R> {
 
 /// The resource used to represent a local listener.
 /// It usually is a wrapper over a socket/listener.
-pub trait Listener: Resource + Sized {
+pub trait Local: Resource + Sized {
     /// The type of the Remote accepted by the [`Self::accept()`] function.
     /// It must be the same as the adapter's `Remote`.
     type Remote: Remote;
 
     /// Called when the user performs a listening request from an specific address.
-    /// The **implementator** is in change of creating the corresponding listener resource.
+    /// The **implementator** is in change of creating the corresponding local resource.
     /// It also must returned the listening address since it could not be the same as param `addr`
     /// (e.g. listening from port `0`).
     fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)>;
 
-    /// Called when a listener resource received an event.
+    /// Called when a local resource received an event.
     /// It means that some resource have tried to connect.
     /// The **implementator** is in charge of accepting this connection.
-    /// The `accept_remote` must be called for each accept request in the listener.
+    /// The `accept_remote` must be called for each accept request in the local resource.
     /// Note that an accept event could imply to process more than one remote.
-    /// This function is called when the listener has one or more pending connections.
+    /// This function is called when the local resource has one or more pending connections.
     /// The **implementator** must process all these pending connections in this call.
     /// For most of the cases it means accept connections until the network
     /// resource returns `WouldBlock`.
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>));
 
     /// Sends a raw data from a resource.
-    /// Similar to [`Remote::send()`] but the resource that sends the data is a `Listener`.
-    /// The **implementator** must **only** implement this function if the listener resource can
+    /// Similar to [`Remote::send()`] but the resource that sends the data is a `Local`.
+    /// The **implementator** must **only** implement this function if the local resource can
     /// also send data.
     /// This behaviour usually happens when the transport to implement is not connection oriented.
     fn send_to(&self, _addr: SocketAddr, _data: &[u8]) -> SendStatus {
-        panic!("Adapter not configured to send messages directly from the listener resource")
+        panic!("Adapter not configured to send messages directly from the local resource")
     }
 }

@@ -1,4 +1,4 @@
-use crate::adapter::{Resource, Remote, Listener, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus};
 use crate::remote_addr::{RemoteAddr};
 
 use mio::net::{UdpSocket};
@@ -23,7 +23,7 @@ const INPUT_BUFFER_SIZE: usize = 65535 - 20 - 8;
 pub struct UdpAdapter;
 impl Adapter for UdpAdapter {
     type Remote = RemoteResource;
-    type Listener = ListenerResource;
+    type Local = LocalResource;
 }
 
 pub struct RemoteResource {
@@ -58,8 +58,8 @@ impl Remote for RemoteResource {
                     // Avoid ICMP generated error to be logged
                     break ReadStatus::Disconnected
                 }
-                Err(_) => {
-                    log::error!("UDP read event error");
+                Err(err) => {
+                    log::error!("UDP receive error: {}", err);
                     break ReadStatus::Disconnected // Should not happen
                 }
             }
@@ -76,17 +76,17 @@ impl Remote for RemoteResource {
     }
 }
 
-pub struct ListenerResource {
+pub struct LocalResource {
     socket: UdpSocket,
 }
 
-impl Resource for ListenerResource {
+impl Resource for LocalResource {
     fn source(&mut self) -> &mut dyn Source {
         &mut self.socket
     }
 }
 
-impl Listener for ListenerResource {
+impl Local for LocalResource {
     type Remote = RemoteResource;
 
     fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
@@ -102,7 +102,7 @@ impl Listener for ListenerResource {
         };
 
         let real_addr = socket.local_addr().unwrap();
-        Ok((ListenerResource { socket }, real_addr))
+        Ok((LocalResource { socket }, real_addr))
     }
 
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
@@ -116,7 +116,7 @@ impl Listener for ListenerResource {
                     accept_remote(AcceptedType::Data(addr, data))
                 }
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
-                Err(_) => break log::trace!("UDP accept event error"), // Should never happen
+                Err(err) => break log::trace!("UDP accept error: {}", err), // Should never happen
             };
         }
     }
@@ -131,7 +131,7 @@ impl Listener for ListenerResource {
     }
 }
 
-impl Drop for ListenerResource {
+impl Drop for LocalResource {
     fn drop(&mut self) {
         if let SocketAddr::V4(addr) = self.socket.local_addr().unwrap() {
             if addr.ip().is_multicast() {
@@ -156,8 +156,8 @@ fn to_send_status(result: io::Result<usize>) -> SendStatus {
         Ok(_) => SendStatus::Sent,
         // Avoid ICMP generated error to be logged
         Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => SendStatus::ResourceNotFound,
-        Err(_) => {
-            log::error!("UDP send remote error");
+        Err(err) => {
+            log::error!("UDP send error: {}", err);
             SendStatus::ResourceNotFound
         }
     }

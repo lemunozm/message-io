@@ -1,4 +1,4 @@
-use crate::adapter::{Resource, Remote, Listener, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus};
 use crate::remote_addr::{RemoteAddr};
 use crate::encoding::{self, Decoder};
 
@@ -16,7 +16,7 @@ const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 pub struct TcpAdapter;
 impl Adapter for TcpAdapter {
     type Remote = RemoteResource;
-    type Listener = ListenerResource;
+    type Local = LocalResource;
 }
 
 pub struct RemoteResource {
@@ -72,8 +72,8 @@ impl Remote for RemoteResource {
                 Err(ref err) if err.kind() == ErrorKind::ConnectionReset => {
                     break ReadStatus::Disconnected
                 }
-                Err(_) => {
-                    log::error!("TCP read event error");
+                Err(err) => {
+                    log::error!("TCP receive error: {}", err);
                     break ReadStatus::Disconnected // should not happen
                 }
             }
@@ -116,29 +116,32 @@ impl Remote for RemoteResource {
                 // an Event::Disconnection will be generated later.
                 // It is possible to reach this point if the sending method is produced
                 // before the disconnection/reset event is generated.
-                Err(_) => break SendStatus::ResourceNotFound,
+                Err(err) => {
+                    log::error!("TCP send error: {}", err);
+                    break SendStatus::ResourceNotFound
+                }
             }
         }
     }
 }
 
-pub struct ListenerResource {
+pub struct LocalResource {
     listener: TcpListener,
 }
 
-impl Resource for ListenerResource {
+impl Resource for LocalResource {
     fn source(&mut self) -> &mut dyn Source {
         &mut self.listener
     }
 }
 
-impl Listener for ListenerResource {
+impl Local for LocalResource {
     type Remote = RemoteResource;
 
     fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
         let listener = TcpListener::bind(addr)?;
         let real_addr = listener.local_addr().unwrap();
-        Ok((ListenerResource { listener }, real_addr))
+        Ok((LocalResource { listener }, real_addr))
     }
 
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
@@ -147,7 +150,7 @@ impl Listener for ListenerResource {
                 Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream.into())),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(_) => break log::trace!("TCP accept event error"), // Should not happen
+                Err(err) => break log::trace!("TCP accept error: {}", err), // Should not happen
             }
         }
     }

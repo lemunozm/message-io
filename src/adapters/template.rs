@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 
-use crate::adapter::{Resource, Remote, Listener, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus};
 use crate::remote_addr::{RemoteAddr};
 
 use mio::event::{Source};
@@ -11,7 +11,7 @@ use std::io::{self};
 pub struct MyAdapter;
 impl Adapter for MyAdapter {
     type Remote = RemoteResource;
-    type Listener = ListenerResource;
+    type Local = LocalResource;
 }
 
 pub struct RemoteResource;
@@ -35,14 +35,14 @@ impl Remote for RemoteResource {
     }
 }
 
-pub struct ListenerResource;
-impl Resource for ListenerResource {
+pub struct LocalResource;
+impl Resource for LocalResource {
     fn source(&mut self) -> &mut dyn Source {
         todo!();
     }
 }
 
-impl Listener for ListenerResource {
+impl Local for LocalResource {
     type Remote = RemoteResource;
 
     fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {

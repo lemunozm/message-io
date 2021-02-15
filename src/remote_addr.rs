@@ -16,18 +16,12 @@ pub enum RemoteAddr {
 impl RemoteAddr {
     /// Check if the `RemoteAddr` is a [`SocketAddr`].
     pub fn is_socket_addr(&self) -> bool {
-        match self {
-            RemoteAddr::SocketAddr(_) => true,
-            _ => false,
-        }
+        matches!(self, RemoteAddr::SocketAddr(_))
     }
 
     /// Check if the `RemoteAddr` is an [`Url`].
     pub fn is_url(&self) -> bool {
-        match self {
-            RemoteAddr::Url(_) => true,
-            _ => false,
-        }
+        matches!(self, RemoteAddr::Url(_))
     }
 
     /// Trait the `RemoteAddr` as a [`SocketAddr`].

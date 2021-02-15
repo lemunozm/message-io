@@ -36,7 +36,7 @@ You could change the protocol of your application in literally one line.
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
-- TCP and UDP (with multicast option) protocols.
+- Multiples transports: **TCP**, **UDP** (with multicast option) and **WebSockets**.
 - Internal encoding layer: handle messages, not data streams.
 - FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
@@ -51,7 +51,7 @@ You could change the protocol of your application in literally one line.
     Do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.
-    - Binary serialization.
+    - Binary serialization (using [bincode](https://github.com/servo/bincode))
     - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
@@ -64,9 +64,9 @@ message-io = "0.7"
 - [API documentation](https://docs.rs/message-io/)
 - [Basic concepts](docs/basic_concepts.md)
 - [Examples](examples):
-
   - [Basic TCP client and server](examples/tcp)
   - [Basic UDP client and server](examples/udp)
+  - [Basic WebSocket client and server](examples/web_socket)
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
   - [File transfer](examples/file-transfer)
@@ -76,9 +76,9 @@ message-io = "0.7"
   - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game.
     (under development, but the communication part using `message-io` is almost complete for reference).
 
-### TCP & UDP echo server
+### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and respond to them.
-It is capable to manage several client connections and listen from 2 differents protocols at same time.
+It is capable to manage several client connections and listen from 3 differents protocols at same time.
 
 ```rust
 use message_io::events::{EventQueue};
@@ -111,9 +111,9 @@ fn main() {
     let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
 
     // Listen from TCP and UDP messages on ports 3005.
-    let addr = "0.0.0.0:3005";
-    network.listen(Transport::Tcp, addr).unwrap();
-    network.listen(Transport::Udp, addr).unwrap();
+    network.listen(Transport::Tcp, 0.0.0.0:3042).unwrap();
+    network.listen(Transport::Udp, 0.0.0.0:3043).unwrap();
+    network.listen(Transport::Ws, 0.0.0.0:3044).unwrap(); //Websocket
 
     loop {
         match event_queue.receive() { // Read the next event or wait until have it.
@@ -129,7 +129,7 @@ fn main() {
                 NetEvent::Disconnected(_endpoint) => println!("TCP Client disconnected"),
                 NetEvent::DeserializationError(_) => (),
             },
-            // Other events here
+            // Other user events here
         }
     }
 }

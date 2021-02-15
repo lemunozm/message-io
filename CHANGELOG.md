@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.7.1
+- Added WebSocket support based in `tungstenite-rs`
+
 ## Release 0.7.0
 - Internal improvements in order to use one thread for all adapters.
 - Clean architecture to implement new adapters easier (an internal API).

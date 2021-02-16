@@ -65,7 +65,7 @@ mod util {
     }
 }
 
-fn ping_pong_server_handle(
+fn echo_server_handle(
     transport: Transport,
     expected_clients: usize,
 ) -> (JoinHandle<()>, SocketAddr)
@@ -138,7 +138,7 @@ fn ping_pong_server_handle(
     (handle, server_addr)
 }
 
-fn ping_pong_client_manager_handle(
+fn echo_client_manager_handle(
     transport: Transport,
     server_addr: SocketAddr,
     clients_number: usize,
@@ -189,11 +189,11 @@ fn ping_pong_client_manager_handle(
 #[test_case(Transport::Ws, 100)]
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with a very obfuscated error message.
-fn ping_pong(transport: Transport, clients: usize) {
+fn echo(transport: Transport, clients: usize) {
     //util::init_logger();
 
-    let (server_handle, server_addr) = ping_pong_server_handle(transport, clients);
-    let client_handle = ping_pong_client_manager_handle(transport, server_addr, clients);
+    let (server_handle, server_addr) = echo_server_handle(transport, clients);
+    let client_handle = echo_client_manager_handle(transport, server_addr, clients);
 
     server_handle.join().unwrap();
     client_handle.join().unwrap();

@@ -41,10 +41,18 @@ impl RemoteAddr {
     }
 }
 
-pub trait ToRemoteAddr: ToSocketAddrs {
-    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
-        Ok(RemoteAddr::SocketAddr(self.to_socket_addrs()?.next().unwrap()))
+impl ToSocketAddrs for RemoteAddr {
+    type Iter = std::option::IntoIter<SocketAddr>;
+    fn to_socket_addrs(&self) -> io::Result<Self::Iter> {
+        match self {
+            RemoteAddr::SocketAddr(addr) => addr.to_socket_addrs(),
+            RemoteAddr::Url(_) => Err(io::Error::new(io::ErrorKind::InvalidInput, "Malformed url")),
+        }
     }
+}
+
+pub trait ToRemoteAddr {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr>;
 }
 
 impl ToRemoteAddr for &str {
@@ -61,13 +69,34 @@ impl ToRemoteAddr for &str {
 
 impl ToRemoteAddr for String {
     fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
-        (&**self).to_remote_addr()
+        (&self as &str).to_remote_addr()
+    }
+}
+
+impl ToRemoteAddr for &String {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        (self as &str).to_remote_addr()
     }
 }
 
 impl ToRemoteAddr for SocketAddr {
     fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
         Ok(RemoteAddr::SocketAddr(*self))
+    }
+}
+
+impl ToRemoteAddr for RemoteAddr {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(self.clone())
+    }
+}
+
+impl std::fmt::Display for RemoteAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemoteAddr::SocketAddr(addr) => write!(f, "{}", addr),
+            RemoteAddr::Url(url) => write!(f, "{}", url),
+        }
     }
 }
 

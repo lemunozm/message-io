@@ -21,12 +21,12 @@ If you find a problem using the library or you have an improvement idea, do not 
 Managing sockets is hard because you need to fight with threads, concurrency,
 IO errors that come from the OS (which are really difficult to understand in some situations),
 serialization, encoding...
-And if you make use of non-blocking sockets, it adds a new layer of complexity:
+And if you make use of *non-blocking* sockets, it adds a new layer of complexity:
 synchronize the events that come asynchronously from the OS poll.
 
 `message-io` offers an easy way to deal with all these mentioned problems,
 making them transparently for you,
-the programmer that wants to make your application with its own problems.
+the programmer that wants to make an application with its own problems.
 For that, `message-io` offers a simple API and give only two concepts to understand:
 **messages** (the data you send and receive), and **endpoints** (the recipients of that data).
 This abstraction also offers the possibility to use the same API independently
@@ -36,7 +36,8 @@ You could change the protocol of your application in literally one line.
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
-- Multiples transports: **TCP**, **UDP** (with multicast option) and **WebSockets**.
+- Multiples transports: **TCP**, **UDP** (with multicast option) and
+  **WebSockets** (secure and non-secure option).
 - Internal encoding layer: handle messages, not data streams.
 - FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
@@ -44,7 +45,7 @@ You could change the protocol of your application in literally one line.
   - Abstraction from transport layer: do not think about sockets, think about messages and endpoints.
   - Only two main entities to use:
     - an extensible *event-queue* to manage all events synchronously,
-    - a *network* that manage all connections (connect, listen, remove, send, receive).
+    - a *network* to manage all connections (connect, listen, remove, send, receive).
   - Forget concurrence problems: handle thousands of active connections and listeners without any
     effort, "One thread to rule them all".
   - Easy error handling.
@@ -64,9 +65,7 @@ message-io = "0.7"
 - [API documentation](https://docs.rs/message-io/)
 - [Basic concepts](docs/basic_concepts.md)
 - [Examples](examples):
-  - [Basic TCP client and server](examples/tcp)
-  - [Basic UDP client and server](examples/udp)
-  - [Basic WebSocket client and server](examples/web_socket)
+  - [Ping Pong](examples/ping-pong) (a simple client server example)
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
   - [File transfer](examples/file-transfer)
@@ -115,17 +114,20 @@ fn main() {
 }
 ```
 
-## Test yourself!
-Clone the repository and test the TCP example that you can find in [`examples/tcp`](examples/tcp):
+## Test it yourself!
+Clone the repository and test the *Ping Pong* example.
 
 Run the server:
 ```
-cargo run --example tcp server
+cargo run --example ping-pong server tcp 3456
 ```
-In other terminals, run one or more clients:
+Run the client:
 ```
-cargo run --example tcp client <name>
+cargo run --example ping-pong client tcp 127.0.0.1:3456 awesome-client
 ```
+
+You can play with it changing the transport, running several clients, disconnect them, etc.
+See more [here](examples/ping-pong).
 
 ## Do you need a transport protocol that `message-io` doesn't have? Add an adapter! <span id="custom-adapter"><span>
 
@@ -143,7 +145,7 @@ If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#p
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
   traits that you find [here](https://docs.rs/message-io/0.7.0/message_io/adapter/index.html) (only 7 mandatory functions to implement, see the [template](src/adapters/template.rs)).
 
-1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
+1. Add a new field in the `Transport` enum found in `src/network.rs` to register your new adapter.
 
 That's all! You can use your new transport with the `message-io` API like any other.
 

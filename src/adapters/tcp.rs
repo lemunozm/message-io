@@ -86,7 +86,7 @@ impl Remote for RemoteResource {
         // TODO: The current implementation implies an active waiting,
         // improve it using POLLIN instead to avoid active waiting.
         // Note: Despite the fear that an active waiting could generate,
-        // this waiting only occurs in the rare case when the send method needs block.
+        // this waiting only occurs in the case when the receiver is full.
         let mut total_bytes_sent = 0;
         let total_bytes = encoding::PADDING + data.len();
         loop {

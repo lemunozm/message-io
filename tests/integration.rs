@@ -68,19 +68,21 @@ fn ping_pong_server_handle(
     expected_clients: usize,
 ) -> (JoinHandle<()>, SocketAddr)
 {
-    let mut event_queue = EventQueue::<NetEvent<String>>::new();
-    let sender = event_queue.sender().clone();
-    let mut network = Network::new(move |net_event| sender.send(net_event));
-
-    let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
-
-    let mut messages_received = 0;
-    let mut disconnections = 0;
-    let mut clients = HashSet::new();
-
+    let (tx, rx) = std::sync::mpsc::channel();
     let handle = thread::Builder::new()
         .name("test-server".into())
         .spawn(move || {
+            let mut event_queue = EventQueue::<NetEvent<String>>::new();
+            let sender = event_queue.sender().clone();
+            let mut network = Network::new(move |net_event| sender.send(net_event));
+
+            let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
+            tx.send(server_addr).unwrap();
+
+            let mut messages_received = 0;
+            let mut disconnections = 0;
+            let mut clients = HashSet::new();
+
             loop {
                 match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
                     NetEvent::Message(endpoint, message) => {
@@ -127,6 +129,7 @@ fn ping_pong_server_handle(
         })
         .unwrap();
 
+    let server_addr = rx.recv_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR);
     (handle, server_addr)
 }
 
@@ -139,33 +142,35 @@ fn ping_pong_client_manager_handle(
     thread::Builder::new()
         .name("test-client".into())
         .spawn(move || {
-            let mut event_queue = EventQueue::<NetEvent<String>>::new();
-            let sender = event_queue.sender().clone();
-            let mut network = Network::new(move |net_event| sender.send(net_event));
-            let mut clients = HashSet::new();
+            std::panic::catch_unwind(|| {
+                let mut event_queue = EventQueue::<NetEvent<String>>::new();
+                let sender = event_queue.sender().clone();
+                let mut network = Network::new(move |net_event| sender.send(net_event));
+                let mut clients = HashSet::new();
 
-            for _ in 0..clients_number {
-                let server_endpoint = network.connect(transport, server_addr).unwrap();
-                let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
-                assert_eq!(status, SendStatus::Sent);
-                assert!(clients.insert(server_endpoint));
-            }
-
-            loop {
-                match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-                    NetEvent::Message(endpoint, message) => {
-                        assert!(clients.remove(&endpoint));
-                        assert_eq!(message, SMALL_MESSAGE);
-                        network.remove_resource(endpoint.resource_id());
-                        if clients.len() == 0 {
-                            break //Exit from thread.
-                        }
-                    }
-                    NetEvent::Connected(_) => unreachable!(),
-                    NetEvent::Disconnected(_) => unreachable!(),
-                    NetEvent::DeserializationError(_) => unreachable!(),
+                for _ in 0..clients_number {
+                    let server_endpoint = network.connect(transport, server_addr).unwrap();
+                    let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
+                    assert_eq!(status, SendStatus::Sent);
+                    assert!(clients.insert(server_endpoint));
                 }
-            }
+
+                loop {
+                    match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+                        NetEvent::Message(endpoint, message) => {
+                            assert!(clients.remove(&endpoint));
+                            assert_eq!(message, SMALL_MESSAGE);
+                            network.remove_resource(endpoint.resource_id());
+                            if clients.len() == 0 {
+                                break //Exit from thread.
+                            }
+                        }
+                        NetEvent::Connected(_) => unreachable!(),
+                        NetEvent::Disconnected(_) => unreachable!(),
+                        NetEvent::DeserializationError(_) => unreachable!(),
+                    }
+                }
+            }).unwrap();
         })
         .unwrap()
 }
@@ -194,27 +199,31 @@ fn message_size(transport: Transport, message_size: usize) {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();
 
-    let server_handle = std::thread::spawn(move || {
-        let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
-        let sender = event_queue.sender().clone();
-        let mut network = Network::new(move |net_event| sender.send(net_event));
+    let server_handle = thread::Builder::new()
+        .name("test-server".into())
+        .spawn(move || {
+            std::panic::catch_unwind(|| {
+                let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
+                let sender = event_queue.sender().clone();
+                let mut network = Network::new(move |net_event| sender.send(net_event));
 
-        let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
+                let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
-        let receiver = network.connect(transport, receiver_addr).unwrap();
+                let receiver = network.connect(transport, receiver_addr).unwrap();
 
-        let status = network.send(receiver, sent_message.clone());
-        assert_eq!(status, SendStatus::Sent);
+                let status = network.send(receiver, sent_message.clone());
+                assert_eq!(status, SendStatus::Sent);
 
-        loop {
-            match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-                NetEvent::Message(_, message) => break assert_eq!(sent_message, message),
-                NetEvent::Connected(_) => (),
-                NetEvent::Disconnected(_) => (),
-                NetEvent::DeserializationError(_) => unreachable!(),
-            }
-        }
-    });
+                loop {
+                    match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+                        NetEvent::Message(_, message) => break assert_eq!(sent_message, message),
+                        NetEvent::Connected(_) => (),
+                        NetEvent::Disconnected(_) => (),
+                        NetEvent::DeserializationError(_) => unreachable!(),
+                    }
+                }
+            }).unwrap();
+        }).unwrap();
 
     server_handle.join().unwrap();
 }

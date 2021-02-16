@@ -32,14 +32,14 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr, name: &str) {
     loop {
         match event_queue.receive() {
             Event::Greet => {
-                let message = FromClientMessage::Greetings(format!("Hi, I am {}", name));
+                let message = FromClientMessage::Ping(name.into());
                 network.send(server_id, message);
                 event_queue.sender().send_with_timer(Event::Greet, Duration::from_secs(1));
             }
             Event::Network(net_event) => match net_event {
                 NetEvent::Message(_, message) => match message {
-                    FromServerMessage::CountGreetings(text, count) => {
-                        println!("Server says: '{}' for {} time", text, count)
+                    FromServerMessage::Pong(count) => {
+                        println!("Pong from server: {} time", count)
                     }
                 },
                 NetEvent::Connected(_) => unreachable!(), // Only generated when listen

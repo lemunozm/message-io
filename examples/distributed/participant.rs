@@ -7,8 +7,8 @@ use std::net::{SocketAddr};
 use std::collections::{HashMap};
 
 pub struct Participant {
-    event_queue: EventQueue<NetEvent>,
     network: Network,
+    event_queue: EventQueue<NetEvent>,
     name: String,
     discovery_endpoint: Endpoint,
     public_addr: SocketAddr,

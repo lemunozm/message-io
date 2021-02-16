@@ -94,7 +94,12 @@ impl NetworkEngine {
         Self { thread: Some(thread), thread_running, controllers }
     }
 
-    pub fn connect(&mut self, adapter_id: u8, addr: RemoteAddr) -> io::Result<Endpoint> {
+    pub fn connect(
+        &mut self,
+        adapter_id: u8,
+        addr: RemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)>
+    {
         self.controllers[adapter_id as usize].connect(addr)
     }
 
@@ -128,11 +133,12 @@ impl Drop for NetworkEngine {
 // It is faster and cleanest than to use an option that always must to be unwrapped.
 // (Even the user can not use bad the API in this context)
 
-const UNIMPLEMENTED_ADAPTER_ERR: &str = "The adapter id used do not reference an existing adapter";
+const UNIMPLEMENTED_ADAPTER_ERR: &str =
+    "The chosen adapter id doesn't reference an existing adapter";
 
 pub struct UnimplementedActionController;
 impl ActionController for UnimplementedActionController {
-    fn connect(&mut self, _: RemoteAddr) -> io::Result<Endpoint> {
+    fn connect(&mut self, _: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 

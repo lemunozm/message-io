@@ -12,9 +12,9 @@ Launch the server in a terminal:
 cargo run --example ping-pong server <transport> <port>
 ```
 
-Run a client with a name (one client per terminal):
+Run a client (one client per terminal):
 ```
-cargo run --example ping-pong client <transport> (<ip>:<port> | <url>) <name>
+cargo run --example ping-pong client <transport> (<ip>:<port> | <url>)
 ```
 You can play the disconnections and reconnections using `ctrl-c` over the clients.
 

@@ -26,7 +26,7 @@ fn main() {
 
     let addr = "239.255.0.1:3010";
     match network.connect(Transport::Udp, addr) {
-        Ok(endpoint) => {
+        Ok((endpoint, _)) => {
             println!("Notifying on the network");
             network.send(endpoint, Message::HelloLan(my_name.into()));
         }

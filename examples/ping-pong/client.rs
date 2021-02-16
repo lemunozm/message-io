@@ -13,27 +13,27 @@ enum Event {
     Greet,
 }
 
-pub fn run(transport: Transport, remote_addr: RemoteAddr, name: &str) {
+pub fn run(transport: Transport, remote_addr: RemoteAddr) {
     let mut event_queue = EventQueue::new();
 
-    let network_sender = event_queue.sender().clone();
-    let mut network = Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let sender = event_queue.sender().clone();
+    let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
 
-    let server_id = match network.connect(Transport::Tcp, remote_addr.clone()) {
-        Ok(server_id) => server_id,
+    let (server_id, local_addr) = match network.connect(Transport::Tcp, remote_addr.clone()) {
+        Ok(conn_info) => conn_info,
         Err(_) => {
             return println!("Can not connect to the server by {:?} to {}", transport, remote_addr)
         }
     };
 
     println!("Connect to server by TCP at {}", server_id.addr());
+    println!("Client identified by local port: {}", local_addr.port());
     event_queue.sender().send(Event::Greet);
 
     loop {
         match event_queue.receive() {
             Event::Greet => {
-                let message = FromClientMessage::Ping(name.into());
-                network.send(server_id, message);
+                network.send(server_id, FromClientMessage::Ping);
                 event_queue.sender().send_with_timer(Event::Greet, Duration::from_secs(1));
             }
             Event::Network(net_event) => match net_event {

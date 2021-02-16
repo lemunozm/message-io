@@ -34,7 +34,7 @@ impl Participant {
 
             // Connection to the discovery server.
             let discovery_addr = "127.0.0.1:5000";
-            if let Ok(endpoint) = network.connect(Transport::Tcp, discovery_addr) {
+            if let Ok((endpoint, _)) = network.connect(Transport::Tcp, discovery_addr) {
                 Some(Participant {
                     event_queue,
                     network,
@@ -112,7 +112,7 @@ impl Participant {
     }
 
     fn discovered_participant(&mut self, name: &str, addr: SocketAddr, message: &str) {
-        if let Ok(endpoint) = self.network.connect(Transport::Udp, addr) {
+        if let Ok((endpoint, _)) = self.network.connect(Transport::Udp, addr) {
             let gretings = format!("Hi '{}', {}", name, message);
             let message = Message::Gretings(self.name.clone(), gretings);
             self.network.send(endpoint, message);

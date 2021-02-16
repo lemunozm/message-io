@@ -7,6 +7,7 @@ mod driver;
 mod engine;
 mod adapters;
 mod remote_addr;
+mod transport;
 
 pub mod adapter;
 pub mod network;

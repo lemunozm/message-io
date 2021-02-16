@@ -8,7 +8,7 @@ use std::net::{ToSocketAddrs};
 
 const HELP_MSG: &str = concat!(
     "Usage: ping-pong server (tcp | udp | ws) [<port>]\n",
-    "       pong-pong client (tcp | udp | ws) (<ip>:<port>|url) <name>"
+    "       pong-pong client (tcp | udp | ws) (<ip>:<port>|url)"
 );
 
 pub fn main() {
@@ -23,13 +23,10 @@ pub fn main() {
 
     match args.get(1).unwrap_or(&"".into()).as_ref() {
         "client" => match args.get(3) {
-            Some(remote_addr) => match args.get(4) {
-                Some(name) => {
-                    let remote_addr = remote_addr.to_remote_addr().unwrap();
-                    client::run(transport, remote_addr, name);
-                }
-                None => return println!("{}", HELP_MSG),
-            },
+            Some(remote_addr) => {
+                let remote_addr = remote_addr.to_remote_addr().unwrap();
+                client::run(transport, remote_addr);
+            }
             None => return println!("{}", HELP_MSG),
         },
         "server" => {

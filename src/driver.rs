@@ -53,7 +53,7 @@ impl<S: Resource> ResourceRegister<S> {
 }
 
 pub trait ActionController {
-    fn connect(&mut self, addr: RemoteAddr) -> io::Result<Endpoint>;
+    fn connect(&mut self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)>;
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
     fn remove(&mut self, id: ResourceId) -> Option<()>;
@@ -97,14 +97,19 @@ impl<R: Remote, L: Local> Clone for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local> ActionController for Driver<R, L> {
-    fn connect(&mut self, addr: RemoteAddr) -> io::Result<Endpoint> {
+    fn connect(&mut self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         let remotes = &mut self.remote_register;
-        R::connect(addr).map(|(resource, addr)| Endpoint::new(remotes.add(resource, addr), addr))
+        R::connect(addr).map(|info| {
+            (
+                Endpoint::new(remotes.add(info.remote, info.peer_addr), info.peer_addr),
+                info.local_addr,
+            )
+        })
     }
 
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         let locals = &mut self.local_register;
-        L::listen(addr).map(|(resource, addr)| (locals.add(resource, addr), addr))
+        L::listen(addr).map(|info| (locals.add(info.local, info.local_addr), info.local_addr))
     }
 
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {

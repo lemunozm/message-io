@@ -1,4 +1,7 @@
-use crate::adapter::{Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{
+    Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
+    ListeningInfo,
+};
 use crate::remote_addr::{RemoteAddr};
 use crate::encoding::{self, Decoder};
 
@@ -42,11 +45,12 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)> {
-        let addr = remote_addr.socket_addr();
-        let stream = StdTcpStream::connect(addr)?;
+    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
+        let peer_addr = *remote_addr.socket_addr();
+        let stream = StdTcpStream::connect(peer_addr)?;
+        let local_addr = stream.local_addr()?;
         stream.set_nonblocking(true)?;
-        Ok((TcpStream::from_std(stream).into(), *addr))
+        Ok(ConnectionInfo { remote: TcpStream::from_std(stream).into(), local_addr, peer_addr })
     }
 
     fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
@@ -135,10 +139,10 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
+    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         let listener = TcpListener::bind(addr)?;
-        let real_addr = listener.local_addr().unwrap();
-        Ok((LocalResource { listener }, real_addr))
+        let local_addr = listener.local_addr().unwrap();
+        Ok(ListeningInfo { local: { LocalResource { listener } }, local_addr })
     }
 
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {

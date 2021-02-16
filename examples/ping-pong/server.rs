@@ -23,10 +23,10 @@ pub fn run(transport: Transport, addr: SocketAddr) {
         match event_queue.receive() {
             // Also you can use receive_timeout
             NetEvent::Message(endpoint, message) => match message {
-                FromClientMessage::Ping(name) => {
+                FromClientMessage::Ping => {
                     let count = &mut clients.get_mut(&endpoint).unwrap().count;
                     *count += 1;
-                    println!("Ping from {}, {} time, name: {}", endpoint.addr(), name, count);
+                    println!("Ping from {}, {} time", endpoint.addr(), count);
                     network.send(endpoint, FromServerMessage::Pong(*count));
                 }
             },

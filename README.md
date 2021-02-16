@@ -58,7 +58,7 @@ You could change the protocol of your application in literally one line.
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.7"
+message-io = "0.8"
 ```
 
 ### Documentation
@@ -123,7 +123,7 @@ cargo run --example ping-pong server tcp 3456
 ```
 Run the client:
 ```
-cargo run --example ping-pong client tcp 127.0.0.1:3456 awesome-client
+cargo run --example ping-pong client tcp 127.0.0.1:3456
 ```
 
 You can play with it changing the transport, running several clients, disconnect them, etc.
@@ -143,11 +143,15 @@ If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#p
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you find [here](https://docs.rs/message-io/0.7.0/message_io/adapter/index.html) (only 7 mandatory functions to implement, see the [template](src/adapters/template.rs)).
+  traits that you find [here](https://docs.rs/message-io/0.7.0/message_io/adapter/index.html).
+  It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
+  and take little more than 150 lines implement an adapter file.
 
-1. Add a new field in the `Transport` enum found in `src/network.rs` to register your new adapter.
+1. Add a new field in the `Transport` enum found in [src/transport.rs](src/transport.rs)
+  to register your new adapter.
 
-That's all! You can use your new transport with the `message-io` API like any other.
+That's all.
+You can use your new transport with the `message-io` API like any other.
 
-Oops, one step more, make a *Pull request* for everyone to use it :)
+Oops! one step more, make a *Pull request* so everyone can use it :)
 

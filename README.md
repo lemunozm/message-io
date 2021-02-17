@@ -4,7 +4,7 @@
 [![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
 
 # message-io
-`message-io` is an event-driven message library to build network applications **easily** and **fast**.
+`message-io` is an event-driven message library to build network applications **easy** and **fast**.
 The library manages and processes the socket data streams in order to offer a simple
 event message API to the user.
 Working as a **generic network manager**, it allows you to implement your own protocol

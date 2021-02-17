@@ -2,11 +2,11 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize)]
 pub enum FromClientMessage {
-    Ping, // name
+    Ping,
 }
 
 #[derive(Serialize, Deserialize)]
 pub enum FromServerMessage {
-    Pong(usize), // count. Used for connection oriented protocols
+    Pong(usize), // Used for connection oriented protocols
     UnknownPong, // Used for non-connection oriented protocols
 }

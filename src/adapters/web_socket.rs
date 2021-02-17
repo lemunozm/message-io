@@ -20,7 +20,7 @@ use std::sync::{Mutex};
 use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::io::{self, ErrorKind};
 
-/// Max message size
+/// Max message size for default config
 // From https://docs.rs/tungstenite/0.13.0/src/tungstenite/protocol/mod.rs.html#65
 pub const MAX_WS_PAYLOAD_LEN: usize = 64 << 20;
 
@@ -81,7 +81,10 @@ impl Remote for RemoteResource {
                 Err(HandshakeError::Interrupted(mid_handshake)) => {
                     handshake_result = mid_handshake.handshake();
                 }
-                Err(HandshakeError::Failure(err)) => panic!("WS connect handshak error: {}", err),
+                Err(HandshakeError::Failure(err)) => {
+                    //TODO: generate a io::Error
+                    panic!("WS connect handshake error: {}", err)
+                }
             }
         };
 
@@ -152,17 +155,20 @@ impl Local for LocalResource {
                     let mut handshake_result = ws_accept(stream);
                     let ws_socket = loop {
                         match handshake_result {
-                            Ok(ws_socket) => break ws_socket.into(),
+                            Ok(ws_socket) => break Some(ws_socket.into()),
                             Err(HandshakeError::Interrupted(mid_handshake)) => {
                                 handshake_result = mid_handshake.handshake();
                             }
-                            Err(HandshakeError::Failure(err)) => {
-                                panic!("Ws accept handshake error: {}", err)
+                            Err(HandshakeError::Failure(ref err)) => {
+                                log::error!("WS accept handshake error: {}", err);
+                                break None
                             }
                         }
                     };
 
-                    accept_remote(AcceptedType::Remote(addr, ws_socket));
+                    if let Some(ws_socket) = ws_socket {
+                        accept_remote(AcceptedType::Remote(addr, ws_socket));
+                    }
                 }
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,

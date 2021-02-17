@@ -1,4 +1,3 @@
-use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, Transport, SendStatus};
 use message_io::{MAX_UDP_PAYLOAD_LEN};
 
@@ -75,9 +74,7 @@ fn echo_server_handle(
         .name("test-server".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let mut event_queue = EventQueue::<NetEvent<String>>::new();
-                let sender = event_queue.sender().clone();
-                let mut network = Network::new(move |net_event| sender.send(net_event));
+                let (mut network, mut event_queue) = Network::split::<String>();
 
                 let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
                 tx.send(server_addr).unwrap();
@@ -148,9 +145,8 @@ fn echo_client_manager_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let mut event_queue = EventQueue::<NetEvent<String>>::new();
-                let sender = event_queue.sender().clone();
-                let mut network = Network::new(move |net_event| sender.send(net_event));
+                let (mut network, mut event_queue) = Network::split::<String>();
+
                 let mut clients = HashSet::new();
 
                 for _ in 0..clients_number {
@@ -212,14 +208,10 @@ fn message_size(transport: Transport, message_size: usize) {
         .name("test-server".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let mut event_queue = EventQueue::<NetEvent<Vec<u8>>>::new();
-                let sender = event_queue.sender().clone();
-                let mut network = Network::new(move |net_event| sender.send(net_event));
-
+                let (mut network, mut event_queue) = Network::split::<Vec<u8>>();
                 let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
                 let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
-
                 let status = network.send(receiver, sent_message.clone());
                 assert_eq!(status, SendStatus::Sent);
 

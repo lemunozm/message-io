@@ -143,7 +143,7 @@ If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#p
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you find [here](https://docs.rs/message-io/0.7.0/message_io/adapter/index.html).
+  traits that you find [here](https://docs.rs/message-io/0.8.0/message_io/adapter/index.html).
   It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
   and take little more than 150 lines implement an adapter file.
 

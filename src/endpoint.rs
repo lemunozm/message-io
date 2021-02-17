@@ -23,7 +23,7 @@ impl Endpoint {
         self.resource_id
     }
 
-    /// Returns the remote address of the endpoint.
+    /// Returns the peer address of the endpoint.
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }

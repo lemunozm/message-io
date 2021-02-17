@@ -1,4 +1,7 @@
-use crate::adapter::{Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{
+    Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
+    ListeningInfo,
+};
 use crate::remote_addr::{RemoteAddr};
 use crate::util::{OTHER_THREAD_ERR};
 
@@ -45,8 +48,8 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)> {
-        let (addr, url) = match remote_addr {
+    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
+        let (peer_addr, url) = match remote_addr {
             RemoteAddr::SocketAddr(addr) => {
                 (addr, Url::parse(&format!("ws://{}/message-io-default", addr)).unwrap())
             }
@@ -63,7 +66,8 @@ impl Remote for RemoteResource {
         };
 
         // Synchronous tcp handshake
-        let stream = StdTcpStream::connect(addr)?;
+        let stream = StdTcpStream::connect(peer_addr)?;
+        let local_addr = stream.local_addr()?;
 
         // Make it an asynchronous mio TcpStream
         stream.set_nonblocking(true)?;
@@ -71,15 +75,17 @@ impl Remote for RemoteResource {
 
         // Synchronous waiting for web socket handshake
         let mut handshake_result = ws_connect(url, stream);
-        loop {
+        let remote = loop {
             match handshake_result {
-                Ok((ws_socket, _)) => break Ok((RemoteResource::from(ws_socket), addr)),
+                Ok((ws_socket, _)) => break ws_socket.into(),
                 Err(HandshakeError::Interrupted(mid_handshake)) => {
                     handshake_result = mid_handshake.handshake();
                 }
                 Err(HandshakeError::Failure(err)) => panic!("WS connect handshak error: {}", err),
             }
-        }
+        };
+
+        Ok(ConnectionInfo { remote, peer_addr, local_addr })
     }
 
     fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
@@ -133,10 +139,10 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
+    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         let listener = TcpListener::bind(addr)?;
-        let real_addr = listener.local_addr().unwrap();
-        Ok((LocalResource { listener }, real_addr))
+        let local_addr = listener.local_addr().unwrap();
+        Ok(ListeningInfo { local: LocalResource { listener }, local_addr })
     }
 
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
@@ -146,7 +152,7 @@ impl Local for LocalResource {
                     let mut handshake_result = ws_accept(stream);
                     let ws_socket = loop {
                         match handshake_result {
-                            Ok(ws_socket) => break RemoteResource::from(ws_socket),
+                            Ok(ws_socket) => break ws_socket.into(),
                             Err(HandshakeError::Interrupted(mid_handshake)) => {
                                 handshake_result = mid_handshake.handshake();
                             }

@@ -149,7 +149,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
         let receiver_addr = recv_network.listen(transport, "127.0.0.1:0").unwrap().1;
 
         let mut send_network = Network::new(|_: NetEvent<M>| ());
-        let receiver = send_network.connect(transport, receiver_addr).unwrap();
+        let (receiver, _) = send_network.connect(transport, receiver_addr).unwrap();
 
         b.iter(|| {
             // The following process encodes, serializes and sends:
@@ -170,7 +170,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
         let mut network = Network::new(|_: NetEvent<M>| ());
 
         let receiver_addr = network.listen(transport, "127.0.0.1:0").unwrap().1;
-        let receiver = network.connect(transport, receiver_addr).unwrap();
+        let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
 
         b.iter(|| {
             // The following process encodes, serializes and sends:
@@ -196,7 +196,7 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
             let sender = send_event_queue.sender().clone();
             let mut send_network = Network::new(move |net_event| sender.send(net_event));
 
-            let receiver = send_network.connect(Transport::Tcp, receiver_addr).unwrap();
+            let (receiver, _) = send_network.connect(Transport::Tcp, receiver_addr).unwrap();
 
             let time = std::time::Instant::now();
             let receiver_handle = std::thread::spawn(move || {

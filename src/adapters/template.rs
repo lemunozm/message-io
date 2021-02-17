@@ -1,6 +1,9 @@
 #![allow(unused_variables)]
 
-use crate::adapter::{Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{
+    Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
+    ListeningInfo,
+};
 use crate::remote_addr::{RemoteAddr};
 
 use mio::event::{Source};
@@ -22,7 +25,7 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)> {
+    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
         todo!();
     }
 
@@ -45,7 +48,7 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
+    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         todo!();
     }
 

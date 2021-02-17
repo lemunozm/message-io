@@ -1,4 +1,7 @@
-use crate::adapter::{Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus};
+use crate::adapter::{
+    Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
+    ListeningInfo,
+};
 use crate::remote_addr::{RemoteAddr};
 
 use mio::net::{UdpSocket};
@@ -37,11 +40,12 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)> {
+    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
         let socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
-        let addr = remote_addr.socket_addr();
-        socket.connect(*addr)?;
-        Ok((RemoteResource { socket }, *addr))
+        let peer_addr = *remote_addr.socket_addr();
+        socket.connect(peer_addr)?;
+        let local_addr = socket.local_addr()?;
+        Ok(ConnectionInfo { remote: RemoteResource { socket }, local_addr, peer_addr })
     }
 
     fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
@@ -89,7 +93,7 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)> {
+    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         let socket = match addr {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
@@ -101,8 +105,8 @@ impl Local for LocalResource {
             _ => UdpSocket::bind(addr)?,
         };
 
-        let real_addr = socket.local_addr().unwrap();
-        Ok((LocalResource { socket }, real_addr))
+        let local_addr = socket.local_addr().unwrap();
+        Ok(ListeningInfo { local: { LocalResource { socket } }, local_addr })
     }
 
     fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {

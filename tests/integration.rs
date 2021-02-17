@@ -154,7 +154,7 @@ fn echo_client_manager_handle(
                 let mut clients = HashSet::new();
 
                 for _ in 0..clients_number {
-                    let server_endpoint = network.connect(transport, server_addr).unwrap();
+                    let (server_endpoint, _) = network.connect(transport, server_addr).unwrap();
                     let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
                     assert_eq!(status, SendStatus::Sent);
                     assert!(clients.insert(server_endpoint));
@@ -218,7 +218,7 @@ fn message_size(transport: Transport, message_size: usize) {
 
                 let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
-                let receiver = network.connect(transport, receiver_addr).unwrap();
+                let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
 
                 let status = network.send(receiver, sent_message.clone());
                 assert_eq!(status, SendStatus::Sent);

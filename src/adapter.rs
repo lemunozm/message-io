@@ -30,6 +30,27 @@ pub trait Resource: Send + Sync {
     fn source(&mut self) -> &mut dyn Source;
 }
 
+/// Plain struct used as a returned value of [`Remote::connect()`]
+pub struct ConnectionInfo<R: Remote> {
+    /// The new created remote resource
+    pub remote: R,
+
+    /// Local address of the interal resource used.
+    pub local_addr: SocketAddr,
+
+    /// Peer address of the interal resource used.
+    pub peer_addr: SocketAddr,
+}
+
+/// Plain struct used as a returned value of [`Local::listen()`]
+pub struct ListeningInfo<L: Local> {
+    /// The new created local resource
+    pub local: L,
+
+    /// Local address generated after perform the listening action.
+    pub local_addr: SocketAddr,
+}
+
 /// The following represents the posible status that [`crate::network::Network::send()`]
 /// and [`crate::network::Network::send_all()`] calls can return.
 /// The library do not encourage to perform the check of this status for each `send()` call,
@@ -78,7 +99,7 @@ pub trait Remote: Resource + Sized {
     /// The [`RemoteAddr`] contains either a [`SocketAddr`] or a [`url::Url`].
     /// It is in charge of deciding what to do in both cases.
     /// It also must return the extracted address as `SocketAddr`.
-    fn connect(remote_addr: RemoteAddr) -> io::Result<(Self, SocketAddr)>;
+    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>>;
 
     /// Called when a remote endpoint received an event.
     /// It means that the resource has available data to read,
@@ -125,7 +146,7 @@ pub trait Local: Resource + Sized {
     /// The **implementator** is in change of creating the corresponding local resource.
     /// It also must returned the listening address since it could not be the same as param `addr`
     /// (e.g. listening from port `0`).
-    fn listen(addr: SocketAddr) -> io::Result<(Self, SocketAddr)>;
+    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>>;
 
     /// Called when a local resource received an event.
     /// It means that some resource have tried to connect.

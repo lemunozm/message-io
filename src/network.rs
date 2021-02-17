@@ -2,21 +2,13 @@ pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
 pub use crate::adapter::{SendStatus};
 pub use crate::remote_addr::{RemoteAddr, ToRemoteAddr};
+pub use crate::transport::{Transport};
 
 use crate::events::{EventQueue};
 use crate::engine::{NetworkEngine, AdapterLauncher};
 use crate::driver::{AdapterEvent};
-use crate::adapters::{
-    tcp::{TcpAdapter},
-    udp::{UdpAdapter},
-    web_socket::{WsAdapter},
-};
 
 use serde::{Serialize, Deserialize};
-
-use num_enum::IntoPrimitive;
-
-use strum::{IntoEnumIterator, EnumIter};
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::io::{self};
@@ -50,37 +42,6 @@ where M: for<'b> Deserialize<'b> + Send + 'static
     DeserializationError(Endpoint),
 }
 
-/// Enum to identified the underlying transport used.
-/// It can be passed to [`Network::connect()]` and [`Network::listen()`] methods to specify
-/// the transport used.
-#[derive(IntoPrimitive, EnumIter)]
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum Transport {
-    Tcp,
-    Udp,
-    Ws,
-}
-
-impl Transport {
-    /// Returns the adapter id used for this transport.
-    /// It is equivalent to the position of the enum starting by 0
-    pub fn id(self) -> u8 {
-        self.into()
-    }
-
-    /// Associates a `Transport` to its adapter.
-    /// This method mounts the adapter to be used in the `NetworkEngine`
-    fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>)
-    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
-        match self {
-            Transport::Tcp => launcher.mount(self.id(), TcpAdapter),
-            Transport::Udp => launcher.mount(self.id(), UdpAdapter),
-            Transport::Ws => launcher.mount(self.id(), WsAdapter),
-        };
-    }
-}
-
 /// Network is in charge of managing all the connections transparently.
 /// It transforms raw data from the network into message events and vice versa,
 /// and manages the different adapters for you.
@@ -100,7 +61,7 @@ impl Network {
         C: Fn(NetEvent<M>) + Send + 'static,
     {
         let mut launcher = AdapterLauncher::default();
-        Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
+        Transport::mount_all(&mut launcher);
 
         let engine = NetworkEngine::new(launcher, move |endpoint, adapter_event| {
             let event = match adapter_event {
@@ -148,7 +109,7 @@ impl Network {
         &mut self,
         transport: Transport,
         addr: impl ToRemoteAddr,
-    ) -> io::Result<Endpoint>
+    ) -> io::Result<(Endpoint, SocketAddr)>
     {
         let addr = addr.to_remote_addr().unwrap();
         self.engine.connect(transport.id(), addr)

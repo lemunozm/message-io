@@ -1,6 +1,7 @@
 # Changelog
 
-## Current version
+## Release 0.8
+- Returned `local_addr` at `connect()` function.
 - Fixed ping-pong example.
 
 ## Release 0.7.1

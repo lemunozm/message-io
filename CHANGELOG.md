@@ -1,6 +1,10 @@
 # Changelog
 
-## Release 0.8
+## Release 0.8.1
+- Fixed ping-pong example for `udp` and `ws`.
+- Protect Websocket listeners from erronous acceptions.
+
+## Release 0.8.0
 - Returned `local_addr` at `connect()` function.
 - Fixed ping-pong example.
 

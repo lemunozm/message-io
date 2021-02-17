@@ -7,5 +7,6 @@ pub enum FromClientMessage {
 
 #[derive(Serialize, Deserialize)]
 pub enum FromServerMessage {
-    Pong(usize), // count
+    Pong(usize), // count. Used for connection oriented protocols
+    UnknownPong, // Used for non-connection oriented protocols
 }

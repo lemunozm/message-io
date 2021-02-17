@@ -46,3 +46,9 @@ impl Transport {
         Transport::iter().for_each(|transport| transport.mount_adapter(launcher));
     }
 }
+
+impl std::fmt::Display for Transport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}

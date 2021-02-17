@@ -21,12 +21,12 @@ If you find a problem using the library or you have an improvement idea, do not 
 Managing sockets is hard because you need to fight with threads, concurrency,
 IO errors that come from the OS (which are really difficult to understand in some situations),
 serialization, encoding...
-And if you make use of non-blocking sockets, it adds a new layer of complexity:
+And if you make use of *non-blocking* sockets, it adds a new layer of complexity:
 synchronize the events that come asynchronously from the OS poll.
 
 `message-io` offers an easy way to deal with all these mentioned problems,
 making them transparently for you,
-the programmer that wants to make your application with its own problems.
+the programmer that wants to make an application with its own problems.
 For that, `message-io` offers a simple API and give only two concepts to understand:
 **messages** (the data you send and receive), and **endpoints** (the recipients of that data).
 This abstraction also offers the possibility to use the same API independently
@@ -36,7 +36,8 @@ You could change the protocol of your application in literally one line.
 ## Features
 - Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
-- TCP and UDP (with multicast option) protocols.
+- Multiples transports: **TCP**, **UDP** (with multicast option) and
+  **WebSockets** (secure and non-secure option).
 - Internal encoding layer: handle messages, not data streams.
 - FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
@@ -44,14 +45,14 @@ You could change the protocol of your application in literally one line.
   - Abstraction from transport layer: do not think about sockets, think about messages and endpoints.
   - Only two main entities to use:
     - an extensible *event-queue* to manage all events synchronously,
-    - a *network* that manage all connections (connect, listen, remove, send, receive).
+    - a *network* to manage all connections (connect, listen, remove, send, receive).
   - Forget concurrence problems: handle thousands of active connections and listeners without any
     effort, "One thread to rule them all".
   - Easy error handling.
     Do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.
-    - Binary serialization.
+    - Binary serialization (using [bincode](https://github.com/servo/bincode))
     - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
@@ -64,9 +65,7 @@ message-io = "0.7"
 - [API documentation](https://docs.rs/message-io/)
 - [Basic concepts](docs/basic_concepts.md)
 - [Examples](examples):
-
-  - [Basic TCP client and server](examples/tcp)
-  - [Basic UDP client and server](examples/udp)
+  - [Ping Pong](examples/ping-pong) (a simple client server example)
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
   - [File transfer](examples/file-transfer)
@@ -76,76 +75,59 @@ message-io = "0.7"
   - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game.
     (under development, but the communication part using `message-io` is almost complete for reference).
 
-### TCP & UDP echo server
+### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and respond to them.
-It is capable to manage several client connections and listen from 2 differents protocols at same time.
+It is capable to manage several client connections and listen from 3 differents protocols at same time.
 
 ```rust
-use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, Transport};
-
 use serde::{Serialize, Deserialize};
 
-#[derive(Deserialize)]
-enum InputMessage {
-    HelloServer(String),
-    // Other input messages here
-}
-
-#[derive(Serialize)]
-enum OutputMessage {
-    HelloClient(String),
-    // Other output messages here
-}
-
-enum Event {
-    Network(NetEvent<InputMessage>),
-    // Other user events here
+#[derive(Serialize, Deserialize)]
+enum Message {
+    Hello(String),
+    // Other messages here
 }
 
 fn main() {
-    let mut event_queue = EventQueue::new();
+    let (mut network, mut events) = Network::split();
 
-    // Create Network, the callback will push the network event into the event queue
-    let sender = event_queue.sender().clone();
-    let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
-
-    // Listen from TCP and UDP messages on ports 3005.
-    let addr = "0.0.0.0:3005";
-    network.listen(Transport::Tcp, addr).unwrap();
-    network.listen(Transport::Udp, addr).unwrap();
+    // Listen for TCP, UDP and WebSocket messages.
+    network.listen(Transport::Tcp, "0.0.0.0:3042").unwrap();
+    network.listen(Transport::Udp, "0.0.0.0:3043").unwrap();
+    network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); //WebSockets
 
     loop {
-        match event_queue.receive() { // Read the next event or wait until have it.
-            Event::Network(net_event) => match net_event {
-                NetEvent::Message(endpoint, message) => match message {
-                    InputMessage::HelloServer(msg) => {
-                        println!("Received: {}", msg);
-                        network.send(endpoint, OutputMessage::HelloClient(msg));
-                    },
-                    //Other input messages here
+        match events.receive() { // Read the next event or wait until have it.
+            NetEvent::Message(endpoint, message) => match message {
+                Message::Hello(msg) => {
+                    println!("Received: {}", msg);
+                    network.send(endpoint, Message::Hello(msg));
                 },
-                NetEvent::Connected(_endpoint) => println!("TCP Client connected"),
-                NetEvent::Disconnected(_endpoint) => println!("TCP Client disconnected"),
-                NetEvent::DeserializationError(_) => (),
+                //Other messages here
             },
-            // Other events here
+            NetEvent::Connected(_endpoint) => println!("Client connected"), // Tcp or Ws
+            NetEvent::Disconnected(_endpoint) => println!("Client disconnected"), //Tcp or Ws
+            NetEvent::DeserializationError(_) => (),
         }
     }
 }
 ```
 
-## Test yourself!
-Clone the repository and test the TCP example that you can find in [`examples/tcp`](examples/tcp):
+## Test it yourself!
+Clone the repository and test the *Ping Pong* example.
 
 Run the server:
 ```
-cargo run --example tcp server
+cargo run --example ping-pong server tcp 3456
 ```
-In other terminals, run one or more clients:
+Run the client:
 ```
-cargo run --example tcp client <name>
+cargo run --example ping-pong client tcp 127.0.0.1:3456 awesome-client
 ```
+
+You can play with it changing the transport, running several clients, disconnect them, etc.
+See more [here](examples/ping-pong).
 
 ## Do you need a transport protocol that `message-io` doesn't have? Add an adapter! <span id="custom-adapter"><span>
 
@@ -163,7 +145,7 @@ If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#p
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
   traits that you find [here](https://docs.rs/message-io/0.7.0/message_io/adapter/index.html) (only 7 mandatory functions to implement, see the [template](src/adapters/template.rs)).
 
-1. Add a new field in the `Transport` enum found in [`src/network.rs`] to register your new adapter.
+1. Add a new field in the `Transport` enum found in `src/network.rs` to register your new adapter.
 
 That's all! You can use your new transport with the `message-io` API like any other.
 

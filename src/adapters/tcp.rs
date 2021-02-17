@@ -86,7 +86,7 @@ impl Remote for RemoteResource {
         // TODO: The current implementation implies an active waiting,
         // improve it using POLLIN instead to avoid active waiting.
         // Note: Despite the fear that an active waiting could generate,
-        // this waiting only occurs in the rare case when the send method needs block.
+        // this waiting only occurs in the case when the receiver is full.
         let mut total_bytes_sent = 0;
         let total_bytes = encoding::PADDING + data.len();
         loop {
@@ -116,10 +116,7 @@ impl Remote for RemoteResource {
                 // an Event::Disconnection will be generated later.
                 // It is possible to reach this point if the sending method is produced
                 // before the disconnection/reset event is generated.
-                Err(err) => {
-                    log::error!("TCP send error: {}", err);
-                    break SendStatus::ResourceNotFound
-                }
+                Err(_) => break SendStatus::ResourceNotFound,
             }
         }
     }
@@ -150,7 +147,7 @@ impl Local for LocalResource {
                 Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream.into())),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(err) => break log::trace!("TCP accept error: {}", err), // Should not happen
+                Err(err) => break log::error!("TCP accept error: {}", err), // Should not happen
             }
         }
     }

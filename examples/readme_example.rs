@@ -1,52 +1,32 @@
-use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, Transport};
-
 use serde::{Serialize, Deserialize};
 
-#[derive(Deserialize)]
-enum InputMessage {
-    HelloServer(String),
-    // Other input messages here
-}
-
-#[derive(Serialize)]
-enum OutputMessage {
-    HelloClient(String),
-    // Other output messages here
-}
-
-enum Event {
-    Network(NetEvent<InputMessage>),
-    // Other user events here
+#[derive(Serialize, Deserialize)]
+enum Message {
+    Hello(String),
+    // Other messages here
 }
 
 fn main() {
-    let mut event_queue = EventQueue::new();
+    let (mut network, mut events) = Network::split();
 
-    // Create Network, the callback will push the network event into the event queue
-    let sender = event_queue.sender().clone();
-    let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
-
-    // Listen from TCP and UDP messages on ports 3005.
-    let addr = "0.0.0.0:3005";
-    network.listen(Transport::Tcp, addr).unwrap();
-    network.listen(Transport::Udp, addr).unwrap();
+    // Listen for TCP, UDP and WebSocket messages.
+    network.listen(Transport::Tcp, "0.0.0.0:3042").unwrap();
+    network.listen(Transport::Udp, "0.0.0.0:3043").unwrap();
+    network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); //WebSockets
 
     loop {
-        match event_queue.receive() { // Read the next event or wait until have it.
-            Event::Network(net_event) => match net_event {
-                NetEvent::Message(endpoint, message) => match message {
-                    InputMessage::HelloServer(msg) => {
-                        println!("Received: {}", msg);
-                        network.send(endpoint, OutputMessage::HelloClient(msg));
-                    },
-                    //Other input messages here
+        match events.receive() { // Read the next event or wait until have it.
+            NetEvent::Message(endpoint, message) => match message {
+                Message::Hello(msg) => {
+                    println!("Received: {}", msg);
+                    network.send(endpoint, Message::Hello(msg));
                 },
-                NetEvent::Connected(_endpoint) => println!("TCP Client connected"),
-                NetEvent::Disconnected(_endpoint) => println!("TCP Client disconnected"),
-                NetEvent::DeserializationError(_) => (),
+                //Other messages here
             },
-            // Other events here
+            NetEvent::Connected(_endpoint) => println!("Client connected"), // Tcp or Ws
+            NetEvent::Disconnected(_endpoint) => println!("Client disconnected"), //Tcp or Ws
+            NetEvent::DeserializationError(_) => (),
         }
     }
 }

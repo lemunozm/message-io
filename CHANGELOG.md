@@ -1,5 +1,11 @@
 # Changelog
 
+## Release 0.7.1
+- Added WebSocket support based in `tungstenite-rs`
+- Added `Network::split()` function.
+- Join `udp` and `tcp` examples to make the `ping-pong` example with *WebSocket* support.
+- Improved `RemoteAddr` traits.
+
 ## Release 0.7.0
 - Internal improvements in order to use one thread for all adapters.
 - Clean architecture to implement new adapters easier (an internal API).

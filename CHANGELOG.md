@@ -1,5 +1,8 @@
 # Changelog
 
+## Current version
+- Fixed ping-pong example.
+
 ## Release 0.7.1
 - Added WebSocket support based in `tungstenite-rs`
 - Added `Network::split()` function.

@@ -23,12 +23,11 @@ pub fn run(transport: Transport, addr: SocketAddr) {
         match event_queue.receive() {
             // Also you can use receive_timeout
             NetEvent::Message(endpoint, message) => match message {
-                FromClientMessage::Greetings(text) => {
-                    let mut count = clients.get_mut(&endpoint).unwrap().count;
-                    count += 1;
-                    println!("Client ({}) says '{}' {} times", endpoint.addr(), text, count);
-                    let msg = format!("Hi, I hear you for {} time", count);
-                    network.send(endpoint, FromServerMessage::CountGreetings(msg, count));
+                FromClientMessage::Ping(name) => {
+                    let count = &mut clients.get_mut(&endpoint).unwrap().count;
+                    *count += 1;
+                    println!("Ping from {}, {} time, name: {}", endpoint.addr(), name, count);
+                    network.send(endpoint, FromServerMessage::Pong(*count));
                 }
             },
             NetEvent::Connected(endpoint) => {

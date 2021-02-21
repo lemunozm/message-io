@@ -1,7 +1,6 @@
 mod util;
 mod resource_id;
 mod endpoint;
-mod encoding;
 mod poll;
 mod driver;
 mod engine;
@@ -9,6 +8,7 @@ mod adapters;
 mod remote_addr;
 mod transport;
 
+pub mod encoding;
 pub mod adapter;
 pub mod network;
 pub mod events;

@@ -37,11 +37,10 @@ impl Decoder {
             if let Some(expected_size) = decode_size(&next_data) {
                 let remaining = &next_data[PADDING..];
                 if remaining.len() >= expected_size {
-                    let (ready, remaining) = remaining.split_at(expected_size);
-                    decoded_callback(ready);
-                    if !remaining.is_empty() {
-                        next_data = remaining;
-                        continue
+                    let (decoded, not_decoded) = remaining.split_at(expected_size);
+                    decoded_callback(decoded);
+                    if !not_decoded.is_empty() {
+                        next_data = not_decoded;
                     }
                     else {
                         break
@@ -88,9 +87,9 @@ impl Decoder {
     }
 
     /// Tries to decode data without reserve any memory, direcly from `data`.
-    /// If `decoded_callback` will be called for each decoded message.
-    /// If the content data is not enough to decoding a message, the data will be stored
-    /// and used when more data is decoded (successives calls).
+    /// `decoded_callback` will be called for each decoded message.
+    /// If `data` is not enough to decoding a message, the data will be stored
+    /// until more data is decoded (more successives calls to this function).
     pub fn decode(&mut self, data: &[u8], mut decoded_callback: impl FnMut(&[u8])) {
         if self.stored.is_empty() {
             self.try_decode(data, decoded_callback);

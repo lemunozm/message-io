@@ -139,7 +139,7 @@ and the internal **adapter API** for those who want to add their protocol adapte
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vRMwZsL8Tki3Sq9Zc2hpZ8L3bJPuj38zgiMKzBCXsX3wrPnfyG2hp-ijmDFUPqicEQZFeyUFxhcdJMB/pub?w=546&h=276"/>
 </p>
 
-If the protocol can be built in top on [`mio`](https://github.com/tokio-rs/mio#platforms)
+If the protocol can be built in top of [`mio`](https://github.com/tokio-rs/mio)
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the

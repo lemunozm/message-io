@@ -90,13 +90,13 @@ impl Remote for RemoteResource {
         // TODO: The current implementation implies an active waiting,
         // improve it using POLLIN instead to avoid active waiting.
         // Note: Despite the fear that an active waiting could generate,
-        // this waiting only occurs in the case when the receiver is full.
+        // this only occurs in the case when the receiver is full because reads slower that it sends.
         let mut total_bytes_sent = 0;
         let total_bytes = encoding::PADDING + data.len();
         loop {
             let data_to_send = match total_bytes_sent < encoding::PADDING {
                 true => &encoded_size[total_bytes_sent..],
-                false => &data[(total_bytes_sent - encoding::PADDING)..],
+                false => &data[total_bytes_sent - encoding::PADDING..],
             };
 
             let stream = &self.stream;
@@ -106,20 +106,11 @@ impl Remote for RemoteResource {
                     if total_bytes_sent == total_bytes {
                         break SendStatus::Sent
                     }
-                    // We get sending to data, but not the totality.
-                    // We start waiting actively.
                 }
-
-                // If WouldBlock is received in this non-blocking socket means that
-                // the sending buffer is full and it should wait to send more data.
-                // This occurs when huge amounts of data are sent and It could be
-                // intensified if the remote endpoint reads slower than this enpoint sends.
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
 
                 // Others errors are considered fatal for the connection.
-                // an Event::Disconnection will be generated later.
-                // It is possible to reach this point if the sending method is produced
-                // before the disconnection/reset event is generated.
+                // a Event::Disconnection will be generated later.
                 Err(_) => break SendStatus::ResourceNotFound,
             }
         }

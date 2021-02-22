@@ -18,6 +18,7 @@ use std::io::{self};
 type ActionControllers = Vec<Box<dyn ActionController + Send>>;
 type EventProcessors<C> = Vec<Box<dyn EventProcessor<C> + Send>>;
 
+/// Used to configured the engine
 pub struct AdapterLauncher<C> {
     poll: Poll,
     controllers: ActionControllers,
@@ -45,6 +46,7 @@ where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
 impl<C> AdapterLauncher<C>
 where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
 {
+    /// Mount an adapter associating it with an id.
     pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
         let index = adapter_id as usize;
 
@@ -54,15 +56,19 @@ where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
         self.processors[index] = Box::new(driver) as Box<(dyn EventProcessor<C> + Send)>;
     }
 
+    /// Consume this instance to obtain the adapter handles.
     fn launch(self) -> (Poll, ActionControllers, EventProcessors<C>) {
         (self.poll, self.controllers, self.processors)
     }
 }
 
+/// The core of the system network of message-io.
+/// It is in change of managing the adapters, wake up from events and performs the user actions.
 pub struct NetworkEngine {
     thread: Option<JoinHandle<()>>,
     thread_running: Arc<AtomicBool>,
     controllers: ActionControllers,
+    send_all_status: Vec<SendStatus>, //cached for performance
 }
 
 impl NetworkEngine {
@@ -91,9 +97,10 @@ impl NetworkEngine {
             })
             .unwrap();
 
-        Self { thread: Some(thread), thread_running, controllers }
+        Self { thread: Some(thread), thread_running, controllers, send_all_status: Vec::new() }
     }
 
+    /// Similar to [`crate::network::Network::connect()`] but it accepts and id.
     pub fn connect(
         &mut self,
         adapter_id: u8,
@@ -103,6 +110,7 @@ impl NetworkEngine {
         self.controllers[adapter_id as usize].connect(addr)
     }
 
+    /// Similar to [`crate::network::Network::listen()`] but it accepts and id.
     pub fn listen(
         &mut self,
         adapter_id: u8,
@@ -112,12 +120,31 @@ impl NetworkEngine {
         self.controllers[adapter_id as usize].listen(addr)
     }
 
+    /// See [`crate::network::Network::remove_resource()`].
     pub fn remove(&mut self, id: ResourceId) -> Option<()> {
         self.controllers[id.adapter_id() as usize].remove(id)
     }
 
+    /// Similar to [`crate::network::Network::send()`] but it accepts a raw message.
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data)
+    }
+
+    /// Similar to [`crate::network::Network::send_all()`] but it accepts a raw message.
+    pub fn send_all<'b>(
+        &mut self,
+        endpoints: impl IntoIterator<Item = &'b Endpoint>,
+        data: &[u8],
+    ) -> &Vec<SendStatus>
+    {
+        self.send_all_status.clear();
+        for endpoint in endpoints {
+            let status = self.controllers[endpoint.resource_id().adapter_id() as usize]
+                .send(*endpoint, data);
+            self.send_all_status.push(status);
+            log::trace!("Message sent to {}, {:?}", endpoint, status);
+        }
+        &self.send_all_status
     }
 }
 
@@ -136,7 +163,7 @@ impl Drop for NetworkEngine {
 const UNIMPLEMENTED_ADAPTER_ERR: &str =
     "The chosen adapter id doesn't reference an existing adapter";
 
-pub struct UnimplementedActionController;
+struct UnimplementedActionController;
 impl ActionController for UnimplementedActionController {
     fn connect(&mut self, _: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
@@ -155,7 +182,7 @@ impl ActionController for UnimplementedActionController {
     }
 }
 
-pub struct UnimplementedEventProcessor;
+struct UnimplementedEventProcessor;
 impl<C> EventProcessor<C> for UnimplementedEventProcessor
 where C: Fn(Endpoint, AdapterEvent<'_>)
 {

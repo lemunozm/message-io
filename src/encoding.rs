@@ -41,7 +41,7 @@ impl Decoder {
                     decoded_callback(decoded);
                     if !not_decoded.is_empty() {
                         next_data = not_decoded;
-                        continue;
+                        continue
                     }
                     else {
                         break

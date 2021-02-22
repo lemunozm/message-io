@@ -47,8 +47,7 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 /// and manages the different adapters for you.
 pub struct Network {
     engine: NetworkEngine,
-    output_buffer: Vec<u8>,           //cached for preformance
-    send_all_status: Vec<SendStatus>, //cached for performance
+    output_buffer: Vec<u8>, //cached for preformance
 }
 
 impl Network {
@@ -84,7 +83,7 @@ impl Network {
             event_callback(event);
         });
 
-        Network { engine, output_buffer: Vec::new(), send_all_status: Vec::new() }
+        Network { engine, output_buffer: Vec::new() }
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
@@ -174,12 +173,6 @@ impl Network {
     {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        self.send_all_status.clear();
-        for endpoint in endpoints {
-            let status = self.engine.send(*endpoint, &self.output_buffer);
-            self.send_all_status.push(status);
-            log::trace!("Message sent to {}, {:?}", endpoint, status);
-        }
-        &self.send_all_status
+        self.engine.send_all(endpoints, &self.output_buffer)
     }
 }

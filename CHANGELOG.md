@@ -1,5 +1,9 @@
 # Changelog
 
+## Current version
+- Non-blocking Websocket acception.
+  It will improves the speed when you are listen for a websocket connection.
+
 ## Release 0.8.1
 - Fixed ping-pong example for `udp` and `ws`.
 - Protect Websocket listeners from erronous acceptions.

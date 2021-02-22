@@ -1,6 +1,4 @@
-use crate::endpoint::{Endpoint};
 use crate::engine::{AdapterLauncher};
-use crate::driver::{AdapterEvent};
 use crate::adapters::{
     tcp::{TcpAdapter},
     udp::{UdpAdapter},
@@ -9,7 +7,7 @@ use crate::adapters::{
 
 use num_enum::IntoPrimitive;
 
-use strum::{IntoEnumIterator, EnumIter};
+use strum::{EnumIter};
 
 /// Enum to identified the underlying transport used.
 /// It can be passed to [`crate::network::Network::connect()]` and
@@ -32,18 +30,12 @@ impl Transport {
 
     /// Associates an adapter.
     /// This method mounts the adapter to be used in the `NetworkEngine`
-    fn mount_adapter<C>(self, launcher: &mut AdapterLauncher<C>)
-    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
+    pub fn mount_adapter(self, launcher: &mut AdapterLauncher) {
         match self {
             Transport::Tcp => launcher.mount(self.id(), TcpAdapter),
             Transport::Udp => launcher.mount(self.id(), UdpAdapter),
             Transport::Ws => launcher.mount(self.id(), WsAdapter),
         };
-    }
-
-    pub(crate) fn mount_all<C>(launcher: &mut AdapterLauncher<C>)
-    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
-        Transport::iter().for_each(|transport| transport.mount_adapter(launcher));
     }
 }
 

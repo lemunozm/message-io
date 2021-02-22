@@ -59,10 +59,8 @@ pub trait ActionController {
     fn remove(&mut self, id: ResourceId) -> Option<()>;
 }
 
-pub trait EventProcessor<C>
-where C: Fn(Endpoint, AdapterEvent<'_>)
-{
-    fn try_process(&mut self, id: ResourceId, event_callback: &mut C);
+pub trait EventProcessor {
+    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(Endpoint, AdapterEvent<'_>));
 }
 
 pub struct Driver<R: Remote, L: Local> {
@@ -150,10 +148,8 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
     }
 }
 
-impl<C, R: Remote, L: Local<Remote = R>> EventProcessor<C> for Driver<R, L>
-where C: Fn(Endpoint, AdapterEvent<'_>)
-{
-    fn try_process(&mut self, id: ResourceId, event_callback: &mut C) {
+impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
+    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(Endpoint, AdapterEvent<'_>)) {
         match id.resource_type() {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);

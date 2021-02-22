@@ -16,19 +16,17 @@ use std::thread::{self, JoinHandle};
 use std::io::{self};
 
 type ActionControllers = Vec<Box<dyn ActionController + Send>>;
-type EventProcessors<C> = Vec<Box<dyn EventProcessor<C> + Send>>;
+type EventProcessors = Vec<Box<dyn EventProcessor + Send>>;
 
 /// Used to configured the engine
-pub struct AdapterLauncher<C> {
+pub struct AdapterLauncher {
     poll: Poll,
     controllers: ActionControllers,
-    processors: EventProcessors<C>,
+    processors: EventProcessors,
 }
 
-impl<C> Default for AdapterLauncher<C>
-where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
-{
-    fn default() -> AdapterLauncher<C> {
+impl Default for AdapterLauncher {
+    fn default() -> AdapterLauncher {
         Self {
             poll: Poll::default(),
             controllers: (0..ResourceId::ADAPTER_ID_MAX)
@@ -37,15 +35,13 @@ where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
                 })
                 .collect::<Vec<_>>(),
             processors: (0..ResourceId::ADAPTER_ID_MAX)
-                .map(|_| Box::new(UnimplementedEventProcessor) as Box<dyn EventProcessor<C> + Send>)
+                .map(|_| Box::new(UnimplementedEventProcessor) as Box<dyn EventProcessor + Send>)
                 .collect(),
         }
     }
 }
 
-impl<C> AdapterLauncher<C>
-where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
-{
+impl AdapterLauncher {
     /// Mount an adapter associating it with an id.
     pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
         let index = adapter_id as usize;
@@ -53,11 +49,11 @@ where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static
         let driver = Driver::new(adapter, adapter_id, &mut self.poll);
 
         self.controllers[index] = Box::new(driver.clone()) as Box<(dyn ActionController + Send)>;
-        self.processors[index] = Box::new(driver) as Box<(dyn EventProcessor<C> + Send)>;
+        self.processors[index] = Box::new(driver) as Box<(dyn EventProcessor + Send)>;
     }
 
     /// Consume this instance to obtain the adapter handles.
-    fn launch(self) -> (Poll, ActionControllers, EventProcessors<C>) {
+    fn launch(self) -> (Poll, ActionControllers, EventProcessors) {
         (self.poll, self.controllers, self.processors)
     }
 }
@@ -74,39 +70,53 @@ pub struct NetworkEngine {
 impl NetworkEngine {
     const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 
-    pub fn new<C, D>(launcher: AdapterLauncher<C>, mut event_callback: D) -> Self
-    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static,
-          D: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
+    pub fn new(
+        launcher: AdapterLauncher,
+        event_callback: impl Fn(Endpoint, AdapterEvent<'_>) + Send + 'static,
+    ) -> Self
+    {
         let thread_running = Arc::new(AtomicBool::new(true));
         let running = thread_running.clone();
 
-        let (mut poll, controllers, mut processors) = launcher.launch();
+        let (poll, controllers, processors) = launcher.launch();
 
-        let thread = Self::run_processor(running, poll, processors, |endpoint, adapter_event| {
-            //event_callback(endpoint, adapter_event);
-        });
+        let thread =
+            Self::run_processor(running, poll, processors, move |endpoint, adapter_event| {
+                match adapter_event {
+                    AdapterEvent::Added => {
+                        log::trace!("Endpoint connected: {}", endpoint);
+                    }
+                    AdapterEvent::Data(data) => {
+                        log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+                    }
+                    AdapterEvent::Removed => {
+                        log::trace!("Endpoint disconnected: {}", endpoint);
+                    }
+                }
+                event_callback(endpoint, adapter_event);
+            });
 
         Self { thread: Some(thread), thread_running, controllers, send_all_status: Vec::new() }
     }
 
-    pub fn run_processor<C>(
+    pub fn run_processor(
         running: Arc<AtomicBool>,
-        poll: Poll,
-        processors: EventProcessors<C>,
-        mut event_callback: C
+        mut poll: Poll,
+        mut processors: EventProcessors,
+        event_callback: impl Fn(Endpoint, AdapterEvent<'_>) + Send + 'static,
     ) -> JoinHandle<()>
-    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
+    {
         thread::Builder::new()
             .name("message-io: event processor".into())
             .spawn(move || {
                 let timeout = Some(Duration::from_millis(Self::NETWORK_SAMPLING_TIMEOUT));
 
                 while running.load(Ordering::Relaxed) {
-                    poll.process_event(timeout, &mut |resource_id| {
-                        log::trace!("Try process event for {}", resource_id);
+                    poll.process_event(timeout, |resource_id| {
+                        log::trace!("Resource id {} woke up by an event", resource_id);
 
                         processors[resource_id.adapter_id() as usize]
-                            .try_process(resource_id, &mut event_callback);
+                            .try_process(resource_id, &event_callback);
                     });
                 }
             })
@@ -140,7 +150,10 @@ impl NetworkEngine {
 
     /// Similar to [`crate::network::Network::send()`] but it accepts a raw message.
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
-        self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data)
+        let status =
+            self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
+        log::trace!("Message sent to {}, {:?}", endpoint, status);
+        status
     }
 
     /// Similar to [`crate::network::Network::send_all()`] but it accepts a raw message.
@@ -154,6 +167,7 @@ impl NetworkEngine {
         for endpoint in endpoints {
             let status = self.controllers[endpoint.resource_id().adapter_id() as usize]
                 .send(*endpoint, data);
+            log::trace!("Message sent to {}, {:?}", endpoint, status);
             self.send_all_status.push(status);
         }
         &self.send_all_status
@@ -195,10 +209,8 @@ impl ActionController for UnimplementedActionController {
 }
 
 struct UnimplementedEventProcessor;
-impl<C> EventProcessor<C> for UnimplementedEventProcessor
-where C: Fn(Endpoint, AdapterEvent<'_>)
-{
-    fn try_process(&mut self, _: ResourceId, _: &mut C) {
+impl EventProcessor for UnimplementedEventProcessor {
+    fn try_process(&mut self, _: ResourceId, _: &dyn Fn(Endpoint, AdapterEvent<'_>)) {
         panic!(UNIMPLEMENTED_ADAPTER_ERR);
     }
 }

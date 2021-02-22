@@ -15,7 +15,7 @@ pub struct Poll {
 impl Poll {
     const EVENTS_SIZE: usize = 1024;
 
-    pub fn process_event<C>(&mut self, timeout: Option<Duration>, event_callback: &mut C)
+    pub fn process_event<C>(&mut self, timeout: Option<Duration>, mut event_callback: C)
     where C: FnMut(ResourceId) {
         loop {
             match self.mio_poll.poll(&mut self.events, timeout) {

@@ -74,14 +74,29 @@ pub struct NetworkEngine {
 impl NetworkEngine {
     const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 
-    pub fn new<C>(launcher: AdapterLauncher<C>, mut event_callback: C) -> Self
-    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
+    pub fn new<C, D>(launcher: AdapterLauncher<C>, mut event_callback: D) -> Self
+    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static,
+          D: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
         let thread_running = Arc::new(AtomicBool::new(true));
         let running = thread_running.clone();
 
         let (mut poll, controllers, mut processors) = launcher.launch();
 
-        let thread = thread::Builder::new()
+        let thread = Self::run_processor(running, poll, processors, |endpoint, adapter_event| {
+            //event_callback(endpoint, adapter_event);
+        });
+
+        Self { thread: Some(thread), thread_running, controllers, send_all_status: Vec::new() }
+    }
+
+    pub fn run_processor<C>(
+        running: Arc<AtomicBool>,
+        poll: Poll,
+        processors: EventProcessors<C>,
+        mut event_callback: C
+    ) -> JoinHandle<()>
+    where C: Fn(Endpoint, AdapterEvent<'_>) + Send + 'static {
+        thread::Builder::new()
             .name("message-io: event processor".into())
             .spawn(move || {
                 let timeout = Some(Duration::from_millis(Self::NETWORK_SAMPLING_TIMEOUT));
@@ -95,9 +110,7 @@ impl NetworkEngine {
                     });
                 }
             })
-            .unwrap();
-
-        Self { thread: Some(thread), thread_running, controllers, send_all_status: Vec::new() }
+            .unwrap()
     }
 
     /// Similar to [`crate::network::Network::connect()`] but it accepts and id.
@@ -142,7 +155,6 @@ impl NetworkEngine {
             let status = self.controllers[endpoint.resource_id().adapter_id() as usize]
                 .send(*endpoint, data);
             self.send_all_status.push(status);
-            log::trace!("Message sent to {}, {:?}", endpoint, status);
         }
         &self.send_all_status
     }

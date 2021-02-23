@@ -1,6 +1,6 @@
 # Changelog
 
-## Current version
+## Release 0.8.2
 - Non-blocking Websocket acception.
   It will improves the speed when you are listen for a websocket connection.
 

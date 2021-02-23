@@ -140,7 +140,6 @@ where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
 //                         message-io benches
 //######################################################################
 
-
 fn std_send_recv_tcp_size(c: &mut Criterion) {
     std_send_recv_tcp_one_direction(c, SMALL_MESSAGE);
     std_send_recv_tcp_one_direction(c, MEDIUM_MESSAGE);
@@ -154,10 +153,6 @@ fn std_send_size_transport(c: &mut Criterion) {
     std_send_udp(c, MEDIUM_MESSAGE);
 }
 
-criterion_group!(
-    benches,
-    std_send_size_transport,
-    std_send_recv_tcp_size,
-);
+criterion_group!(benches, std_send_size_transport, std_send_recv_tcp_size,);
 
 criterion_main!(benches);

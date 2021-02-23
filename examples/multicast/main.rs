@@ -24,9 +24,9 @@ fn main() {
 
     loop {
         match event_queue.receive() {
-            NetEvent::Message(_, data) =>  {
+            NetEvent::Message(_, data) => {
                 println!("{} greets to the network!", String::from_utf8_lossy(&data));
-            },
+            }
             NetEvent::Connected(_) => (),
             NetEvent::Disconnected(_) => (),
         }

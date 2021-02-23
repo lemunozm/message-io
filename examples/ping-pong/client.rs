@@ -40,10 +40,12 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
                 NetEvent::Message(_, input_data) => {
                     let message: FromServerMessage = bincode::deserialize(&input_data).unwrap();
                     match message {
-                        FromServerMessage::Pong(count) => println!("Pong from server: {} times", count),
+                        FromServerMessage::Pong(count) => {
+                            println!("Pong from server: {} times", count)
+                        }
                         FromServerMessage::UnknownPong => println!("Pong from server"),
                     }
-                },
+                }
                 NetEvent::Connected(_) => unreachable!(), // Only generated when listen
                 NetEvent::Disconnected(_) => return println!("Server is disconnected"),
             },

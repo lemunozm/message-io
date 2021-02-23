@@ -102,7 +102,7 @@ impl Participant {
                             }
                             _ => unreachable!(),
                         }
-                    },
+                    }
                     NetEvent::Connected(_) => (),
                     NetEvent::Disconnected(endpoint) => {
                         if endpoint == self.discovery_endpoint {

@@ -47,7 +47,7 @@ pub fn run(file_path: &str) {
                             false => return println!("The receiver can not receive the file :("),
                         },
                     }
-                },
+                }
                 NetEvent::Connected(_) => unreachable!(),
                 NetEvent::Disconnected(_) => return println!("\nReceiver disconnected"),
             },

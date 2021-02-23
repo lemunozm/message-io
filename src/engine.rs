@@ -129,7 +129,7 @@ impl NetworkEngine {
         addr: RemoteAddr,
     ) -> io::Result<(Endpoint, SocketAddr)>
     {
-        self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)|{
+        self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)| {
             log::trace!("Connected endpoint {} by {}", endpoint, adapter_id);
             (endpoint, addr)
         })

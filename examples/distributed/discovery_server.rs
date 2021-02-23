@@ -57,7 +57,7 @@ impl DiscoveryServer {
                             }
                             _ => unreachable!(),
                         }
-                    },
+                    }
                     NetEvent::Connected(_) => (),
                     NetEvent::Disconnected(endpoint) => {
                         // Participant disconection without explict unregistration.

@@ -8,6 +8,8 @@ use crate::events::{EventQueue};
 use crate::engine::{NetworkEngine, AdapterLauncher};
 use crate::driver::{AdapterEvent};
 
+use strum::{IntoEnumIterator};
+
 use serde::{Serialize, Deserialize};
 
 use std::net::{SocketAddr, ToSocketAddrs};
@@ -47,44 +49,31 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 /// and manages the different adapters for you.
 pub struct Network {
     engine: NetworkEngine,
-    output_buffer: Vec<u8>,           //cached for preformance
-    send_all_status: Vec<SendStatus>, //cached for performance
+    output_buffer: Vec<u8>, //cached for preformance
 }
 
 impl Network {
     /// Creates a new `Network` instance.
     /// The user must register an event_callback that can be called
     /// each time the network generate and [`NetEvent`].
-    pub fn new<M, C>(event_callback: C) -> Network
-    where
-        M: for<'b> Deserialize<'b> + Send + 'static,
-        C: Fn(NetEvent<M>) + Send + 'static,
-    {
+    pub fn new<M>(event_callback: impl Fn(NetEvent<M>) + Send + 'static) -> Network
+    where M: for<'b> Deserialize<'b> + Send + 'static {
         let mut launcher = AdapterLauncher::default();
-        Transport::mount_all(&mut launcher);
+        Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
         let engine = NetworkEngine::new(launcher, move |endpoint, adapter_event| {
             let event = match adapter_event {
-                AdapterEvent::Added => {
-                    log::trace!("Endpoint connected: {}", endpoint);
-                    NetEvent::Connected(endpoint)
-                }
-                AdapterEvent::Data(data) => {
-                    log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                    match bincode::deserialize::<M>(data) {
-                        Ok(message) => NetEvent::Message(endpoint, message),
-                        Err(_) => NetEvent::DeserializationError(endpoint),
-                    }
-                }
-                AdapterEvent::Removed => {
-                    log::trace!("Endpoint disconnected: {}", endpoint);
-                    NetEvent::Disconnected(endpoint)
-                }
+                AdapterEvent::Added => NetEvent::Connected(endpoint),
+                AdapterEvent::Data(data) => match bincode::deserialize::<M>(data) {
+                    Ok(message) => NetEvent::Message(endpoint, message),
+                    Err(_) => NetEvent::DeserializationError(endpoint),
+                },
+                AdapterEvent::Removed => NetEvent::Disconnected(endpoint),
             };
             event_callback(event);
         });
 
-        Network { engine, output_buffer: Vec::new(), send_all_status: Vec::new() }
+        Network { engine, output_buffer: Vec::new() }
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
@@ -95,7 +84,6 @@ impl Network {
     pub fn split<M>() -> (Network, EventQueue<NetEvent<M>>)
     where M: for<'b> Deserialize<'b> + Send + 'static {
         let mut event_queue = EventQueue::new();
-
         let sender = event_queue.sender().clone();
         let network = Network::new(move |net_event| sender.send(net_event));
         (network, event_queue)
@@ -155,10 +143,7 @@ impl Network {
     pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendStatus {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-
-        let status = self.engine.send(endpoint, &self.output_buffer);
-        log::trace!("Message sent to {}, {:?}", endpoint, status);
-        status
+        self.engine.send(endpoint, &self.output_buffer)
     }
 
     /// This method performs the same actions as [`Network::send()`] but for several endpoints.
@@ -174,12 +159,6 @@ impl Network {
     {
         self.output_buffer.clear();
         bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        self.send_all_status.clear();
-        for endpoint in endpoints {
-            let status = self.engine.send(*endpoint, &self.output_buffer);
-            self.send_all_status.push(status);
-            log::trace!("Message sent to {}, {:?}", endpoint, status);
-        }
-        &self.send_all_status
+        self.engine.send_all(endpoints, &self.output_buffer)
     }
 }

@@ -74,7 +74,7 @@ fn echo_server_handle(
         .name("test-server".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split::<String>();
+                let (mut network, mut event_queue) = Network::split();
 
                 let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
                 tx.send(server_addr).unwrap();
@@ -85,11 +85,11 @@ fn echo_server_handle(
 
                 loop {
                     match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-                        NetEvent::Message(endpoint, message) => {
-                            assert_eq!(message, SMALL_MESSAGE);
+                        NetEvent::Message(endpoint, data) => {
+                            assert_eq!(SMALL_MESSAGE, String::from_utf8_lossy(&data));
 
-                            let status = network.send(endpoint, message);
-                            assert_eq!(status, SendStatus::Sent);
+                            let status = network.send(endpoint, &data);
+                            assert_eq!(SendStatus::Sent, status);
 
                             messages_received += 1;
 
@@ -123,7 +123,6 @@ fn echo_server_handle(
                                 false => unreachable!(),
                             }
                         }
-                        NetEvent::DeserializationError(_) => unreachable!(),
                     }
                 }
             })
@@ -145,30 +144,29 @@ fn echo_client_manager_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split::<String>();
+                let (mut network, mut event_queue) = Network::split();
 
                 let mut clients = HashSet::new();
 
                 for _ in 0..clients_number {
                     let (server_endpoint, _) = network.connect(transport, server_addr).unwrap();
-                    let status = network.send(server_endpoint, SMALL_MESSAGE.to_string());
-                    assert_eq!(status, SendStatus::Sent);
+                    let status = network.send(server_endpoint, SMALL_MESSAGE.as_bytes());
+                    assert_eq!(SendStatus::Sent, status);
                     assert!(clients.insert(server_endpoint));
                 }
 
                 loop {
                     match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-                        NetEvent::Message(endpoint, message) => {
+                        NetEvent::Message(endpoint, data) => {
                             assert!(clients.remove(&endpoint));
-                            assert_eq!(message, SMALL_MESSAGE);
-                            network.remove_resource(endpoint.resource_id());
+                            assert_eq!(SMALL_MESSAGE, String::from_utf8_lossy(&data));
+                            network.remove(endpoint.resource_id());
                             if clients.len() == 0 {
                                 break //Exit from thread.
                             }
                         }
                         NetEvent::Connected(_) => unreachable!(),
                         NetEvent::Disconnected(_) => unreachable!(),
-                        NetEvent::DeserializationError(_) => unreachable!(),
                     }
                 }
             })
@@ -208,11 +206,11 @@ fn message_size(transport: Transport, message_size: usize) {
         .name("test-server".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split::<Vec<u8>>();
+                let (mut network, mut event_queue) = Network::split();
                 let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
                 let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
-                let status = network.send(receiver, sent_message.clone());
+                let status = network.send(receiver, &sent_message);
                 assert_eq!(status, SendStatus::Sent);
 
                 loop {
@@ -220,7 +218,6 @@ fn message_size(transport: Transport, message_size: usize) {
                         NetEvent::Message(_, message) => break assert_eq!(sent_message, message),
                         NetEvent::Connected(_) => (),
                         NetEvent::Disconnected(_) => (),
-                        NetEvent::DeserializationError(_) => unreachable!(),
                     }
                 }
             })

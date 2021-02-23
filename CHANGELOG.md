@@ -1,5 +1,17 @@
 # Changelog
 
+## Release 0.9.0
+- Removed serialization. **Rationale:**
+  The serialization inside `message-io` was merely a shortcut,
+  than in most of the cases reduced the power of the user by save 2-3 lines of their code.
+  The serialization should be handle by the user for several reasons:
+    - The user could want to decide send the message in base of the serialized data size.
+      (e.g. chosing a diffenrent transports if the serialized size exceeds the max packet size)
+    - The user could want to perform some action over raw data.
+    - The user could make a gateway without needed to deserialize to serialize again.
+    - Or simply, there is no need to serialize in some cases.
+- `Network::remove_resource()` to `Network::resource()`.
+
 ## Release 0.8.1
 - Fixed ping-pong example for `udp` and `ws`.
 - Protect Websocket listeners from erronous acceptions.

@@ -19,8 +19,7 @@ If you find a problem using the library or you have an improvement idea, do not 
 
 ## Motivation
 Managing sockets is hard because you need to fight with threads, concurrency,
-IO errors that come from the OS (which are really difficult to understand in some situations),
-serialization, encoding...
+IO errors that come from the OS (which are really difficult to understand in some situations), encoding...
 And if you make use of *non-blocking* sockets, it adds a new layer of complexity:
 synchronize the events that come asynchronously from the OS poll.
 
@@ -52,13 +51,12 @@ You could change the protocol of your application in literally one line.
     Do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.
-    - Binary serialization (using [bincode](https://github.com/servo/bincode))
     - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.8"
+message-io = "0.9"
 ```
 
 ### Documentation
@@ -81,13 +79,6 @@ It is capable to manage several client connections and listen from 3 differents 
 
 ```rust
 use message_io::network::{Network, NetEvent, Transport};
-use serde::{Serialize, Deserialize};
-
-#[derive(Serialize, Deserialize)]
-enum Message {
-    Hello(String),
-    // Other messages here
-}
 
 fn main() {
     let (mut network, mut events) = Network::split();
@@ -99,16 +90,12 @@ fn main() {
 
     loop {
         match events.receive() { // Read the next event or wait until have it.
-            NetEvent::Message(endpoint, message) => match message {
-                Message::Hello(msg) => {
-                    println!("Received: {}", msg);
-                    network.send(endpoint, Message::Hello(msg));
-                },
-                //Other messages here
+            NetEvent::Message(endpoint, data) => {
+                println!("Received: {}", String::from_utf8_lossy(&data));
+                network.send(endpoint, &data);
             },
             NetEvent::Connected(_endpoint) => println!("Client connected"), // Tcp or Ws
             NetEvent::Disconnected(_endpoint) => println!("Client disconnected"), //Tcp or Ws
-            NetEvent::DeserializationError(_) => (),
         }
     }
 }

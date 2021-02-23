@@ -64,7 +64,6 @@ pub struct NetworkEngine {
     thread: Option<JoinHandle<()>>,
     thread_running: Arc<AtomicBool>,
     controllers: ActionControllers,
-    send_all_status: Vec<SendStatus>, //cached for performance
 }
 
 impl NetworkEngine {
@@ -84,19 +83,19 @@ impl NetworkEngine {
             Self::run_processor(running, poll, processors, move |endpoint, adapter_event| {
                 match adapter_event {
                     AdapterEvent::Added => {
-                        log::trace!("Endpoint connected: {}", endpoint);
+                        log::trace!("Endpoint added: {}", endpoint);
                     }
                     AdapterEvent::Data(data) => {
                         log::trace!("Data received from {}, {} bytes", endpoint, data.len());
                     }
                     AdapterEvent::Removed => {
-                        log::trace!("Endpoint disconnected: {}", endpoint);
+                        log::trace!("Endpoint removed: {}", endpoint);
                     }
                 }
                 event_callback(endpoint, adapter_event);
             });
 
-        Self { thread: Some(thread), thread_running, controllers, send_all_status: Vec::new() }
+        Self { thread: Some(thread), thread_running, controllers }
     }
 
     pub fn run_processor(
@@ -130,7 +129,10 @@ impl NetworkEngine {
         addr: RemoteAddr,
     ) -> io::Result<(Endpoint, SocketAddr)>
     {
-        self.controllers[adapter_id as usize].connect(addr)
+        self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)|{
+            log::trace!("Connected endpoint {} by {}", endpoint, adapter_id);
+            (endpoint, addr)
+        })
     }
 
     /// Similar to [`crate::network::Network::listen()`] but it accepts and id.
@@ -140,7 +142,10 @@ impl NetworkEngine {
         addr: SocketAddr,
     ) -> io::Result<(ResourceId, SocketAddr)>
     {
-        self.controllers[adapter_id as usize].listen(addr)
+        self.controllers[adapter_id as usize].listen(addr).map(|(resource_id, addr)| {
+            log::trace!("New resource {} listening by {}", resource_id, adapter_id);
+            (resource_id, addr)
+        })
     }
 
     /// See [`crate::network::Network::remove_resource()`].
@@ -154,23 +159,6 @@ impl NetworkEngine {
             self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
         log::trace!("Message sent to {}, {:?}", endpoint, status);
         status
-    }
-
-    /// Similar to [`crate::network::Network::send_all()`] but it accepts a raw message.
-    pub fn send_all<'b>(
-        &mut self,
-        endpoints: impl IntoIterator<Item = &'b Endpoint>,
-        data: &[u8],
-    ) -> &Vec<SendStatus>
-    {
-        self.send_all_status.clear();
-        for endpoint in endpoints {
-            let status = self.controllers[endpoint.resource_id().adapter_id() as usize]
-                .send(*endpoint, data);
-            log::trace!("Message sent to {}, {:?}", endpoint, status);
-            self.send_all_status.push(status);
-        }
-        &self.send_all_status
     }
 }
 

@@ -1,16 +1,4 @@
-use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, Transport};
-
-use serde::{Serialize, Deserialize};
-
-#[derive(Serialize, Deserialize)]
-enum Message {
-    HelloLan(String),
-}
-
-enum Event {
-    Network(NetEvent<Message>),
-}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -19,16 +7,13 @@ fn main() {
         None => return println!("Please choose a name"),
     };
 
-    let mut event_queue = EventQueue::new();
-
-    let sender = event_queue.sender().clone();
-    let mut network = Network::new(move |net_event| sender.send(Event::Network(net_event)));
+    let (mut network, mut event_queue) = Network::split();
 
     let addr = "239.255.0.1:3010";
     match network.connect(Transport::Udp, addr) {
         Ok((endpoint, _)) => {
             println!("Notifying on the network");
-            network.send(endpoint, Message::HelloLan(my_name.into()));
+            network.send(endpoint, my_name.as_bytes());
         }
         Err(_) => return eprintln!("Could not connect to {}", addr),
     }
@@ -39,15 +24,11 @@ fn main() {
 
     loop {
         match event_queue.receive() {
-            Event::Network(net_event) => match net_event {
-                NetEvent::Message(_, message) => match message {
-                    Message::HelloLan(name) => println!("{} greets to the network!", name),
-                },
-                NetEvent::Connected(_) => (),
-                NetEvent::Disconnected(_) => (),
-                NetEvent::DeserializationError(_) => (),
+            NetEvent::Message(_, data) =>  {
+                println!("{} greets to the network!", String::from_utf8_lossy(&data));
             },
-            // Other events here
+            NetEvent::Connected(_) => (),
+            NetEvent::Disconnected(_) => (),
         }
     }
 }

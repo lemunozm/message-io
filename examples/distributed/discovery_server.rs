@@ -7,7 +7,7 @@ use std::net::{SocketAddr};
 use std::collections::{HashMap};
 
 enum Event {
-    Network(NetEvent<Message>),
+    Network(NetEvent),
 }
 
 struct ParticipantInfo {
@@ -46,14 +46,17 @@ impl DiscoveryServer {
         loop {
             match self.event_queue.receive() {
                 Event::Network(net_event) => match net_event {
-                    NetEvent::Message(endpoint, message) => match message {
-                        Message::RegisterParticipant(name, addr) => {
-                            self.register(&name, addr, endpoint);
+                    NetEvent::Message(endpoint, input_data) => {
+                        let message: Message = bincode::deserialize(&input_data).unwrap();
+                        match message {
+                            Message::RegisterParticipant(name, addr) => {
+                                self.register(&name, addr, endpoint);
+                            }
+                            Message::UnregisterParticipant(name) => {
+                                self.unregister(&name);
+                            }
+                            _ => unreachable!(),
                         }
-                        Message::UnregisterParticipant(name) => {
-                            self.unregister(&name);
-                        }
-                        _ => unreachable!(),
                     },
                     NetEvent::Connected(_) => (),
                     NetEvent::Disconnected(endpoint) => {
@@ -72,7 +75,6 @@ impl DiscoveryServer {
                             self.unregister(&name)
                         }
                     }
-                    NetEvent::DeserializationError(_) => (),
                 },
             }
         }
@@ -84,12 +86,16 @@ impl DiscoveryServer {
             let list =
                 self.participants.iter().map(|(name, info)| (name.clone(), info.addr)).collect();
 
-            self.network.send(endpoint, Message::ParticipantList(list));
+            let message = Message::ParticipantList(list);
+            let output_data = bincode::serialize(&message).unwrap();
+            self.network.send(endpoint, &output_data);
 
             // Notify other participants about this new participant
-            let endpoints = self.participants.values().map(|info| &info.endpoint);
             let message = Message::ParticipantNotificationAdded(name.to_string(), addr);
-            self.network.send_all(endpoints, message);
+            let output_data = bincode::serialize(&message).unwrap();
+            for participant in &mut self.participants {
+                self.network.send(participant.1.endpoint, &output_data);
+            }
 
             // Register participant
             self.participants.insert(name.to_string(), ParticipantInfo { addr, endpoint });
@@ -106,9 +112,11 @@ impl DiscoveryServer {
     fn unregister(&mut self, name: &str) {
         if let Some(info) = self.participants.remove(name) {
             // Notify other participants about this removed participant
-            let endpoints = self.participants.values().map(|info| &info.endpoint);
             let message = Message::ParticipantNotificationRemoved(name.to_string());
-            self.network.send_all(endpoints, message);
+            let output_data = bincode::serialize(&message).unwrap();
+            for participant in &mut self.participants {
+                self.network.send(participant.1.endpoint, &output_data);
+            }
             println!("Removed participant '{}' with ip {}", name, info.addr);
         }
         else {

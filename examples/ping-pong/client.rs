@@ -6,7 +6,7 @@ use message_io::network::{Network, NetEvent, Transport, RemoteAddr};
 use std::time::{Duration};
 
 enum Event {
-    Network(NetEvent<FromServerMessage>),
+    Network(NetEvent),
 
     // This is a self event called every second.
     // You can mix network events with your own events in the EventQueue.
@@ -33,17 +33,19 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
     loop {
         match event_queue.receive() {
             Event::Greet => {
-                network.send(server_id, FromClientMessage::Ping);
+                network.send(server_id, &bincode::serialize(&FromClientMessage::Ping).unwrap());
                 event_queue.sender().send_with_timer(Event::Greet, Duration::from_secs(1));
             }
             Event::Network(net_event) => match net_event {
-                NetEvent::Message(_, message) => match message {
-                    FromServerMessage::Pong(count) => println!("Pong from server: {} times", count),
-                    FromServerMessage::UnknownPong => println!("Pong from server"),
+                NetEvent::Message(_, input_data) => {
+                    let message: FromServerMessage = bincode::deserialize(&input_data).unwrap();
+                    match message {
+                        FromServerMessage::Pong(count) => println!("Pong from server: {} times", count),
+                        FromServerMessage::UnknownPong => println!("Pong from server"),
+                    }
                 },
                 NetEvent::Connected(_) => unreachable!(), // Only generated when listen
                 NetEvent::Disconnected(_) => return println!("Server is disconnected"),
-                NetEvent::DeserializationError(_) => (), // Malformed message from the server
             },
         }
     }

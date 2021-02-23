@@ -1,11 +1,4 @@
 use message_io::network::{Network, NetEvent, Transport};
-use serde::{Serialize, Deserialize};
-
-#[derive(Serialize, Deserialize)]
-enum Message {
-    Hello(String),
-    // Other messages here
-}
 
 fn main() {
     let (mut network, mut events) = Network::split();
@@ -17,16 +10,12 @@ fn main() {
 
     loop {
         match events.receive() { // Read the next event or wait until have it.
-            NetEvent::Message(endpoint, message) => match message {
-                Message::Hello(msg) => {
-                    println!("Received: {}", msg);
-                    network.send(endpoint, Message::Hello(msg));
-                },
-                //Other messages here
+            NetEvent::Message(endpoint, data) => {
+                println!("Received: {}", String::from_utf8_lossy(&data));
+                network.send(endpoint, &data);
             },
             NetEvent::Connected(_endpoint) => println!("Client connected"), // Tcp or Ws
             NetEvent::Disconnected(_endpoint) => println!("Client disconnected"), //Tcp or Ws
-            NetEvent::DeserializationError(_) => (),
         }
     }
 }

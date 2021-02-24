@@ -192,25 +192,25 @@ const UNIMPLEMENTED_ADAPTER_ERR: &str =
 struct UnimplementedActionController;
 impl ActionController for UnimplementedActionController {
     fn connect(&mut self, _: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
+        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 
     fn listen(&mut self, _: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
+        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 
     fn send(&mut self, _: Endpoint, _: &[u8]) -> SendStatus {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
+        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 
     fn remove(&mut self, _: ResourceId) -> Option<()> {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
+        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 }
 
 struct UnimplementedEventProcessor;
 impl EventProcessor for UnimplementedEventProcessor {
     fn try_process(&mut self, _: ResourceId, _: &dyn Fn(Endpoint, AdapterEvent<'_>)) {
-        panic!(UNIMPLEMENTED_ADAPTER_ERR);
+        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 }

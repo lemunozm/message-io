@@ -6,28 +6,20 @@ use message_io::network::{Network, NetEvent, Endpoint, Transport};
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
 
-enum Event {
-    Network(NetEvent),
-}
-
 struct ParticipantInfo {
     addr: SocketAddr,
     endpoint: Endpoint,
 }
 
 pub struct DiscoveryServer {
-    event_queue: EventQueue<Event>,
+    event_queue: EventQueue<NetEvent>,
     network: Network,
     participants: HashMap<String, ParticipantInfo>,
 }
 
 impl DiscoveryServer {
     pub fn new() -> Option<DiscoveryServer> {
-        let mut event_queue = EventQueue::new();
-
-        let network_sender = event_queue.sender().clone();
-        let mut network =
-            Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
+        let (mut network, event_queue) = Network::split();
 
         let listen_addr = "127.0.0.1:5000";
         match network.listen(Transport::Tcp, listen_addr) {
@@ -45,37 +37,33 @@ impl DiscoveryServer {
     pub fn run(mut self) {
         loop {
             match self.event_queue.receive() {
-                Event::Network(net_event) => match net_event {
-                    NetEvent::Message(endpoint, input_data) => {
-                        let message: Message = bincode::deserialize(&input_data).unwrap();
-                        match message {
-                            Message::RegisterParticipant(name, addr) => {
-                                self.register(&name, addr, endpoint);
-                            }
-                            Message::UnregisterParticipant(name) => {
-                                self.unregister(&name);
-                            }
-                            _ => unreachable!(),
+                NetEvent::Message(endpoint, input_data) => {
+                    let message: Message = bincode::deserialize(&input_data).unwrap();
+                    match message {
+                        Message::RegisterParticipant(name, addr) => {
+                            self.register(&name, addr, endpoint);
                         }
+                        Message::UnregisterParticipant(name) => {
+                            self.unregister(&name);
+                        }
+                        _ => unreachable!(),
                     }
-                    NetEvent::Connected(_) => (),
-                    NetEvent::Disconnected(endpoint) => {
-                        // Participant disconection without explict unregistration.
-                        // We must remove from the registry too.
-                        let participant_name = self.participants.iter().find_map(|(name, info)| {
-                            if info.endpoint == endpoint {
-                                Some(name.clone())
-                            }
-                            else {
-                                None
-                            }
-                        });
+                }
+                NetEvent::Connected(_) => (),
+                NetEvent::Disconnected(endpoint) => {
+                    // Participant disconection without explict unregistration.
+                    // We must remove from the registry too.
+                    let participant_name = self.participants.iter().find_map(|(name, info)| {
+                        match info.endpoint == endpoint {
+                            true => Some(name.clone()),
+                            false => None,
+                        }
+                    });
 
-                        if let Some(name) = participant_name {
-                            self.unregister(&name)
-                        }
+                    if let Some(name) = participant_name {
+                        self.unregister(&name)
                     }
-                },
+                }
             }
         }
     }

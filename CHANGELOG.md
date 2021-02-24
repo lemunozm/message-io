@@ -11,6 +11,8 @@
     - The user could make a gateway without needed to deserialize to serialize again.
     - Or simply, there is no need to serialize in some cases.
 - `Network::remove_resource()` to `Network::resource()`.
+- Exposed `AdapterEvent`.
+- Added `Network::split_and_map()`.
 
 ## Release 0.8.2
 - Non-blocking Websocket acception.

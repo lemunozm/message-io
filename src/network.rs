@@ -1,12 +1,13 @@
+// The ext public uses allows the user to use all this elements as network elements
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
 pub use crate::adapter::{SendStatus};
 pub use crate::remote_addr::{RemoteAddr, ToRemoteAddr};
 pub use crate::transport::{Transport};
+pub use crate::driver::{AdapterEvent};
 
 use crate::events::{EventQueue};
 use crate::engine::{NetworkEngine, AdapterLauncher};
-use crate::driver::{AdapterEvent};
 
 use strum::{IntoEnumIterator};
 
@@ -32,6 +33,17 @@ pub enum NetEvent {
     Disconnected(Endpoint),
 }
 
+impl NetEvent {
+    /// Created a `NetEvent` from an [`AdapterEvent`].
+    pub fn from_adapter(endpoint: Endpoint, adapter_event: AdapterEvent<'_>) -> NetEvent {
+        match adapter_event {
+            AdapterEvent::Added => NetEvent::Connected(endpoint),
+            AdapterEvent::Data(data) => NetEvent::Message(endpoint, data.to_vec()),
+            AdapterEvent::Removed => NetEvent::Disconnected(endpoint),
+        }
+    }
+}
+
 /// Network is in charge of managing all the connections transparently.
 /// It transforms raw data from the network into message events and vice versa,
 /// and manages the different adapters for you.
@@ -41,20 +53,17 @@ pub struct Network {
 
 impl Network {
     /// Creates a new `Network` instance.
-    /// The user must register an event_callback that can be called
-    /// each time the network generate and [`NetEvent`].
-    pub fn new(event_callback: impl Fn(NetEvent) + Send + 'static) -> Network {
+    /// The user must register an event_callback that can be called each time
+    /// an internal adapter generates an event.
+    /// This function is used when the user needs to perform some action over the raw data
+    /// comming from an adapter, without using a [`EventQueue`].
+    /// If you will want to use an `EventQueue` you can use [`Network::split()`] or
+    /// [`Network::split_and_map()`]
+    pub fn new(event_callback: impl Fn(Endpoint, AdapterEvent) + Send + 'static) -> Network {
         let mut launcher = AdapterLauncher::default();
         Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
-        let engine = NetworkEngine::new(launcher, move |endpoint, adapter_event| {
-            let net_event = match adapter_event {
-                AdapterEvent::Added => NetEvent::Connected(endpoint),
-                AdapterEvent::Data(data) => NetEvent::Message(endpoint, data.to_vec()),
-                AdapterEvent::Removed => NetEvent::Disconnected(endpoint),
-            };
-            event_callback(net_event);
-        });
+        let engine = NetworkEngine::new(launcher, event_callback);
 
         Network { engine }
     }
@@ -62,12 +71,29 @@ impl Network {
     /// Creates a network instance with an associated [`EventQueue`] where the input network
     /// events can be read.
     /// If you want to create a [`EventQueue`] that manages more events than `NetEvent`,
-    /// Yoy can create a custom network with [Network::new()].
+    /// You can create use instead [Network::split_and_map()].
     /// This function shall be used if you only want to manage `NetEvent` in the EventQueue.
     pub fn split() -> (Network, EventQueue<NetEvent>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |net_event| sender.send(net_event));
+        let network = Network::new(move |endpoint, adapter_event| {
+            sender.send(NetEvent::from_adapter(endpoint, adapter_event))
+        });
+        (network, event_queue)
+    }
+
+    /// Creates a network instance with an associated [`EventQueue`] where the input network
+    /// events can be read.
+    /// This function, allows to map the [`NetEvent`] to something you use in your application,
+    /// allowing to mix the `NetEvent` with your own events.
+    pub fn split_and_map<E: Send + 'static>(
+        map: impl Fn(NetEvent) -> E + Send + 'static,
+    ) -> (Network, EventQueue<E>) {
+        let mut event_queue = EventQueue::new();
+        let sender = event_queue.sender().clone();
+        let network = Network::new(move |endpoint, adapter_event| {
+            sender.send(map(NetEvent::from_adapter(endpoint, adapter_event)))
+        });
         (network, event_queue)
     }
 

@@ -81,6 +81,7 @@ It is capable to manage several client connections and listen from 3 differents 
 use message_io::network::{Network, NetEvent, Transport};
 
 fn main() {
+    // Create a Network with an associated event queue for reading its events.
     let (mut network, mut events) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
@@ -96,6 +97,46 @@ fn main() {
             },
             NetEvent::Connected(_endpoint) => println!("Client connected"), // Tcp or Ws
             NetEvent::Disconnected(_endpoint) => println!("Client disconnected"), //Tcp or Ws
+        }
+    }
+}
+```
+
+### Echo client
+The following exaple shows a basic client that can connect to the previous server.
+It will send a message each second to the server an will listen its echo response.
+Changing the `Transport::Tcp` to `Udp` or `Ws` will change the underlying transport used.
+Also, you could create the number of connections you want at the same time, without any extra thread.
+
+```rust
+use message_io::network::{Network, NetEvent, Transport};
+
+enum Event {
+    Net(NetEvent),
+    Tick,
+    // Any other app event here.
+}
+
+fn main() {
+    // The split_and_map() version allows to combine network events with your application events.
+    let (mut network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
+
+    // You can change the transport to Udp or Websocket.
+    let (server, _ ) = network.connect(Transport::Tcp, "127.0.0.1:3042").unwrap();
+
+    events.sender().send(Event::Tick); // Start sending
+    loop {
+        match events.receive() {
+            Event::Net(net_event) => match net_event { // event from the network
+                NetEvent::Message(_endpoint, data) => {
+                    println!("Received: {}", String::from_utf8_lossy(&data));
+                },
+                _ => (),
+            }
+            Event::Tick => { // computed every second
+                network.send(server, "Hello server!".as_bytes());
+                events.sender().send_with_timer(Event::Tick, std::time::Duration::from_secs(1));
+            }
         }
     }
 }

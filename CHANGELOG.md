@@ -13,6 +13,9 @@
 - `Network::remove_resource()` to `Network::resource()`.
 - Exposed `AdapterEvent`.
 - Added `Network::split_and_map()`.
+- Added Transport::max_payload().
+- Exposed `encoding` module.
+- Fixed message_size test for big messages.
 
 ## Release 0.8.2
 - Non-blocking Websocket acception.

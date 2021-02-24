@@ -1,6 +1,6 @@
 use std::convert::{TryInto};
 
-type Padding = u32;
+pub type Padding = u32;
 pub const PADDING: usize = std::mem::size_of::<Padding>();
 
 /// Encode a message, returning the bytes that must be sent before the message.

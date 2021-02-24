@@ -26,7 +26,7 @@ use std::ops::{DerefMut};
 
 /// Max message size for default config
 // From https://docs.rs/tungstenite/0.13.0/src/tungstenite/protocol/mod.rs.html#65
-pub const MAX_WS_PAYLOAD_LEN: usize = 64 << 20;
+pub const MAX_WS_PAYLOAD_LEN: usize = 32 << 20;
 
 pub struct WsAdapter;
 impl Adapter for WsAdapter {

@@ -157,7 +157,7 @@ impl NetworkEngine {
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         let status =
             self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
-        log::trace!("Message sent to {}, {:?}", endpoint, status);
+        log::trace!("Message ({} bytes) sent to {}, {:?}", data.len(), endpoint, status);
         status
     }
 }

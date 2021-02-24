@@ -43,10 +43,13 @@ You could change the protocol of your application in literally one line.
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
   - Abstraction from transport layer: do not think about sockets, think about messages and endpoints.
   - Only two main entities to use:
-    - an extensible *event-queue* to manage all events synchronously,
-    - a *network* to manage all connections (connect, listen, remove, send, receive).
+    - an extensible
+    [`Eventqueue`](https://docs.rs/message-io/latest/message_io/events/struct.EventQueue.html)
+    to manage all events synchronously,
+    - a [`Network`](https://docs.rs/message-io/latest/message_io/network/struct.Network.html)
+    to manage all connections (connect, listen, remove, send, receive).
   - Forget concurrence problems: handle thousands of active connections and listeners without any
-    effort, "One thread to rule them all".
+    effort. "One thread to rule them all".
   - Easy error handling.
     Do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
@@ -143,7 +146,8 @@ fn main() {
 ```
 
 ## Test it yourself!
-Clone the repository and test the *Ping Pong* example.
+Clone the repository and test the *Ping Pong* example
+(similar to the *echo* example but more vitaminized).
 
 Run the server:
 ```
@@ -171,7 +175,7 @@ If the protocol can be built in top of [`mio`](https://github.com/tokio-rs/mio)
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you find [here](https://docs.rs/message-io/0.8.1/message_io/adapter/index.html).
+  traits that you find [here](https://docs.rs/message-io/latest/message_io/adapter/index.html).
   It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
   and take little more than 150 lines implement an adapter file.
 

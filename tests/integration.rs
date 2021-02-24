@@ -1,5 +1,4 @@
 use message_io::network::{Network, NetEvent, Transport, SendStatus};
-use message_io::{MAX_UDP_PAYLOAD_LEN};
 
 use test_case::test_case;
 
@@ -10,20 +9,16 @@ use std::thread::{self, JoinHandle};
 use std::net::{SocketAddr};
 use std::time::{Duration};
 
-pub const LOCAL_ADDR: &'static str = "127.0.0.1:0";
-pub const SMALL_MESSAGE: &'static str = "Small message";
-pub const BIG_MESSAGE_SIZE: usize = 1 << 20; // 1MB
-
-// 8 is the Vec head offset added in serialization.
-pub const MAX_SIZE_BY_UDP: usize = MAX_UDP_PAYLOAD_LEN - 8;
-pub const MAX_SIZE_BY_WS: usize = MAX_UDP_PAYLOAD_LEN - 8;
+const LOCAL_ADDR: &'static str = "127.0.0.1:0";
+const SMALL_MESSAGE: &'static str = "Small message";
+const BIG_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
 
 lazy_static::lazy_static! {
     pub static ref TIMEOUT: Duration = Duration::from_millis(5000);
 }
 
 // Common error messages
-pub const TIMEOUT_MSG_EXPECTED_ERR: &'static str = "Timeout, but a message was expected.";
+const TIMEOUT_MSG_EXPECTED_ERR: &'static str = "Timeout, but a message was expected.";
 
 mod util {
     use message_io::network::{Transport};
@@ -40,14 +35,15 @@ mod util {
 
     fn configure_logger() -> Result<(), fern::InitError> {
         fern::Dispatch::new()
+            .filter(|metadata| metadata.target().starts_with("message_io"))
             .format(|out, message, record| {
                 out.finish(format_args!(
                     "[{}][{}][{}][{}] {}",
-                    chrono::Local::now().format("%H:%M:%S"),
+                    chrono::Local::now().format("%M:%S:%f"), // min:sec:nano
                     record.level(),
                     record.target(),
                     std::thread::current().name().unwrap(),
-                    message
+                    message,
                 ))
             })
             .chain(std::io::stdout())
@@ -182,9 +178,9 @@ fn echo_client_manager_handle(
 #[test_case(Transport::Ws, 1)]
 #[test_case(Transport::Ws, 100)]
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
-// with a very obfuscated error message.
+// with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
-    //util::init_logger();
+    //util::init_logger(); // Enable it for better debug
 
     let (server_handle, server_addr) = echo_server_handle(transport, clients);
     let client_handle = echo_client_manager_handle(transport, server_addr, clients);
@@ -194,36 +190,35 @@ fn echo(transport: Transport, clients: usize) {
 }
 
 #[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
-#[test_case(Transport::Udp, MAX_SIZE_BY_UDP)]
-#[test_case(Transport::Ws, MAX_SIZE_BY_WS)]
+#[test_case(Transport::Udp, Transport::Udp.max_payload())]
+#[test_case(Transport::Ws, BIG_MESSAGE_SIZE)]
 fn message_size(transport: Transport, message_size: usize) {
-    //util::init_logger();
+    //util::init_logger(); // Enable it for better debug
+
+    assert!(message_size <= transport.max_payload());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();
+    // We substract 8 because of the 8 bytes added by serializing a Vec.
+    let sent_message: Vec<u8> = (0..message_size - 8).map(|_| rng.gen()).collect();
 
-    let server_handle = thread::Builder::new()
-        .name("test-server".into())
-        .spawn(move || {
-            std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split();
-                let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
+    let (mut network, mut event_queue) = Network::split();
+    let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
-                let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
+    let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
+
+    if !util::is_connection_oriented(transport) {
+        let status = network.send(receiver, &sent_message);
+        assert_eq!(status, SendStatus::Sent);
+    }
+
+    loop {
+        match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+            NetEvent::Message(_, message) => break assert_eq!(sent_message, message),
+            NetEvent::Connected(_) => {
                 let status = network.send(receiver, &sent_message);
                 assert_eq!(status, SendStatus::Sent);
-
-                loop {
-                    match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-                        NetEvent::Message(_, message) => break assert_eq!(sent_message, message),
-                        NetEvent::Connected(_) => (),
-                        NetEvent::Disconnected(_) => (),
-                    }
-                }
-            })
-            .unwrap();
-        })
-        .unwrap();
-
-    server_handle.join().unwrap();
+            }
+            NetEvent::Disconnected(_) => (),
+        }
+    }
 }

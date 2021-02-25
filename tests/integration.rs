@@ -198,8 +198,7 @@ fn message_size(transport: Transport, message_size: usize) {
     assert!(message_size <= transport.max_payload());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    // We substract 8 because of the 8 bytes added by serializing a Vec.
-    let sent_message: Vec<u8> = (0..message_size - 8).map(|_| rng.gen()).collect();
+    let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();
 
     let (mut event_queue, mut network) = Network::split();
     let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();

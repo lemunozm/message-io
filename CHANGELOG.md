@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.9.1
+- Fixed an UDP issue that could imply losing packet if they were sent consequently very fast.
+- Fixed a TCP encoding issue.
+
 ## Release 0.9.0
 - Removed serialization. **Rationale:**
   The serialization inside `message-io` was merely a shortcut,

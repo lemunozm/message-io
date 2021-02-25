@@ -71,12 +71,7 @@ impl Remote for RemoteResource {
     }
 
     fn send(&self, data: &[u8]) -> SendStatus {
-        if data.len() > MAX_UDP_PAYLOAD_LEN {
-            udp_length_exceeded(data.len())
-        }
-        else {
-            to_send_status(self.socket.send(data))
-        }
+        send_packet(data, |data| self.socket.send(data))
     }
 }
 
@@ -126,12 +121,7 @@ impl Local for LocalResource {
     }
 
     fn send_to(&self, addr: SocketAddr, data: &[u8]) -> SendStatus {
-        if data.len() > MAX_UDP_PAYLOAD_LEN {
-            udp_length_exceeded(data.len())
-        }
-        else {
-            to_send_status(self.socket.send_to(data, addr))
-        }
+        send_packet(data, |data| self.socket.send_to(data, addr))
     }
 }
 
@@ -145,24 +135,30 @@ impl Drop for LocalResource {
     }
 }
 
-fn udp_length_exceeded(length: usize) -> SendStatus {
-    log::error!(
-        "The UDP message could not be sent because it exceeds the MTU. \
-        Current size: {}, MTU: {}",
-        length,
-        MAX_UDP_PAYLOAD_LEN
-    );
-    SendStatus::MaxPacketSizeExceeded(length, MAX_UDP_PAYLOAD_LEN)
-}
-
-fn to_send_status(result: io::Result<usize>) -> SendStatus {
-    match result {
-        Ok(_) => SendStatus::Sent,
-        // Avoid ICMP generated error to be logged
-        Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => SendStatus::ResourceNotFound,
-        Err(err) => {
-            log::error!("UDP send error: {}", err);
-            SendStatus::ResourceNotFound
+fn send_packet(data: &[u8], send_method: impl Fn(&[u8]) -> io::Result<usize>) -> SendStatus {
+    if data.len() > MAX_UDP_PAYLOAD_LEN {
+        log::error!(
+            "The UDP message could not be sent because it exceeds the MTU. \
+            Current size: {}, MTU: {}",
+            data.len(),
+            MAX_UDP_PAYLOAD_LEN
+        );
+        SendStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_PAYLOAD_LEN)
+    }
+    else {
+        loop {
+            match send_method(data) {
+                Ok(_) => break SendStatus::Sent,
+                // Avoid ICMP generated error to be logged
+                Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
+                    break SendStatus::ResourceNotFound
+                }
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => continue,
+                Err(err) => {
+                    log::error!("UDP send error: {}", err);
+                    break SendStatus::ResourceNotFound
+                }
+            }
         }
     }
 }

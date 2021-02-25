@@ -121,10 +121,12 @@ impl<E> Drop for EventQueue<E> {
         if self.associated_senders.load(Ordering::Relaxed) > 1 {
             // > 1 because the own EventQueue has an undropped EventSender.
             panic!(
-                "EventQueue dropped before its associated 'EventSender' instances. \
+                "'EventQueue' dropped before its associated 'EventSender' instances. \
                 Ensure that all 'EventSender' has been dropped first. \
-                If you are storing the 'Network' and the 'EventSender' in the same struct \
-                ensure that the 'Network' is on top of 'EventSender' to be dropped first."
+                If you are storing the 'Network' and the 'EventQueue' in the same struct \
+                ensure that the 'Network' is on top of the 'EventQueue' to be dropped first. \
+                If your are using 'Network::split()' or 'Network::split_and_map()' functions, \
+                you need to deestructure the returned tuple."
             );
         }
     }

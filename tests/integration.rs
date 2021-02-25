@@ -70,7 +70,7 @@ fn echo_server_handle(
         .name("test-server".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split();
+                let (mut event_queue, mut network) = Network::split();
 
                 let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
                 tx.send(server_addr).unwrap();
@@ -140,7 +140,7 @@ fn echo_client_manager_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split();
+                let (mut event_queue, mut network) = Network::split();
 
                 let mut clients = HashSet::new();
 
@@ -201,7 +201,7 @@ fn message_size(transport: Transport, message_size: usize) {
     // We substract 8 because of the 8 bytes added by serializing a Vec.
     let sent_message: Vec<u8> = (0..message_size - 8).map(|_| rng.gen()).collect();
 
-    let (mut network, mut event_queue) = Network::split();
+    let (mut event_queue, mut network) = Network::split();
     let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
     let (receiver, _) = network.connect(transport, receiver_addr).unwrap();

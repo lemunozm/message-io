@@ -7,7 +7,7 @@ fn main() {
         None => return println!("Please choose a name"),
     };
 
-    let (mut network, mut event_queue) = Network::split();
+    let (mut event_queue, mut network) = Network::split();
 
     let addr = "239.255.0.1:3010";
     match network.connect(Transport::Udp, addr) {

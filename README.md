@@ -78,7 +78,7 @@ message-io = "0.9"
 
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and respond to them.
-It is capable to manage several client connections and listen from 3 differents protocols at same time.
+It is capable to manage several client connections and listen from 3 differents protocols at the same time.
 
 ```rust
 use message_io::network::{Network, NetEvent, Transport};

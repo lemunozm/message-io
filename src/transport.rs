@@ -1,8 +1,8 @@
 use crate::engine::{AdapterLauncher};
 use crate::adapters::{
-    tcp::{TcpAdapter},
-    udp::{UdpAdapter},
-    web_socket::{WsAdapter},
+    tcp::{self, TcpAdapter},
+    udp::{self, UdpAdapter},
+    web_socket::{self, WsAdapter},
 };
 
 use num_enum::IntoPrimitive;
@@ -22,20 +22,29 @@ pub enum Transport {
 }
 
 impl Transport {
-    /// Returns the adapter id used for this transport.
-    /// It is equivalent to the position of the enum starting by 0
-    pub fn id(self) -> u8 {
-        self.into()
-    }
-
     /// Associates an adapter.
     /// This method mounts the adapter to be used in the `NetworkEngine`
     pub fn mount_adapter(self, launcher: &mut AdapterLauncher) {
         match self {
-            Transport::Tcp => launcher.mount(self.id(), TcpAdapter),
-            Transport::Udp => launcher.mount(self.id(), UdpAdapter),
-            Transport::Ws => launcher.mount(self.id(), WsAdapter),
+            Self::Tcp => launcher.mount(self.id(), TcpAdapter),
+            Self::Udp => launcher.mount(self.id(), UdpAdapter),
+            Self::Ws => launcher.mount(self.id(), WsAdapter),
         };
+    }
+
+    /// Max packet payload size available for each transport
+    pub const fn max_payload(self) -> usize {
+        match self {
+            Self::Tcp => tcp::MAX_TCP_PAYLOAD_LEN,
+            Self::Udp => udp::MAX_UDP_PAYLOAD_LEN,
+            Self::Ws => web_socket::MAX_WS_PAYLOAD_LEN,
+        }
+    }
+
+    /// Returns the adapter id used for this transport.
+    /// It is equivalent to the position of the enum starting by 0
+    pub fn id(self) -> u8 {
+        self.into()
     }
 }
 

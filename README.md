@@ -19,8 +19,7 @@ If you find a problem using the library or you have an improvement idea, do not 
 
 ## Motivation
 Managing sockets is hard because you need to fight with threads, concurrency,
-IO errors that come from the OS (which are really difficult to understand in some situations),
-serialization, encoding...
+IO errors that come from the OS (which are really difficult to understand in some situations), encoding...
 And if you make use of *non-blocking* sockets, it adds a new layer of complexity:
 synchronize the events that come asynchronously from the OS poll.
 
@@ -44,21 +43,23 @@ You could change the protocol of your application in literally one line.
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
   - Abstraction from transport layer: do not think about sockets, think about messages and endpoints.
   - Only two main entities to use:
-    - an extensible *event-queue* to manage all events synchronously,
-    - a *network* to manage all connections (connect, listen, remove, send, receive).
+    - an extensible
+    [`Eventqueue`](https://docs.rs/message-io/latest/message_io/events/struct.EventQueue.html)
+    to manage all events synchronously,
+    - a [`Network`](https://docs.rs/message-io/latest/message_io/network/struct.Network.html)
+    to manage all connections (connect, listen, remove, send, receive).
   - Forget concurrence problems: handle thousands of active connections and listeners without any
-    effort, "One thread to rule them all".
+    effort. "One thread to rule them all".
   - Easy error handling.
     Do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
     - One thread for manage all internal connections over the faster OS poll.
-    - Binary serialization (using [bincode](https://github.com/servo/bincode))
     - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.8"
+message-io = "0.9"
 ```
 
 ### Documentation
@@ -81,15 +82,9 @@ It is capable to manage several client connections and listen from 3 differents 
 
 ```rust
 use message_io::network::{Network, NetEvent, Transport};
-use serde::{Serialize, Deserialize};
-
-#[derive(Serialize, Deserialize)]
-enum Message {
-    Hello(String),
-    // Other messages here
-}
 
 fn main() {
+    // Create a Network with an associated event queue for reading its events.
     let (mut network, mut events) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
@@ -99,23 +94,60 @@ fn main() {
 
     loop {
         match events.receive() { // Read the next event or wait until have it.
-            NetEvent::Message(endpoint, message) => match message {
-                Message::Hello(msg) => {
-                    println!("Received: {}", msg);
-                    network.send(endpoint, Message::Hello(msg));
-                },
-                //Other messages here
+            NetEvent::Message(endpoint, data) => {
+                println!("Received: {}", String::from_utf8_lossy(&data));
+                network.send(endpoint, &data);
             },
             NetEvent::Connected(_endpoint) => println!("Client connected"), // Tcp or Ws
             NetEvent::Disconnected(_endpoint) => println!("Client disconnected"), //Tcp or Ws
-            NetEvent::DeserializationError(_) => (),
+        }
+    }
+}
+```
+
+### Echo client
+The following exaple shows a basic client that can connect to the previous server.
+It will send a message each second to the server an will listen its echo response.
+Changing the `Transport::Tcp` to `Udp` or `Ws` will change the underlying transport used.
+Also, you could create the number of connections you want at the same time, without any extra thread.
+
+```rust
+use message_io::network::{Network, NetEvent, Transport};
+
+enum Event {
+    Net(NetEvent),
+    Tick,
+    // Any other app event here.
+}
+
+fn main() {
+    // The split_and_map() version allows to combine network events with your application events.
+    let (mut network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
+
+    // You can change the transport to Udp or Websocket.
+    let (server, _ ) = network.connect(Transport::Tcp, "127.0.0.1:3042").unwrap();
+
+    events.sender().send(Event::Tick); // Start sending
+    loop {
+        match events.receive() {
+            Event::Net(net_event) => match net_event { // event from the network
+                NetEvent::Message(_endpoint, data) => {
+                    println!("Received: {}", String::from_utf8_lossy(&data));
+                },
+                _ => (),
+            }
+            Event::Tick => { // computed every second
+                network.send(server, "Hello server!".as_bytes());
+                events.sender().send_with_timer(Event::Tick, std::time::Duration::from_secs(1));
+            }
         }
     }
 }
 ```
 
 ## Test it yourself!
-Clone the repository and test the *Ping Pong* example.
+Clone the repository and test the *Ping Pong* example
+(similar to the *echo* example but more vitaminized).
 
 Run the server:
 ```
@@ -143,7 +175,7 @@ If the protocol can be built in top of [`mio`](https://github.com/tokio-rs/mio)
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you find [here](https://docs.rs/message-io/0.8.1/message_io/adapter/index.html).
+  traits that you find [here](https://docs.rs/message-io/latest/message_io/adapter/index.html).
   It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
   and take little more than 150 lines implement an adapter file.
 

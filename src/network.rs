@@ -1,47 +1,47 @@
+// The ext public uses allows the user to use all this elements as network elements
 pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
 pub use crate::adapter::{SendStatus};
 pub use crate::remote_addr::{RemoteAddr, ToRemoteAddr};
 pub use crate::transport::{Transport};
+pub use crate::driver::{AdapterEvent};
 
 use crate::events::{EventQueue};
 use crate::engine::{NetworkEngine, AdapterLauncher};
-use crate::driver::{AdapterEvent};
 
 use strum::{IntoEnumIterator};
-
-use serde::{Serialize, Deserialize};
 
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::io::{self};
 
 /// Input network events.
 #[derive(Debug)]
-pub enum NetEvent<M>
-where M: for<'b> Deserialize<'b> + Send + 'static
-{
+pub enum NetEvent {
     /// Input message received by the network.
-    Message(Endpoint, M),
+    Message(Endpoint, Vec<u8>),
 
     /// New endpoint has been connected to a listener.
     /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
     Connected(Endpoint),
 
     /// This event is only dispatched when a connection is lost.
-    /// Call to [`Network::remove_resource()`] will NOT generate the event.
+    /// Call to [`Network::remove()`] will NOT generate the event.
     /// When this event is received, the resource is considered already removed.
     /// A [`NetEvent::Message`] event will never be generated after this event from the endpoint.
     /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
     /// Because `UDP` is not connection oriented, the event can no be detected.
     Disconnected(Endpoint),
+}
 
-    /// This event shows that there was a problem during the deserialization of a message.
-    /// The problem is mainly due by a programming issue reading data from
-    /// an unknown or outdated endpoint.
-    /// In production it could be that other application is writing in your application port.
-    /// This error means that a message has been lost (the erroneous message),
-    /// but the endpoint remains connected for its usage.
-    DeserializationError(Endpoint),
+impl NetEvent {
+    /// Created a `NetEvent` from an [`AdapterEvent`].
+    pub fn from_adapter(endpoint: Endpoint, adapter_event: AdapterEvent<'_>) -> NetEvent {
+        match adapter_event {
+            AdapterEvent::Added => NetEvent::Connected(endpoint),
+            AdapterEvent::Data(data) => NetEvent::Message(endpoint, data.to_vec()),
+            AdapterEvent::Removed => NetEvent::Disconnected(endpoint),
+        }
+    }
 }
 
 /// Network is in charge of managing all the connections transparently.
@@ -49,43 +49,51 @@ where M: for<'b> Deserialize<'b> + Send + 'static
 /// and manages the different adapters for you.
 pub struct Network {
     engine: NetworkEngine,
-    output_buffer: Vec<u8>, //cached for preformance
 }
 
 impl Network {
     /// Creates a new `Network` instance.
-    /// The user must register an event_callback that can be called
-    /// each time the network generate and [`NetEvent`].
-    pub fn new<M>(event_callback: impl Fn(NetEvent<M>) + Send + 'static) -> Network
-    where M: for<'b> Deserialize<'b> + Send + 'static {
+    /// The user must register an event_callback that can be called each time
+    /// an internal adapter generates an event.
+    /// This function is used when the user needs to perform some action over the raw data
+    /// comming from an adapter, without using a [`EventQueue`].
+    /// If you will want to use an `EventQueue` you can use [`Network::split()`] or
+    /// [`Network::split_and_map()`]
+    pub fn new(event_callback: impl Fn(Endpoint, AdapterEvent) + Send + 'static) -> Network {
         let mut launcher = AdapterLauncher::default();
         Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
-        let engine = NetworkEngine::new(launcher, move |endpoint, adapter_event| {
-            let event = match adapter_event {
-                AdapterEvent::Added => NetEvent::Connected(endpoint),
-                AdapterEvent::Data(data) => match bincode::deserialize::<M>(data) {
-                    Ok(message) => NetEvent::Message(endpoint, message),
-                    Err(_) => NetEvent::DeserializationError(endpoint),
-                },
-                AdapterEvent::Removed => NetEvent::Disconnected(endpoint),
-            };
-            event_callback(event);
-        });
+        let engine = NetworkEngine::new(launcher, event_callback);
 
-        Network { engine, output_buffer: Vec::new() }
+        Network { engine }
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
     /// events can be read.
     /// If you want to create a [`EventQueue`] that manages more events than `NetEvent`,
-    /// Yoy can create a custom network with [Network::new()].
+    /// You can create use instead [Network::split_and_map()].
     /// This function shall be used if you only want to manage `NetEvent` in the EventQueue.
-    pub fn split<M>() -> (Network, EventQueue<NetEvent<M>>)
-    where M: for<'b> Deserialize<'b> + Send + 'static {
+    pub fn split() -> (Network, EventQueue<NetEvent>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |net_event| sender.send(net_event));
+        let network = Network::new(move |endpoint, adapter_event| {
+            sender.send(NetEvent::from_adapter(endpoint, adapter_event))
+        });
+        (network, event_queue)
+    }
+
+    /// Creates a network instance with an associated [`EventQueue`] where the input network
+    /// events can be read.
+    /// This function, allows to map the [`NetEvent`] to something you use in your application,
+    /// allowing to mix the `NetEvent` with your own events.
+    pub fn split_and_map<E: Send + 'static>(
+        map: impl Fn(NetEvent) -> E + Send + 'static,
+    ) -> (Network, EventQueue<E>) {
+        let mut event_queue = EventQueue::new();
+        let sender = event_queue.sender().clone();
+        let network = Network::new(move |endpoint, adapter_event| {
+            sender.send(map(NetEvent::from_adapter(endpoint, adapter_event)))
+        });
         (network, event_queue)
     }
 
@@ -130,35 +138,15 @@ impl Network {
     /// Note: UDP endpoints generated by listening from UDP shared the resource.
     /// This means that there is no resource to remove because there is no connection itself
     /// to close ('there is no spoon').
-    pub fn remove_resource(&mut self, resource_id: ResourceId) -> Option<()> {
+    pub fn remove(&mut self, resource_id: ResourceId) -> Option<()> {
         self.engine.remove(resource_id)
     }
 
-    /// Serialize and send the message thought the connection represented by the given endpoint.
-    /// If the same message should be sent to different endpoints,
-    /// use [`Network::send_all()`] to get a better performance.
+    /// Send the data message thought the connection represented by the given endpoint.
     /// The funcion panics if the endpoint do not exists in the [`Network`].
     /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
     /// A [`SendStatus`] is returned with the information about the sending.
-    pub fn send<M: Serialize>(&mut self, endpoint: Endpoint, message: M) -> SendStatus {
-        self.output_buffer.clear();
-        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        self.engine.send(endpoint, &self.output_buffer)
-    }
-
-    /// This method performs the same actions as [`Network::send()`] but for several endpoints.
-    /// When there are severals endpoints to send the data,
-    /// this method is faster than consecutive calls to [`Network::send()`]
-    /// since the encoding and serialization is performed only one time for all endpoints.
-    /// The method returns a list of [`SendStatus`] associated to each endpoint.
-    pub fn send_all<'b, M: Serialize>(
-        &mut self,
-        endpoints: impl IntoIterator<Item = &'b Endpoint>,
-        message: M,
-    ) -> &Vec<SendStatus>
-    {
-        self.output_buffer.clear();
-        bincode::serialize_into(&mut self.output_buffer, &message).unwrap();
-        self.engine.send_all(endpoints, &self.output_buffer)
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
+        self.engine.send(endpoint, data)
     }
 }

@@ -16,6 +16,11 @@ use std::mem::{MaybeUninit};
 
 const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 
+/// The max packet value for tcp.
+/// Although this size is very high, it is preferred send data in smaller chunks with a rate
+/// to not saturate the receiver thread in the endpoint.
+pub const MAX_TCP_PAYLOAD_LEN: usize = encoding::Padding::MAX as usize;
+
 pub struct TcpAdapter;
 impl Adapter for TcpAdapter {
     type Remote = RemoteResource;

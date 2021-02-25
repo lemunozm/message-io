@@ -1,6 +1,5 @@
 use super::common::{SenderMsg, ReceiverMsg};
 
-use message_io::events::{EventQueue};
 use message_io::network::{Network, NetEvent, Endpoint, Transport};
 
 use std::collections::{HashMap};
@@ -14,15 +13,8 @@ pub struct Transfer {
     expected_size: usize,
 }
 
-enum Event {
-    Network(NetEvent<SenderMsg>),
-}
-
 pub fn run() {
-    let mut event_queue = EventQueue::new();
-
-    let network_sender = event_queue.sender().clone();
-    let mut network = Network::new(move |net_event| network_sender.send(Event::Network(net_event)));
+    let (mut network, mut event_queue) = Network::split();
 
     let listen_addr = "127.0.0.1:3005";
     match network.listen(Transport::Tcp, listen_addr) {
@@ -34,8 +26,9 @@ pub fn run() {
 
     loop {
         match event_queue.receive() {
-            Event::Network(net_event) => match net_event {
-                NetEvent::Message(endpoint, message) => match message {
+            NetEvent::Message(endpoint, input_data) => {
+                let message: SenderMsg = bincode::deserialize(&input_data).unwrap();
+                match message {
                     SenderMsg::FileRequest(name, size) => {
                         let able = match File::create(format!("{}.recv", name)) {
                             Ok(file) => {
@@ -51,7 +44,9 @@ pub fn run() {
                             }
                         };
 
-                        network.send(endpoint, ReceiverMsg::CanReceive(able));
+                        let output_data =
+                            bincode::serialize(&ReceiverMsg::CanReceive(able)).unwrap();
+                        network.send(endpoint, &output_data);
                     }
                     SenderMsg::Chunk(data) => {
                         let transfer = transfers.get_mut(&endpoint).unwrap();
@@ -68,17 +63,16 @@ pub fn run() {
                             transfers.remove(&endpoint).unwrap();
                         }
                     }
-                },
-                NetEvent::Connected(_) => {}
-                NetEvent::Disconnected(endpoint) => {
-                    // Unexpected sender disconnection. Cleaninig.
-                    if transfers.contains_key(&endpoint) {
-                        println!("\nUnexpected Sender disconnected");
-                        transfers.remove(&endpoint);
-                    }
                 }
-                NetEvent::DeserializationError(_) => (),
-            },
+            }
+            NetEvent::Connected(_) => {}
+            NetEvent::Disconnected(endpoint) => {
+                // Unexpected sender disconnection. Cleaninig.
+                if transfers.contains_key(&endpoint) {
+                    println!("\nUnexpected Sender disconnected");
+                    transfers.remove(&endpoint);
+                }
+            }
         }
     }
 }

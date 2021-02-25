@@ -52,9 +52,9 @@ pub struct ListeningInfo<L: Local> {
 }
 
 /// The following represents the posible status that [`crate::network::Network::send()`]
-/// and [`crate::network::Network::send_all()`] calls can return.
+/// call can return.
 /// The library do not encourage to perform the check of this status for each `send()` call,
-/// Only in that cases where you need extra information about how the sending method was.
+/// only in that cases where you need extra information about how the sending method was.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum SendStatus {
     /// This status is received when the entire data has been sent.

@@ -10,7 +10,7 @@ struct ClientInfo {
 }
 
 pub fn run(transport: Transport, addr: SocketAddr) {
-    let (mut network, mut event_queue) = Network::split();
+    let (mut event_queue, mut network) = Network::split();
 
     let mut clients: HashMap<Endpoint, ClientInfo> = HashMap::new();
 

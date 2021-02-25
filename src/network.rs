@@ -73,13 +73,15 @@ impl Network {
     /// If you want to create a [`EventQueue`] that manages more events than `NetEvent`,
     /// You can create use instead [Network::split_and_map()].
     /// This function shall be used if you only want to manage `NetEvent` in the EventQueue.
-    pub fn split() -> (Network, EventQueue<NetEvent>) {
+    pub fn split() -> (EventQueue<NetEvent>, Network) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
         let network = Network::new(move |endpoint, adapter_event| {
             sender.send(NetEvent::from_adapter(endpoint, adapter_event))
         });
-        (network, event_queue)
+        // It is totally crucial to return the network at last element of the tuple
+        // in order to be dropped before the event queue.
+        (event_queue, network)
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
@@ -88,13 +90,13 @@ impl Network {
     /// allowing to mix the `NetEvent` with your own events.
     pub fn split_and_map<E: Send + 'static>(
         map: impl Fn(NetEvent) -> E + Send + 'static,
-    ) -> (Network, EventQueue<E>) {
+    ) -> (EventQueue<E>, Network) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
         let network = Network::new(move |endpoint, adapter_event| {
             sender.send(map(NetEvent::from_adapter(endpoint, adapter_event)))
         });
-        (network, event_queue)
+        (event_queue, network)
     }
 
     /// Creates a connection to the specific address.

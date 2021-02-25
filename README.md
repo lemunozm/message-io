@@ -106,10 +106,10 @@ fn main() {
 ```
 
 ### Echo client
-The following exaple shows a basic client that can connect to the previous server.
-It will send a message each second to the server an will listen its echo response.
+The following example shows a client that can connect to the previous server.
+It sends a message each second to the server and listen its echo response.
 Changing the `Transport::Tcp` to `Udp` or `Ws` will change the underlying transport used.
-Also, you could create the number of connections you want at the same time, without any extra thread.
+Also, you can create the number of connections you want at the same time, without any extra thread.
 
 ```rust
 use message_io::network::{Network, NetEvent, Transport};
@@ -177,7 +177,7 @@ If the protocol can be built in top of [`mio`](https://github.com/tokio-rs/mio)
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
   traits that you find [here](https://docs.rs/message-io/latest/message_io/adapter/index.html).
   It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
-  and take little more than 150 lines implement an adapter file.
+  and take little more than 150 lines to implement an adapter file.
 
 1. Add a new field in the `Transport` enum found in [src/transport.rs](src/transport.rs)
   to register your new adapter.

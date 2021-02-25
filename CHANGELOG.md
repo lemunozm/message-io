@@ -16,6 +16,7 @@
 - Added Transport::max_payload().
 - Exposed `encoding` module.
 - Fixed message_size test for big messages.
+- Ensured correct drop order in the `EventQueue` and its senders.
 
 ## Release 0.8.2
 - Non-blocking Websocket acception.

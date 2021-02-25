@@ -1,21 +1,22 @@
 [![](https://img.shields.io/crates/v/message-io)](https://crates.io/crates/message-io)
+[![](https://img.shields.io/docsrs/message-io)](https://docs.rs/message-io)
 [![](https://img.shields.io/crates/l/message-io)](https://www.apache.org/licenses/LICENSE-2.0.txt)
 [![](https://img.shields.io/crates/d/message-io)](https://crates.io/crates/message-io)
 [![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
 
+
 # message-io
 `message-io` is an event-driven message library to build network applications **easy** and **fast**.
-The library manages and processes the socket data streams in order to offer a simple
-event message API to the user.
-Working as a **generic network manager**, it allows you to implement your own protocol
-following some rules, delegating to the library the tedious asynchrony and thread management.
-See more [here](#custom-adapter).
+The library handles the internal OS socket in order to offer a simple event message API to the user.
+It also allows you to make an adapter for your own transport protocol following some [rules](#custom-adapter),
+delegating to the library the tedious asynchrony and thread management.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=653&h=305" width="653"/>
 </p>
 
-If you find a problem using the library or you have an improvement idea, do not hesitate to open an issue. **Any contribution is welcome!**
+If you find a problem using the library or you have an improvement idea,
+do not hesitate to open an issue. **Any contribution is welcome!**
 
 ## Motivation
 Managing sockets is hard because you need to fight with threads, concurrency,
@@ -30,13 +31,16 @@ For that, `message-io` offers a simple API and give only two concepts to underst
 **messages** (the data you send and receive), and **endpoints** (the recipients of that data).
 This abstraction also offers the possibility to use the same API independently
 of the transport protocol used.
-You could change the protocol of your application in literally one line.
+You could change the transport of your application in literally one line.
 
 ## Features
-- Asynchronous: internal poll event with non-blocking sockets using [mio](https://github.com/tokio-rs/mio).
+- Highly scalable: **non-blocking sockets** (using [mio](https://github.com/tokio-rs/mio))
+  that allows to manage thousands of active connections.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - Multiples transports: **TCP**, **UDP** (with multicast option) and
   **WebSockets** (secure and non-secure option).
+- Customizable: `message-io` doesn't have the transport you need?
+  Add easily and [adapter](#custom-adapter).
 - Internal encoding layer: handle messages, not data streams.
 - FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
@@ -48,12 +52,13 @@ You could change the protocol of your application in literally one line.
     to manage all events synchronously,
     - a [`Network`](https://docs.rs/message-io/latest/message_io/network/struct.Network.html)
     to manage all connections (connect, listen, remove, send, receive).
-  - Forget concurrence problems: handle thousands of active connections and listeners without any
-    effort. "One thread to rule them all".
-  - Easy error handling.
-    Do not deal with dark internal `std::io::Error` when send/receive from the network.
+  - Forget concurrence problems: handle all connection and listeners from one thread:
+    "One thread to rule them all".
+  - Easy error handling:
+    do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
-    - One thread for manage all internal connections over the faster OS poll.
+    - Using non-blocking sockets from one thread allows to not waste memory and time
+      synchonizing many threads.
     - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
@@ -77,8 +82,10 @@ message-io = "0.9"
     (under development, but the communication part using `message-io` is almost complete for reference).
 
 ### All in one: TCP, UDP and WebSocket echo server
-The following example is the simplest server that reads messages from the clients and respond to them.
-It is capable to manage several client connections and listen from 3 differents protocols at the same time.
+The following example is the simplest server that reads messages from the clients and responds
+to them.
+It is capable to manage several client connections and listen from 3 differents protocols
+at the same time.
 
 ```rust
 use message_io::network::{Network, NetEvent, Transport};
@@ -171,7 +178,7 @@ and the internal **adapter API** for those who want to add their protocol adapte
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vRMwZsL8Tki3Sq9Zc2hpZ8L3bJPuj38zgiMKzBCXsX3wrPnfyG2hp-ijmDFUPqicEQZFeyUFxhcdJMB/pub?w=546&h=276"/>
 </p>
 
-If the protocol can be built in top of [`mio`](https://github.com/tokio-rs/mio)
+If a transport protocol can be built in top of [`mio`](https://github.com/tokio-rs/mio)
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the

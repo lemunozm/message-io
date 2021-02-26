@@ -118,7 +118,7 @@ impl Remote for RemoteResource {
                 // a Event::Disconnection will be generated later.
                 Err(err) => {
                     log::error!("TCP receive error: {}", err);
-                    break SendStatus::ResourceNotFound
+                    break SendStatus::ResourceNotFound // should not happen
                 }
             }
         }

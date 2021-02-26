@@ -36,7 +36,7 @@ impl Adapter for WsAdapter {
 
 struct PendingHandshake {
     mid_handshake: MidHandshake<ServerHandshake<TcpStream, NoCallback>>,
-    pendind_data: Vec<Vec<u8>>,
+    pending_messages: Vec<Vec<u8>>,
 }
 
 enum RemoteState {
@@ -95,7 +95,7 @@ impl Remote for RemoteResource {
                     handshake_result = mid_handshake.handshake();
                 }
                 Err(HandshakeError::Failure(err)) => {
-                    //TODO: generate a io::Error
+                    //CHECK: give to the user an io::Error?
                     panic!("WS connect handshake error: {}", err)
                 }
             }
@@ -107,7 +107,8 @@ impl Remote for RemoteResource {
     fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
         loop {
             // It is preferred to lock inside the loop to avoid blocking the sender thread
-            // if there is a huge amount of data to read
+            // if there is a huge amount of data to read.
+            // This way we "emulates" full duplex for the websocket case.
             let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
             match state.deref_mut() {
                 RemoteState::WebSocket(web_socket) => {
@@ -133,18 +134,23 @@ impl Remote for RemoteResource {
                     let current_handshake = handshake.take().unwrap();
                     match current_handshake.mid_handshake.handshake() {
                         Ok(ws_socket) => {
-                            *state = RemoteState::WebSocket(ws_socket)
-                            //TODO: peding data.
+                            *state = RemoteState::WebSocket(ws_socket);
+                            drop(state); // Unlocked here. We can do this becouse we break the loop.
+                            for pending_data in current_handshake.pending_messages {
+                                self.send(&pending_data);
+                            }
+                            break ReadStatus::WaitNextEvent
                         }
                         Err(HandshakeError::Interrupted(mid_handshake)) => {
                             *handshake = Some(PendingHandshake {
                                 mid_handshake,
-                                pendind_data: current_handshake.pendind_data,
+                                pending_messages: current_handshake.pending_messages,
                             });
+                            break ReadStatus::WaitNextEvent
                         }
                         Err(HandshakeError::Failure(ref err)) => {
                             log::error!("WS accept handshake error: {}", err);
-                            break ReadStatus::Disconnected
+                            break ReadStatus::Disconnected // should not happen
                         }
                     }
                 }
@@ -163,12 +169,15 @@ impl Remote for RemoteResource {
                         Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
                             result = web_socket.write_pending();
                         }
-                        Err(_) => break SendStatus::ResourceNotFound,
+                        Err(err) => {
+                            log::error!("WS send error: {}", err);
+                            break SendStatus::ResourceNotFound // should not happen
+                        },
                     }
                 }
             }
             RemoteState::Handshake(handshake) => {
-                handshake.as_mut().unwrap().pendind_data.push(data.to_vec());
+                handshake.as_mut().unwrap().pending_messages.push(data.to_vec());
                 SendStatus::Sent //Future versions: SendStatus::Enqueued
             }
         }
@@ -203,7 +212,7 @@ impl Local for LocalResource {
                         Err(HandshakeError::Interrupted(mid_handshake)) => {
                             Some(RemoteState::Handshake(Some(PendingHandshake {
                                 mid_handshake,
-                                pendind_data: Vec::new(),
+                                pending_messages: Vec::new(),
                             })))
                         }
                         Err(HandshakeError::Failure(ref err)) => {

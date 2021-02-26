@@ -103,6 +103,7 @@ impl Network {
     /// The endpoint, an identified of the new connection, will be returned.
     /// If the connection can not be performed (e.g. the address is not reached)
     /// the corresponding IO error is returned.
+    /// This function blocks until the resource has been connected and is ready to use.
     pub fn connect(
         &mut self,
         transport: Transport,

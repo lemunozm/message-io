@@ -156,7 +156,7 @@ fn send_packet(data: &[u8], send_method: impl Fn(&[u8]) -> io::Result<usize>) ->
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => continue,
                 Err(err) => {
                     log::error!("UDP send error: {}", err);
-                    break SendStatus::ResourceNotFound
+                    break SendStatus::ResourceNotFound // should not happen
                 }
             }
         }

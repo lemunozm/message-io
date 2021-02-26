@@ -88,8 +88,8 @@ impl Remote for RemoteResource {
         let mut handshake_result = ws_connect(url, stream);
         let remote = loop {
             match handshake_result {
-                Ok((ws_socket, _)) => {
-                    break RemoteResource { state: Mutex::new(RemoteState::WebSocket(ws_socket)) }
+                Ok((web_socket, _)) => {
+                    break RemoteResource { state: Mutex::new(RemoteState::WebSocket(web_socket)) }
                 }
                 Err(HandshakeError::Interrupted(mid_handshake)) => {
                     handshake_result = mid_handshake.handshake();
@@ -133,13 +133,11 @@ impl Remote for RemoteResource {
                 RemoteState::Handshake(handshake) => {
                     let current_handshake = handshake.take().unwrap();
                     match current_handshake.mid_handshake.handshake() {
-                        Ok(ws_socket) => {
-                            *state = RemoteState::WebSocket(ws_socket);
-                            drop(state); // Unlocked here. We can do this becouse we break the loop.
+                        Ok(mut web_socket) => {
                             for pending_data in current_handshake.pending_messages {
-                                self.send(&pending_data);
+                                Self::send_by_socket(&mut web_socket, &pending_data);
                             }
-                            break ReadStatus::WaitNextEvent
+                            *state = RemoteState::WebSocket(web_socket);
                         }
                         Err(HandshakeError::Interrupted(mid_handshake)) => {
                             *handshake = Some(PendingHandshake {
@@ -160,25 +158,29 @@ impl Remote for RemoteResource {
 
     fn send(&self, data: &[u8]) -> SendStatus {
         match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
-            RemoteState::WebSocket(web_socket) => {
-                let message = Message::Binary(data.to_vec());
-                let mut result = web_socket.write_message(message);
-                loop {
-                    match result {
-                        Ok(_) => break SendStatus::Sent,
-                        Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
-                            result = web_socket.write_pending();
-                        }
-                        Err(err) => {
-                            log::error!("WS send error: {}", err);
-                            break SendStatus::ResourceNotFound // should not happen
-                        },
-                    }
-                }
-            }
+            RemoteState::WebSocket(web_socket) => Self::send_by_socket(web_socket, data),
             RemoteState::Handshake(handshake) => {
                 handshake.as_mut().unwrap().pending_messages.push(data.to_vec());
                 SendStatus::Sent //Future versions: SendStatus::Enqueued
+            }
+        }
+    }
+}
+
+impl RemoteResource {
+    fn send_by_socket(web_socket: &mut WebSocket<TcpStream>, data: &[u8]) -> SendStatus {
+        let message = Message::Binary(data.to_vec());
+        let mut result = web_socket.write_message(message);
+        loop {
+            match result {
+                Ok(_) => break SendStatus::Sent,
+                Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
+                    result = web_socket.write_pending();
+                }
+                Err(err) => {
+                    log::error!("WS send error: {}", err);
+                    break SendStatus::ResourceNotFound // should not happen
+                },
             }
         }
     }
@@ -208,7 +210,7 @@ impl Local for LocalResource {
             match self.listener.accept() {
                 Ok((stream, addr)) => {
                     let remote_state = match ws_accept(stream) {
-                        Ok(ws_socket) => Some(RemoteState::WebSocket(ws_socket)),
+                        Ok(web_socket) => Some(RemoteState::WebSocket(web_socket)),
                         Err(HandshakeError::Interrupted(mid_handshake)) => {
                             Some(RemoteState::Handshake(Some(PendingHandshake {
                                 mid_handshake,

@@ -235,8 +235,9 @@ fn burst_sender_handle(
 #[test_case(Transport::Tcp, 1000000)]
 #[test_case(Transport::Ws, 1000000)]
 fn burst(transport: Transport, messages_count: usize) {
-    //util::init_logger(); // Enable it for better debug
+    //util::init_logger(); // Enable it for better debugging
 
+    //TODO: Check the message order
     let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
     let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
 
@@ -253,7 +254,7 @@ fn burst(transport: Transport, messages_count: usize) {
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
-    //util::init_logger(); // Enable it for better debug
+    //util::init_logger(); // Enable it for better debugging
 
     let (server_handle, server_addr) = echo_server_handle(transport, clients);
     let client_handle = echo_client_manager_handle(transport, server_addr, clients);
@@ -266,7 +267,7 @@ fn echo(transport: Transport, clients: usize) {
 #[test_case(Transport::Udp, Transport::Udp.max_payload())]
 #[test_case(Transport::Ws, BIG_MESSAGE_SIZE)]
 fn message_size(transport: Transport, message_size: usize) {
-    //util::init_logger(); // Enable it for better debug
+    //util::init_logger(); // Enable it for better debugging
 
     assert!(message_size <= transport.max_payload());
 

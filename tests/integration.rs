@@ -10,7 +10,7 @@ use std::net::{SocketAddr};
 use std::time::{Duration};
 
 const LOCAL_ADDR: &'static str = "127.0.0.1:0";
-const SMALL_MESSAGE: &'static str = "Small message";
+const SMALL_MESSAGE: &'static str = "Integration test message";
 const BIG_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
 
 lazy_static::lazy_static! {
@@ -190,7 +190,8 @@ fn burst_receiver_handle(
                 loop {
                     match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
                         NetEvent::Message(_, data) => {
-                            assert_eq!(SMALL_MESSAGE, String::from_utf8_lossy(&data));
+                            let expected_message = format!("{}: {}", SMALL_MESSAGE, count);
+                            assert_eq!(expected_message, String::from_utf8_lossy(&data));
                             count += 1;
                             if count == expected_count {
                                 break
@@ -221,8 +222,9 @@ fn burst_sender_handle(
 
                 let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
 
-                for _ in 0..expected_count {
-                    let status = network.send(receiver, SMALL_MESSAGE.as_bytes());
+                for count in 0..expected_count {
+                    let message = format!("{}: {}", SMALL_MESSAGE, count);
+                    let status = network.send(receiver, message.as_bytes());
                     assert_eq!(SendStatus::Sent, status);
                 }
             })
@@ -231,13 +233,12 @@ fn burst_sender_handle(
         .unwrap()
 }
 
-//#[test_case(Transport::Udp, 1000000)] // Inestable: UDP can lost packets
-#[test_case(Transport::Tcp, 1000000)]
-#[test_case(Transport::Ws, 1000000)]
+//#[test_case(Transport::Udp, 200000)] // Inestable: UDP can lost packets and mess them up
+#[test_case(Transport::Tcp, 200000)]
+#[test_case(Transport::Ws, 200000)]
 fn burst(transport: Transport, messages_count: usize) {
     //util::init_logger(); // Enable it for better debugging
 
-    //TODO: Check the message order
     let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
     let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
 

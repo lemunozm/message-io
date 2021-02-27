@@ -36,7 +36,7 @@ impl Adapter for WsAdapter {
 
 struct PendingHandshake {
     mid_handshake: MidHandshake<ServerHandshake<TcpStream, NoCallback>>,
-    pendind_data: Vec<Vec<u8>>,
+    pending_messages: Vec<Vec<u8>>,
 }
 
 enum RemoteState {
@@ -88,14 +88,14 @@ impl Remote for RemoteResource {
         let mut handshake_result = ws_connect(url, stream);
         let remote = loop {
             match handshake_result {
-                Ok((ws_socket, _)) => {
-                    break RemoteResource { state: Mutex::new(RemoteState::WebSocket(ws_socket)) }
+                Ok((web_socket, _)) => {
+                    break RemoteResource { state: Mutex::new(RemoteState::WebSocket(web_socket)) }
                 }
                 Err(HandshakeError::Interrupted(mid_handshake)) => {
                     handshake_result = mid_handshake.handshake();
                 }
                 Err(HandshakeError::Failure(err)) => {
-                    //TODO: generate a io::Error
+                    //CHECK: give to the user an io::Error?
                     panic!("WS connect handshake error: {}", err)
                 }
             }
@@ -107,7 +107,8 @@ impl Remote for RemoteResource {
     fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
         loop {
             // It is preferred to lock inside the loop to avoid blocking the sender thread
-            // if there is a huge amount of data to read
+            // if there is a huge amount of data to read.
+            // This way we "emulates" full duplex for the websocket case.
             let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
             match state.deref_mut() {
                 RemoteState::WebSocket(web_socket) => {
@@ -132,19 +133,22 @@ impl Remote for RemoteResource {
                 RemoteState::Handshake(handshake) => {
                     let current_handshake = handshake.take().unwrap();
                     match current_handshake.mid_handshake.handshake() {
-                        Ok(ws_socket) => {
-                            *state = RemoteState::WebSocket(ws_socket)
-                            //TODO: peding data.
+                        Ok(mut web_socket) => {
+                            for pending_data in current_handshake.pending_messages {
+                                Self::send_by_socket(&mut web_socket, &pending_data);
+                            }
+                            *state = RemoteState::WebSocket(web_socket);
                         }
                         Err(HandshakeError::Interrupted(mid_handshake)) => {
                             *handshake = Some(PendingHandshake {
                                 mid_handshake,
-                                pendind_data: current_handshake.pendind_data,
+                                pending_messages: current_handshake.pending_messages,
                             });
+                            break ReadStatus::WaitNextEvent
                         }
                         Err(HandshakeError::Failure(ref err)) => {
                             log::error!("WS accept handshake error: {}", err);
-                            break ReadStatus::Disconnected
+                            break ReadStatus::Disconnected // should not happen
                         }
                     }
                 }
@@ -154,22 +158,29 @@ impl Remote for RemoteResource {
 
     fn send(&self, data: &[u8]) -> SendStatus {
         match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
-            RemoteState::WebSocket(web_socket) => {
-                let message = Message::Binary(data.to_vec());
-                let mut result = web_socket.write_message(message);
-                loop {
-                    match result {
-                        Ok(_) => break SendStatus::Sent,
-                        Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
-                            result = web_socket.write_pending();
-                        }
-                        Err(_) => break SendStatus::ResourceNotFound,
-                    }
-                }
-            }
+            RemoteState::WebSocket(web_socket) => Self::send_by_socket(web_socket, data),
             RemoteState::Handshake(handshake) => {
-                handshake.as_mut().unwrap().pendind_data.push(data.to_vec());
+                handshake.as_mut().unwrap().pending_messages.push(data.to_vec());
                 SendStatus::Sent //Future versions: SendStatus::Enqueued
+            }
+        }
+    }
+}
+
+impl RemoteResource {
+    fn send_by_socket(web_socket: &mut WebSocket<TcpStream>, data: &[u8]) -> SendStatus {
+        let message = Message::Binary(data.to_vec());
+        let mut result = web_socket.write_message(message);
+        loop {
+            match result {
+                Ok(_) => break SendStatus::Sent,
+                Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
+                    result = web_socket.write_pending();
+                }
+                Err(err) => {
+                    log::error!("WS send error: {}", err);
+                    break SendStatus::ResourceNotFound // should not happen
+                },
             }
         }
     }
@@ -199,11 +210,11 @@ impl Local for LocalResource {
             match self.listener.accept() {
                 Ok((stream, addr)) => {
                     let remote_state = match ws_accept(stream) {
-                        Ok(ws_socket) => Some(RemoteState::WebSocket(ws_socket)),
+                        Ok(web_socket) => Some(RemoteState::WebSocket(web_socket)),
                         Err(HandshakeError::Interrupted(mid_handshake)) => {
                             Some(RemoteState::Handshake(Some(PendingHandshake {
                                 mid_handshake,
-                                pendind_data: Vec::new(),
+                                pending_messages: Vec::new(),
                             })))
                         }
                         Err(HandshakeError::Failure(ref err)) => {

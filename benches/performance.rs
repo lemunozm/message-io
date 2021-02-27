@@ -1,158 +1,98 @@
-// IMPORTANT!!
-// This file is not currently maintained.
-// It will be updated in https://github.com/lemunozm/message-io/pull/34
+use message_io::network::{Network, NetEvent, Transport};
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
 
-use serde::{Serialize, Deserialize};
+use std::time::{Duration};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
+use std::thread::{self};
 
-#[macro_use]
-extern crate serde_big_array;
-big_array! { BigArray; }
-
-use std::net::{TcpListener, TcpStream, UdpSocket};
-use std::io::prelude::*;
-
-const SMALL_SIZE: usize = 16;
-#[derive(Serialize, Deserialize, Clone, Copy)]
-struct SmallMessage {
-    data: [u8; SMALL_SIZE],
+lazy_static::lazy_static! {
+    pub static ref SMALL_TIMEOUT: Duration = Duration::from_millis(100);
 }
-const SMALL_MESSAGE: SmallMessage = SmallMessage { data: [0xFF; SMALL_SIZE] };
 
-const MEDIUM_SIZE: usize = 1024;
-#[derive(Serialize, Deserialize, Clone, Copy)]
-struct MediumMessage {
-    #[serde(with = "BigArray")]
-    data: [u8; MEDIUM_SIZE],
-}
-const MEDIUM_MESSAGE: MediumMessage = MediumMessage { data: [0xFF; MEDIUM_SIZE] };
+// Common error messages
+pub const TIMEOUT_MSG_EXPECTED_ERR: &'static str = "Timeout, but a message was expected.";
 
-const BIG_SIZE: usize = 65536;
-#[derive(Serialize, Deserialize, Clone, Copy)]
-struct BigMessage {
-    #[serde(with = "BigArray")]
-    data: [u8; BIG_SIZE],
-}
-const BIG_MESSAGE: BigMessage = BigMessage { data: [0xFF; BIG_SIZE] };
-
-//######################################################################
-//                     std benches (used as reference)
-//######################################################################
-
-/// Measure the cost of sending a message using std::net::UdpSocket
-fn std_send_udp<M>(c: &mut Criterion, message: M)
-where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
-    let msg = format!("STD-REF: Sending {} bytes by Udp", std::mem::size_of::<M>());
+fn latency_by(c: &mut Criterion, transport: Transport) {
+    let msg = format!("latency by {}", transport);
     c.bench_function(&msg, |b| {
-        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let addr = receiver.local_addr().unwrap();
+        let (mut events, mut network) = Network::split();
 
-        let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-        socket.connect(addr).unwrap();
-        let mut buffer = Vec::with_capacity(std::mem::size_of::<M>());
+        let receiver_addr = network.listen(transport, "127.0.0.1:0").unwrap().1;
+        let receiver = network.connect(transport, receiver_addr).unwrap().0;
+
+        // skip the connection event for oriented connection protocols.
+        events.receive_timeout(Duration::from_millis(100));
 
         b.iter(|| {
-            buffer.clear();
-            bincode::serialize_into(&mut buffer, &message).unwrap();
-            socket.send(&buffer).unwrap();
-        });
-    });
-}
-
-/// Measure the cost of sending a message using std::net::TcpStream
-fn std_send_tcp<M>(c: &mut Criterion, message: M)
-where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
-    let msg = format!("STD-REF: Sending {} bytes by Tcp", std::mem::size_of::<M>());
-    c.bench_function(&msg, |b| {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = listener.local_addr().unwrap();
-
-        // Created only for not saturate the stream
-        let receiver_handle = std::thread::spawn(move || {
-            let mut receiver_stream = listener.incoming().next().unwrap().unwrap();
+            network.send(receiver, &[0xFF]);
             loop {
-                if let Ok(0) = receiver_stream.read(&mut [0; BIG_SIZE]) {
-                    break
+                match events.receive_timeout(*SMALL_TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+                    NetEvent::Message(_, _message) => break, // message received here
+                    _ => (),
                 }
             }
         });
-
-        let stream = TcpStream::connect(addr).unwrap();
-        let mut buffer = Vec::with_capacity(std::mem::size_of::<M>());
-
-        {
-            let stream = stream;
-            b.iter(|| {
-                buffer.clear();
-                bincode::serialize_into(&mut buffer, &message).unwrap();
-                (&stream).write(&buffer).unwrap();
-            });
-            //stream is destroyed and closed here
-        }
-
-        receiver_handle.join().unwrap();
     });
 }
 
-/// Measure the cost of sending messages and processing it using std::net::TcpStream
-fn std_send_recv_tcp_one_direction<M>(c: &mut Criterion, message: M)
-where M: Serialize + for<'b> Deserialize<'b> + Send + Copy + 'static {
-    let msg = format!(
-        "STD-REF: Sending and receiving one direction. {} bytes by Tcp",
-        std::mem::size_of::<M>()
-    );
-    c.bench_function(&msg, |b| {
-        b.iter_custom(|iters| {
-            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-            let addr = listener.local_addr().unwrap();
-            let stream = TcpStream::connect(addr).unwrap();
-            let mut buffer = Vec::with_capacity(std::mem::size_of::<M>());
+fn throughput_by(c: &mut Criterion, transport: Transport) {
+    let sizes = [1, 2, 4, 8, 16, 32, 64, 128]
+        .iter()
+        .map(|i| i * 1024)
+        .filter(|&size| size < transport.max_payload());
 
-            let time = std::time::Instant::now();
-            let receiver_handle = std::thread::spawn(move || {
-                let mut receiver_stream = listener.incoming().next().unwrap().unwrap();
-                loop {
-                    //TODO: Take into account the deserialization
-                    if let Ok(0) = receiver_stream.read(&mut [0; BIG_SIZE]) {
-                        break
+    for block_size in sizes {
+        let mut group = c.benchmark_group(format!("throughput by {}", transport));
+        group.throughput(Throughput::Bytes(block_size as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(block_size), &block_size, |b, &size| {
+            let (mut events, mut network) = Network::split();
+            let receiver_addr = network.listen(transport, "127.0.0.1:0").unwrap().1;
+            let receiver = network.connect(transport, receiver_addr).unwrap().0;
+
+            // skip the connection event for oriented connection protocols.
+            events.receive_timeout(*SMALL_TIMEOUT);
+
+            let thread_running = Arc::new(AtomicBool::new(true));
+            let running = thread_running.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let handle = thread::Builder::new()
+                .name("test-server".into())
+                .spawn(move || {
+                    let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
+                    tx.send(()).unwrap(); // receiving thread ready
+                    while running.load(Ordering::Relaxed) {
+                        network.send(receiver, &message);
                     }
-                }
+                })
+                .unwrap();
+
+            rx.recv().unwrap();
+
+            b.iter(|| {
+                events.receive_timeout(*SMALL_TIMEOUT).unwrap();
             });
 
-            {
-                let stream = stream;
-                for _ in 0..iters {
-                    buffer.clear();
-                    bincode::serialize_into(&mut buffer, &message).unwrap();
-                    (&stream).write(&buffer).unwrap();
-                }
-                //stream is destroyed and closed here
-            }
-
-            receiver_handle.join().unwrap();
-            time.elapsed()
+            thread_running.store(false, Ordering::Relaxed);
+            handle.join().unwrap();
         });
-    });
+    }
 }
 
-//######################################################################
-//                         message-io benches
-//######################################################################
-
-fn std_send_recv_tcp_size(c: &mut Criterion) {
-    std_send_recv_tcp_one_direction(c, SMALL_MESSAGE);
-    std_send_recv_tcp_one_direction(c, MEDIUM_MESSAGE);
+fn latency(c: &mut Criterion) {
+    latency_by(c, Transport::Udp);
+    latency_by(c, Transport::Tcp);
+    latency_by(c, Transport::Ws);
 }
 
-fn std_send_size_transport(c: &mut Criterion) {
-    std_send_tcp(c, SMALL_MESSAGE);
-    std_send_tcp(c, MEDIUM_MESSAGE);
-    std_send_tcp(c, BIG_MESSAGE);
-    std_send_udp(c, SMALL_MESSAGE);
-    std_send_udp(c, MEDIUM_MESSAGE);
+fn throughput(c: &mut Criterion) {
+    throughput_by(c, Transport::Udp);
+    throughput_by(c, Transport::Tcp);
+    throughput_by(c, Transport::Ws);
 }
 
-criterion_group!(benches, std_send_size_transport, std_send_recv_tcp_size,);
-
+criterion_group!(benches, latency, throughput);
 criterion_main!(benches);

@@ -10,7 +10,7 @@ use std::net::{SocketAddr};
 use std::time::{Duration};
 
 const LOCAL_ADDR: &'static str = "127.0.0.1:0";
-const SMALL_MESSAGE: &'static str = "Small message";
+const SMALL_MESSAGE: &'static str = "Integration test message";
 const BIG_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
 
 lazy_static::lazy_static! {
@@ -171,6 +171,81 @@ fn echo_client_manager_handle(
         .unwrap()
 }
 
+fn burst_receiver_handle(
+    transport: Transport,
+    expected_count: usize,
+) -> (JoinHandle<()>, SocketAddr)
+{
+    let (tx, rx) = crossbeam::channel::bounded(1);
+    let handle = thread::Builder::new()
+        .name("test-client".into())
+        .spawn(move || {
+            std::panic::catch_unwind(|| {
+                let (mut event_queue, mut network) = Network::split();
+                let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
+
+                tx.send(receiver_addr).unwrap();
+
+                let mut count = 0;
+                loop {
+                    match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+                        NetEvent::Message(_, data) => {
+                            let expected_message = format!("{}: {}", SMALL_MESSAGE, count);
+                            assert_eq!(expected_message, String::from_utf8_lossy(&data));
+                            count += 1;
+                            if count == expected_count {
+                                break
+                            }
+                        }
+                        NetEvent::Connected(_) => (),
+                        NetEvent::Disconnected(_) => (),
+                    }
+                }
+            })
+            .unwrap();
+        })
+        .unwrap();
+    (handle, rx.recv().unwrap())
+}
+
+fn burst_sender_handle(
+    transport: Transport,
+    receiver_addr: SocketAddr,
+    expected_count: usize,
+) -> JoinHandle<()>
+{
+    thread::Builder::new()
+        .name("test-client".into())
+        .spawn(move || {
+            std::panic::catch_unwind(|| {
+                let mut network = Network::new(|_, _| ());
+
+                let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
+
+                for count in 0..expected_count {
+                    let message = format!("{}: {}", SMALL_MESSAGE, count);
+                    let status = network.send(receiver, message.as_bytes());
+                    assert_eq!(SendStatus::Sent, status);
+                }
+            })
+            .unwrap();
+        })
+        .unwrap()
+}
+
+//#[test_case(Transport::Udp, 200000)] // Inestable: UDP can lost packets and mess them up
+#[test_case(Transport::Tcp, 200000)]
+#[test_case(Transport::Ws, 200000)]
+fn burst(transport: Transport, messages_count: usize) {
+    //util::init_logger(); // Enable it for better debugging
+
+    let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
+    let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
+
+    receiver_handle.join().unwrap();
+    sender_handle.join().unwrap();
+}
+
 #[test_case(Transport::Udp, 1)]
 #[test_case(Transport::Udp, 100)]
 #[test_case(Transport::Tcp, 1)]
@@ -180,7 +255,7 @@ fn echo_client_manager_handle(
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
-    //util::init_logger(); // Enable it for better debug
+    //util::init_logger(); // Enable it for better debugging
 
     let (server_handle, server_addr) = echo_server_handle(transport, clients);
     let client_handle = echo_client_manager_handle(transport, server_addr, clients);
@@ -193,13 +268,12 @@ fn echo(transport: Transport, clients: usize) {
 #[test_case(Transport::Udp, Transport::Udp.max_payload())]
 #[test_case(Transport::Ws, BIG_MESSAGE_SIZE)]
 fn message_size(transport: Transport, message_size: usize) {
-    //util::init_logger(); // Enable it for better debug
+    //util::init_logger(); // Enable it for better debugging
 
     assert!(message_size <= transport.max_payload());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    // We substract 8 because of the 8 bytes added by serializing a Vec.
-    let sent_message: Vec<u8> = (0..message_size - 8).map(|_| rng.gen()).collect();
+    let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();
 
     let (mut event_queue, mut network) = Network::split();
     let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
@@ -213,7 +287,7 @@ fn message_size(transport: Transport, message_size: usize) {
 
     loop {
         match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-            NetEvent::Message(_, message) => break assert_eq!(sent_message, message),
+            NetEvent::Message(_, data) => break assert_eq!(sent_message, data),
             NetEvent::Connected(_) => {
                 let status = network.send(receiver, &sent_message);
                 assert_eq!(status, SendStatus::Sent);

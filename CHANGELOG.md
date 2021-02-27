@@ -1,5 +1,11 @@
 # Changelog
 
+## Release 0.9.1
+- Fixed an UDP issue that could imply losing packet if they were sent consequently very fast.
+- Fixed a TCP encoding issue.
+- Fixed a Websocket issue that could imply to lost a message just after being accepted.
+- Added burst integration test with order check.
+
 ## Release 0.9.0
 - Removed serialization. **Rationale:**
   The serialization inside `message-io` was merely a shortcut,

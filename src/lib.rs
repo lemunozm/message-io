@@ -1,3 +1,6 @@
+//! See the [Github README](https://github.com/lemunozm/message-io),
+//! to see an overview of this library.
+
 mod util;
 mod resource_id;
 mod endpoint;
@@ -7,9 +10,6 @@ mod engine;
 mod adapters;
 mod remote_addr;
 mod transport;
-
-/// See the [Github README](https://github.com/lemunozm/message-io),
-/// to see an overview of this library.
 
 /// Main module of `message-io`.
 /// It contains all the resources and tools to create and manage connections.

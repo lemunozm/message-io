@@ -529,7 +529,7 @@ dependencies = [
 
 [[package]]
 name = "message-io"
-version = "0.9.0"
+version = "0.9.1"
 dependencies = [
  "bincode",
  "chrono",
@@ -543,7 +543,6 @@ dependencies = [
  "num_enum",
  "rand",
  "serde",
- "serde-big-array",
  "strum",
  "test-case",
  "tungstenite",
@@ -983,16 +982,6 @@ version = "1.0.123"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92d5161132722baa40d802cc70b15262b98258453e85e5d1d365c757c73869ae"
 dependencies = [
- "serde_derive",
-]
-
-[[package]]
-name = "serde-big-array"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "14f791855a30ea300749cd42f29761707665a2166c8550be67adbfeb78c62195"
-dependencies = [
- "serde",
  "serde_derive",
 ]
 

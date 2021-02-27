@@ -55,14 +55,14 @@ impl Decoder {
 
     fn store_and_decoded_data<'a>(&mut self, data: &'a [u8]) -> Option<(&[u8], &'a [u8])> {
         // Process frame header
-        let expected_size = match decode_size(&self.stored) {
-            Some(size) => size,
+        let (expected_size, data) = match decode_size(&self.stored) {
+            Some(size) => (size, data),
             None => {
                 let remaining = PADDING - self.stored.len();
-                if data.len() > remaining {
+                if data.len() >= remaining {
                     // Now, we can now the size
                     self.stored.extend_from_slice(&data[..remaining]);
-                    decode_size(&self.stored).unwrap()
+                    (decode_size(&self.stored).unwrap(), &data[remaining..])
                 }
                 else {
                     // We need more data to know the size
@@ -104,6 +104,13 @@ impl Decoder {
             }
         }
     }
+
+    /// Returns the bytes len stored in this decoder.
+    /// It can include both, the padding bytes and the data message bytes.
+    /// After decoding a message, its bytes are removed from the decoder.
+    pub fn stored_size(&self) -> usize {
+        self.stored.len()
+    }
 }
 
 #[cfg(test)]
@@ -118,7 +125,7 @@ mod tests {
     const MESSAGE_C: [u8; MESSAGE_SIZE] = ['C' as u8; MESSAGE_SIZE];
 
     fn encode_message(buffer: &mut Vec<u8>, message: &[u8]) {
-        buffer.extend_from_slice(&encode_size(&MESSAGE));
+        buffer.extend_from_slice(&encode_size(message));
         buffer.extend_from_slice(message);
     }
 
@@ -145,6 +152,44 @@ mod tests {
         decoder.decode(&buffer, |decoded| {
             times_called += 1;
             assert_eq!(MESSAGE, decoded);
+        });
+
+        assert_eq!(1, times_called);
+        assert_eq!(0, decoder.stored.len());
+    }
+
+    #[test]
+    // [          4B         ]
+    // [       message       ]
+    fn decode_message_no_size() {
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer, &[]);
+
+        let mut decoder = Decoder::default();
+
+        let mut times_called = 0;
+        decoder.decode(&buffer, |_decoded| {
+            // Should not be called
+            times_called += 1;
+        });
+
+        assert_eq!(1, times_called);
+        assert_eq!(0, decoder.stored.len());
+    }
+
+    #[test]
+    // [          5B          ]
+    // [        message       ]
+    fn decode_message_one_byte() {
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer, &[0xFF]);
+
+        let mut decoder = Decoder::default();
+
+        let mut times_called = 0;
+        decoder.decode(&buffer, |decoded| {
+            times_called += 1;
+            assert_eq!([0xFF], decoded);
         });
 
         assert_eq!(1, times_called);
@@ -259,5 +304,64 @@ mod tests {
 
         assert_eq!(0, decoder.stored.len());
         assert_eq!(1, times_called);
+    }
+
+    #[test]
+    // [ 3B ][   remaining   ]
+    // [       message       ]
+    fn decode_message_after_non_enough_padding() {
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer, &MESSAGE);
+
+        let (start_3b, remaining) = buffer.split_at(3);
+
+        let mut decoder = Decoder::default();
+
+        let mut times_called = 0;
+        decoder.decode(&start_3b, |_decoded| {
+            // Should not be called
+            times_called += 1;
+        });
+
+        assert_eq!(0, times_called);
+        assert_eq!(3, decoder.stored.len());
+
+        decoder.decode(&remaining, |decoded| {
+            times_called += 1;
+            assert_eq!(MESSAGE, decoded);
+        });
+
+        assert_eq!(1, times_called);
+        assert_eq!(0, decoder.stored.len());
+    }
+
+    #[test]
+    // [ 3B ][ 1B ]
+    // [  message ]
+    fn decode_message_no_size_after_non_enough_padding() {
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer, &[]);
+
+        let (start_3b, remaining) = buffer.split_at(3);
+
+        let mut decoder = Decoder::default();
+
+        let mut times_called = 0;
+        decoder.decode(&start_3b, |_decoded| {
+            // Should not be called
+            times_called += 1;
+        });
+
+        assert_eq!(0, times_called);
+        assert_eq!(3, decoder.stored.len());
+
+        let mut times_called = 0;
+        decoder.decode(&remaining, |_decoded| {
+            // Should not be called
+            times_called += 1;
+        });
+
+        assert_eq!(1, times_called);
+        assert_eq!(0, decoder.stored.len());
     }
 }

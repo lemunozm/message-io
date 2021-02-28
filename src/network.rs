@@ -99,6 +99,25 @@ impl Network {
         (event_queue, network)
     }
 
+    /// Creates a network instance with an associated [`EventQueue`] where the input network
+    /// events can be read.
+    /// This function, allows to map an [`AdapterEvent`] and its associated [`Endpoint`]
+    /// to something you use in your application, allowing to mix the data comming from the adapter
+    /// with your own events.
+    /// As difference from [`Network::split_and_map`] where the `NetEvent` parameter
+    /// is a sendable object, this funcion avoid an internal copy in the received data
+    /// giving instead the reference to the internal data of the adapter (which are not 'sendable').
+    /// It is in change of the user to map this data into something 'sendable'.
+    pub fn split_and_map_from_adapter<E: Send + 'static>(
+        map: impl Fn(Endpoint, AdapterEvent<'_>) -> E + Send + 'static,
+    ) -> (EventQueue<E>, Network) {
+        let mut event_queue = EventQueue::new();
+        let sender = event_queue.sender().clone();
+        let network =
+            Network::new(move |endpoint, adapter_event| sender.send(map(endpoint, adapter_event)));
+        (event_queue, network)
+    }
+
     /// Creates a connection to the specific address.
     /// The endpoint, an identified of the new connection, will be returned.
     /// If the connection can not be performed (e.g. the address is not reached)

@@ -15,7 +15,7 @@ pub fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     let transport = match args.get(2).unwrap_or(&"".into()).as_ref() {
-        "tcp" => Transport::Tcp,
+        "tcp" => Transport::FramedTcp, // The non-streamed version of tcp.
         "udp" => Transport::Udp,
         "ws" => Transport::Ws,
         _ => return println!("{}", HELP_MSG),

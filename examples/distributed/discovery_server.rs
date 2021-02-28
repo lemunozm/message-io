@@ -22,7 +22,7 @@ impl DiscoveryServer {
         let (event_queue, mut network) = Network::split();
 
         let listen_addr = "127.0.0.1:5000";
-        match network.listen(Transport::Tcp, listen_addr) {
+        match network.listen(Transport::FramedTcp, listen_addr) {
             Ok(_) => {
                 println!("Discovery server running at {}", listen_addr);
                 Some(DiscoveryServer { event_queue, network, participants: HashMap::new() })

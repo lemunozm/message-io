@@ -2,7 +2,7 @@ use message_io::network::{Network, NetEvent, Transport};
 
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
 
-use std::time::{Duration};
+use std::time::{Duration, Instant};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -72,8 +72,11 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
 
             rx.recv().unwrap();
 
-            b.iter(|| {
+            b.iter_custom(|iters| {
+                println!("{}", iters);
+                let start = Instant::now();
                 events.receive_timeout(*SMALL_TIMEOUT).unwrap();
+                start.elapsed()
             });
 
             thread_running.store(false, Ordering::Relaxed);
@@ -85,12 +88,14 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
 fn latency(c: &mut Criterion) {
     latency_by(c, Transport::Udp);
     latency_by(c, Transport::Tcp);
+    latency_by(c, Transport::FramedTcp);
     latency_by(c, Transport::Ws);
 }
 
 fn throughput(c: &mut Criterion) {
     throughput_by(c, Transport::Udp);
     throughput_by(c, Transport::Tcp);
+    throughput_by(c, Transport::FramedTcp);
     throughput_by(c, Transport::Ws);
 }
 

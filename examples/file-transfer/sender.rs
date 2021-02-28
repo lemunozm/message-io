@@ -15,7 +15,7 @@ pub fn run(file_path: &str) {
         Network::split_and_map(|net_event| Event::Network(net_event));
 
     let server_addr = "127.0.0.1:3005";
-    let (server_id, _) = match network.connect(Transport::Tcp, server_addr) {
+    let (server_id, _) = match network.connect(Transport::FramedTcp, server_addr) {
         Ok(server_id) => {
             println!("Connect to send by TCP at {}", server_addr);
             server_id

@@ -5,9 +5,9 @@ fn main() {
     let (mut events, mut network) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
-    network.listen(Transport::Tcp, "0.0.0.0:3042").unwrap();
+    network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); // As Tcp but encoded for packets
     network.listen(Transport::Udp, "0.0.0.0:3043").unwrap();
-    network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); //WebSockets
+    network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); // WebSockets
 
     loop {
         match events.receive() {

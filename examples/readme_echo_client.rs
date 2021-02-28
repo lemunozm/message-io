@@ -11,7 +11,7 @@ fn main() {
     let (mut events, mut network) = Network::split_and_map(|net_event| Event::Net(net_event));
 
     // You can change the transport to Udp or Websocket.
-    let (server, _) = network.connect(Transport::Tcp, "127.0.0.1:3042").unwrap();
+    let (server, _) = network.connect(Transport::FramedTcp, "127.0.0.1:3042").unwrap();
 
     events.sender().send(Event::Tick); // Start sending
     loop {

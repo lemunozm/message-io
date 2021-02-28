@@ -10,6 +10,7 @@ use std::net::{SocketAddr};
 use std::time::{Duration};
 
 const LOCAL_ADDR: &'static str = "127.0.0.1:0";
+const MIN_MESSAGE: &'static [u8] = &[42];
 const SMALL_MESSAGE: &'static str = "Integration test message";
 const BIG_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
 
@@ -21,8 +22,6 @@ lazy_static::lazy_static! {
 const TIMEOUT_MSG_EXPECTED_ERR: &'static str = "Timeout, but a message was expected.";
 
 mod util {
-    use message_io::network::{Transport};
-
     use std::sync::{Once};
 
     // Used to init the log only one time for all tests;
@@ -50,14 +49,6 @@ mod util {
             .apply()?;
         Ok(())
     }
-
-    pub const fn is_connection_oriented(transport: Transport) -> bool {
-        match transport {
-            Transport::Udp => false,
-            Transport::Tcp => true,
-            Transport::Ws => true,
-        }
-    }
 }
 
 fn echo_server_handle(
@@ -82,14 +73,14 @@ fn echo_server_handle(
                 loop {
                     match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
                         NetEvent::Message(endpoint, data) => {
-                            assert_eq!(SMALL_MESSAGE, String::from_utf8_lossy(&data));
+                            assert_eq!(MIN_MESSAGE, data);
 
                             let status = network.send(endpoint, &data);
                             assert_eq!(SendStatus::Sent, status);
 
                             messages_received += 1;
 
-                            if !util::is_connection_oriented(transport) {
+                            if !transport.is_connection_oriented() {
                                 // We assume here that if the protocol is not connection oriented
                                 // it will no create a resource.
                                 // The remote will be managed from the listener resource
@@ -99,14 +90,12 @@ fn echo_server_handle(
                                 }
                             }
                         }
-                        NetEvent::Connected(endpoint) => {
-                            match util::is_connection_oriented(transport) {
-                                true => assert!(clients.insert(endpoint)),
-                                false => unreachable!(),
-                            }
-                        }
+                        NetEvent::Connected(endpoint) => match transport.is_connection_oriented() {
+                            true => assert!(clients.insert(endpoint)),
+                            false => unreachable!(),
+                        },
                         NetEvent::Disconnected(endpoint) => {
-                            match util::is_connection_oriented(transport) {
+                            match transport.is_connection_oriented() {
                                 true => {
                                     disconnections += 1;
                                     assert!(clients.remove(&endpoint));
@@ -146,7 +135,7 @@ fn echo_client_manager_handle(
 
                 for _ in 0..clients_number {
                     let (server_endpoint, _) = network.connect(transport, server_addr).unwrap();
-                    let status = network.send(server_endpoint, SMALL_MESSAGE.as_bytes());
+                    let status = network.send(server_endpoint, MIN_MESSAGE);
                     assert_eq!(SendStatus::Sent, status);
                     assert!(clients.insert(server_endpoint));
                 }
@@ -155,7 +144,7 @@ fn echo_client_manager_handle(
                     match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
                         NetEvent::Message(endpoint, data) => {
                             assert!(clients.remove(&endpoint));
-                            assert_eq!(SMALL_MESSAGE, String::from_utf8_lossy(&data));
+                            assert_eq!(MIN_MESSAGE, &data);
                             network.remove(endpoint.resource_id());
                             if clients.len() == 0 {
                                 break //Exit from thread.
@@ -233,8 +222,9 @@ fn burst_sender_handle(
         .unwrap()
 }
 
-//#[test_case(Transport::Udp, 200000)] // Inestable: UDP can lost packets and mess them up
-#[test_case(Transport::Tcp, 200000)]
+//#[test_case(Transport::Udp, 200000)] // Inestable: UDP can lost packets and mess them up.
+//#[test_case(Transport::Tcp, 200000)] // Does not apply: Tcp is stream based
+#[test_case(Transport::FramedTcp, 200000)]
 #[test_case(Transport::Ws, 200000)]
 fn burst(transport: Transport, messages_count: usize) {
     //util::init_logger(); // Enable it for better debugging
@@ -246,10 +236,12 @@ fn burst(transport: Transport, messages_count: usize) {
     sender_handle.join().unwrap();
 }
 
-#[test_case(Transport::Udp, 1)]
-#[test_case(Transport::Udp, 100)]
 #[test_case(Transport::Tcp, 1)]
 #[test_case(Transport::Tcp, 100)]
+#[test_case(Transport::Udp, 1)]
+#[test_case(Transport::Udp, 100)]
+#[test_case(Transport::FramedTcp, 1)]
+#[test_case(Transport::FramedTcp, 100)]
 #[test_case(Transport::Ws, 1)]
 #[test_case(Transport::Ws, 100)]
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
@@ -265,6 +257,7 @@ fn echo(transport: Transport, clients: usize) {
 }
 
 #[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
+#[test_case(Transport::FramedTcp, BIG_MESSAGE_SIZE)]
 #[test_case(Transport::Udp, Transport::Udp.max_payload())]
 #[test_case(Transport::Ws, BIG_MESSAGE_SIZE)]
 fn message_size(transport: Transport, message_size: usize) {
@@ -280,19 +273,46 @@ fn message_size(transport: Transport, message_size: usize) {
 
     let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
 
-    if !util::is_connection_oriented(transport) {
-        let status = network.send(receiver, &sent_message);
+    let sent_message_cloned = sent_message.clone();
+    if !transport.is_connection_oriented() {
+        let status = network.send(receiver, &sent_message_cloned);
         assert_eq!(status, SendStatus::Sent);
     }
+    else {
+        match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+            NetEvent::Connected(_) => {
+                thread::Builder::new()
+                    .name("test-client".into())
+                    .spawn(move || {
+                        let status = network.send(receiver, &sent_message_cloned);
+                        assert_eq!(status, SendStatus::Sent);
+                        network.remove(receiver.resource_id());
+                    })
+                    .unwrap();
+            }
+            _ => unreachable!(),
+        }
+    }
 
+    let mut received_message = Vec::new();
     loop {
         match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-            NetEvent::Message(_, data) => break assert_eq!(sent_message, data),
-            NetEvent::Connected(_) => {
-                let status = network.send(receiver, &sent_message);
-                assert_eq!(status, SendStatus::Sent);
+            NetEvent::Message(_, data) => {
+                if transport.is_packet_based() {
+                    received_message = data;
+                    assert_eq!(sent_message, received_message);
+                    break
+                }
+                else {
+                    received_message.extend_from_slice(&data);
+                }
             }
-            NetEvent::Disconnected(_) => (),
+            NetEvent::Connected(_) => unreachable!(),
+            NetEvent::Disconnected(_) => {
+                assert_eq!(sent_message.len(), received_message.len());
+                assert_eq!(sent_message, received_message);
+                break
+            }
         }
     }
 }

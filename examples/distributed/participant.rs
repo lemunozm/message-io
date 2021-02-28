@@ -31,7 +31,7 @@ impl Participant {
         };
 
         let discovery_addr = "127.0.0.1:5000"; // Connection to the discovery server.
-        match network.connect(Transport::Tcp, discovery_addr) {
+        match network.connect(Transport::FramedTcp, discovery_addr) {
             Ok((endpoint, _)) => Some(Participant {
                 event_queue,
                 network,

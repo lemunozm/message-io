@@ -180,7 +180,7 @@ impl RemoteResource {
                 Err(err) => {
                     log::error!("WS send error: {}", err);
                     break SendStatus::ResourceNotFound // should not happen
-                },
+                }
             }
         }
     }

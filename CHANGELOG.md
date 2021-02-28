@@ -1,5 +1,8 @@
 # Changelog
 
+## Next release
+- Added `Network::split_and_map_from_adapter()`.
+
 ## Release 0.9.1
 - Fixed an UDP issue that could imply losing packet if they were sent consequently very fast.
 - Fixed a TCP encoding issue.

@@ -1,6 +1,6 @@
 # Changelog
 
-## Next release
+## Release 0.9.2
 - Added `Network::split_and_map_from_adapter()`.
 
 ## Release 0.9.1

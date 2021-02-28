@@ -57,8 +57,8 @@ impl Network {
     /// an internal adapter generates an event.
     /// This function is used when the user needs to perform some action over the raw data
     /// comming from an adapter, without using a [`EventQueue`].
-    /// If you will want to use an `EventQueue` you can use [`Network::split()`] or
-    /// [`Network::split_and_map()`]
+    /// If you will want to use an `EventQueue` you can use [`Network::split()`],
+    /// [`Network::split_and_map()`] or [`Network::split_and_map_from_adapter()`] functions.
     pub fn new(event_callback: impl Fn(Endpoint, AdapterEvent) + Send + 'static) -> Network {
         let mut launcher = AdapterLauncher::default();
         Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
@@ -88,6 +88,9 @@ impl Network {
     /// events can be read.
     /// This function, allows to map the [`NetEvent`] to something you use in your application,
     /// allowing to mix the `NetEvent` with your own events.
+    /// The map function is computed by the internal read thread.
+    /// It is not recomended to make expensive computations inside this map function to not blocks
+    /// the internal jobs.
     pub fn split_and_map<E: Send + 'static>(
         map: impl Fn(NetEvent) -> E + Send + 'static,
     ) -> (EventQueue<E>, Network) {
@@ -105,9 +108,13 @@ impl Network {
     /// to something you use in your application, allowing to mix the data comming from the adapter
     /// with your own events.
     /// As difference from [`Network::split_and_map`] where the `NetEvent` parameter
-    /// is a sendable object, this funcion avoid an internal copy in the received data
-    /// giving instead the reference to the internal data of the adapter (which are not 'sendable').
+    /// is already a sendable object, this funcion avoid an internal copy in the received data
+    /// giving the reference to the internal data of the adapter (which are not 'sendable').
     /// It is in change of the user to map this data into something 'sendable'.
+    /// This funcion can be useful if you want to deserialize the data to something sendable,
+    /// avoiding a useless copy.
+    /// It is not recomended to make expensive computations inside this map function to not blocks
+    /// the internal jobs.
     pub fn split_and_map_from_adapter<E: Send + 'static>(
         map: impl Fn(Endpoint, AdapterEvent<'_>) -> E + Send + 'static,
     ) -> (EventQueue<E>, Network) {

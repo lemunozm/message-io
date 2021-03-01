@@ -258,12 +258,12 @@ fn echo(transport: Transport, clients: usize) {
 
 #[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
 #[test_case(Transport::FramedTcp, BIG_MESSAGE_SIZE)]
-#[test_case(Transport::Udp, Transport::Udp.max_payload())]
+#[test_case(Transport::Udp, Transport::Udp.max_message_size())]
 #[test_case(Transport::Ws, BIG_MESSAGE_SIZE)]
 fn message_size(transport: Transport, message_size: usize) {
     //util::init_logger(); // Enable it for better debugging
 
-    assert!(message_size <= transport.max_payload());
+    assert!(!transport.is_packet_based() || message_size <= transport.max_message_size());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();

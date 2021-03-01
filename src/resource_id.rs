@@ -47,7 +47,7 @@ impl ResourceId {
             ResourceType::Remote => 0,
         };
 
-        Self { id: base_value << Self::BASE_VALUE_POS | resource_type | adapter_id as usize}
+        Self { id: base_value << Self::BASE_VALUE_POS | resource_type | adapter_id as usize }
     }
 
     /// Creates a [ResourceId] from an id

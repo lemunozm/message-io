@@ -64,7 +64,7 @@ You could change the transport of your application in literally one line.
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.9"
+message-io = "0.10"
 ```
 
 ### Documentation
@@ -78,8 +78,8 @@ message-io = "0.9"
 
 - Applications using `message-io`:
   - [Termchat](https://github.com/lemunozm/termchat): Distributed LAN chat in the terminal.
-  - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game.
-    (under development, but the communication part using `message-io` is almost complete for reference).
+  - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game
+    (alpha version).
 
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds
@@ -95,7 +95,7 @@ fn main() {
     let (mut network, mut events) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
-    network.listen(Transport::Tcp, "0.0.0.0:3042").unwrap();
+    network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); // As Tcp but encoded for packets
     network.listen(Transport::Udp, "0.0.0.0:3043").unwrap();
     network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); //WebSockets
 
@@ -131,8 +131,8 @@ fn main() {
     // The split_and_map() version allows to combine network events with your application events.
     let (mut network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
 
-    // You can change the transport to Udp or Websocket.
-    let (server, _ ) = network.connect(Transport::Tcp, "127.0.0.1:3042").unwrap();
+    // You can change the transport to Udp or Ws (WebSocket).
+    let (server, _) = network.connect(Transport::FramedTcp, "127.0.0.1:3042").unwrap();
 
     events.sender().send(Event::Tick); // Start sending
     loop {

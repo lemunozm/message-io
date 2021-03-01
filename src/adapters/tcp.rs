@@ -12,7 +12,7 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 use std::mem::{MaybeUninit};
 
-const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
+pub const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 
 pub struct TcpAdapter;
 impl Adapter for TcpAdapter {

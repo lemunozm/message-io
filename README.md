@@ -38,7 +38,8 @@ You could change the transport of your application in literally one line.
   that allows to manage thousands of active connections.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - Multiples transports: **TCP**, **UDP** (with multicast option) and
-  **WebSockets** (secure and non-secure option).
+  **WebSockets** (secure and non-secure option). See the detailed list
+  [here](https://docs.rs/message-io/0.9.4/message_io/network/enum.Transport.html).
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
 - Internal encoding layer: handle messages, not data streams.
@@ -66,6 +67,9 @@ Add to your `Cargo.toml`
 ```
 message-io = "0.10"
 ```
+
+**Warning**: If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed to `Transport::FramedTcp` to be more according to its behaviour.
+See more [here](https://docs.rs/message-io/0.9.4/message_io/network/enum.Transport.html).
 
 ### Documentation
 - [API documentation](https://docs.rs/message-io/)
@@ -115,7 +119,7 @@ fn main() {
 ### Echo client
 The following example shows a client that can connect to the previous server.
 It sends a message each second to the server and listen its echo response.
-Changing the `Transport::Tcp` to `Udp` or `Ws` will change the underlying transport used.
+Changing the `Transport::FramedTcp` to `Udp` or `Ws` will change the underlying transport used.
 Also, you can create the number of connections you want at the same time, without any extra thread.
 
 ```rust

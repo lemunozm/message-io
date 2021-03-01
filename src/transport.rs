@@ -24,7 +24,7 @@ pub enum Transport {
     Tcp,
 
     /// Like TCP, but encoded with a slim frame layer to manage the data as a packet,
-    /// not as a stream.
+    /// not as a stream. Note that most of the time you would want to use this instead of Tcp.
     FramedTcp,
 
     /// UDP protocol.
@@ -32,12 +32,16 @@ pub enum Transport {
     Udp,
 
     /// WebSocket protocol.
+    /// If uses an [`RemoteAddr::Url`] in the `connect()` method,
+    /// you can specify between `ws` and `wss` schemas to connect with or without security.
+    /// If uses a [`RemoteAddr::SocketAddr`] it defaults to normal websocket with the following
+    /// uri: 'ws://{SocketAddr}/message-io-default'.
     Ws,
 }
 
 impl Transport {
     /// Associates an adapter.
-    /// This method mounts the adapter to be used in the `NetworkEngine`
+    /// This method mounts the adapter to be used in the `Network`.
     pub fn mount_adapter(self, launcher: &mut AdapterLauncher) {
         match self {
             Self::Tcp => launcher.mount(self.id(), TcpAdapter),

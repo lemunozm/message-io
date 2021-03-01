@@ -9,7 +9,7 @@ pub enum ResourceType {
     Remote,
 }
 
-/// Unique identifier of a network resource.
+/// Unique identifier of a network resource in your system.
 /// The identifier wrap 3 values,
 /// - The type, that can be a value of [ResourceType].
 /// - The adapter id, that represent the adapter that creates this id

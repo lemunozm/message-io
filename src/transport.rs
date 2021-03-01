@@ -29,6 +29,8 @@ pub enum Transport {
 
     /// UDP protocol.
     /// Note that UDP is not connection oriented, a packet can be lost or received disordered.
+    /// If it is specified in the listener and the address is a Ipv4 in the range of multicast ips
+    /// (from `224.0.0.0` to `239.255.255.255`) it will be listening is multicast mode.
     Udp,
 
     /// WebSocket protocol.

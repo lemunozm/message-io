@@ -14,18 +14,20 @@ on:
 
 jobs:
   test:
-    name: ${{ matrix.rust }} on ${{ matrix.os }}
+    name: ${{ matrix.rust }} on ${{ matrix.os }}-${{matrix.platform}}
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [ubuntu-latest, windows-2019, macOS-latest]
+        platform: [x32, x64]
         rust: [stable, nightly]
-        # Allow failures on nightly, it's just informative
         include:
           - rust: stable
             can-fail: false
           - rust: nightly
             can-fail: true
+          - os: ubuntu-latest
+            rust: 'stable'
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v1
@@ -58,7 +60,6 @@ jobs:
     - name: Check benchmarks (only compilation)
       run: cargo bench --no-run
       continue-on-error: ${{ matrix.can-fail }}
-
     - name: Test Packaging
       if: matrix.rust == 'stable'
       run: cargo package

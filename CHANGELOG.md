@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.9.4
+- Fixed ResourceId to works with 32-bits.
+
 ## Release 0.9.3
 - Removed `EventQueue` drop restriction of having already droped the associated senders.
 

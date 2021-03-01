@@ -26,8 +26,6 @@ jobs:
             can-fail: false
           - rust: nightly
             can-fail: true
-          - os: ubuntu-latest
-            rust: 'stable'
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v1

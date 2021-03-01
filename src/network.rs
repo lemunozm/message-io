@@ -33,13 +33,13 @@ pub enum NetEvent {
     Disconnected(Endpoint),
 }
 
-impl NetEvent {
+impl From<AdapterEvent<'_>> for NetEvent {
     /// Created a `NetEvent` from an [`AdapterEvent`].
-    pub fn from_adapter(endpoint: Endpoint, adapter_event: AdapterEvent<'_>) -> NetEvent {
+    fn from(adapter_event: AdapterEvent<'_>) -> NetEvent {
         match adapter_event {
-            AdapterEvent::Added => NetEvent::Connected(endpoint),
-            AdapterEvent::Data(data) => NetEvent::Message(endpoint, data.to_vec()),
-            AdapterEvent::Removed => NetEvent::Disconnected(endpoint),
+            AdapterEvent::Added(endpoint) => NetEvent::Connected(endpoint),
+            AdapterEvent::Data(endpoint, data) => NetEvent::Message(endpoint, data.to_vec()),
+            AdapterEvent::Removed(endpoint) => NetEvent::Disconnected(endpoint),
         }
     }
 }
@@ -59,7 +59,7 @@ impl Network {
     /// comming from an adapter, without using a [`EventQueue`].
     /// If you will want to use an `EventQueue` you can use [`Network::split()`],
     /// [`Network::split_and_map()`] or [`Network::split_and_map_from_adapter()`] functions.
-    pub fn new(event_callback: impl Fn(Endpoint, AdapterEvent) + Send + 'static) -> Network {
+    pub fn new(event_callback: impl Fn(AdapterEvent) + Send + 'static) -> Network {
         let mut launcher = AdapterLauncher::default();
         Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
@@ -76,8 +76,8 @@ impl Network {
     pub fn split() -> (EventQueue<NetEvent>, Network) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |endpoint, adapter_event| {
-            sender.send(NetEvent::from_adapter(endpoint, adapter_event))
+        let network = Network::new(move |adapter_event| {
+            sender.send(NetEvent::from(adapter_event))
         });
         // It is totally crucial to return the network at last element of the tuple
         // in order to be dropped before the event queue.
@@ -96,8 +96,8 @@ impl Network {
     ) -> (EventQueue<E>, Network) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |endpoint, adapter_event| {
-            sender.send(map(NetEvent::from_adapter(endpoint, adapter_event)))
+        let network = Network::new(move |adapter_event| {
+            sender.send(map(NetEvent::from(adapter_event)))
         });
         (event_queue, network)
     }
@@ -116,12 +116,12 @@ impl Network {
     /// It is not recomended to make expensive computations inside this map function to not blocks
     /// the internal jobs.
     pub fn split_and_map_from_adapter<E: Send + 'static>(
-        map: impl Fn(Endpoint, AdapterEvent<'_>) -> E + Send + 'static,
+        map: impl Fn(AdapterEvent<'_>) -> E + Send + 'static,
     ) -> (EventQueue<E>, Network) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
         let network =
-            Network::new(move |endpoint, adapter_event| sender.send(map(endpoint, adapter_event)));
+            Network::new(move |adapter_event| sender.send(map(adapter_event)));
         (event_queue, network)
     }
 

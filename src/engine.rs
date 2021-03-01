@@ -71,7 +71,7 @@ impl NetworkEngine {
 
     pub fn new(
         launcher: AdapterLauncher,
-        event_callback: impl Fn(Endpoint, AdapterEvent<'_>) + Send + 'static,
+        event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static,
     ) -> Self
     {
         let thread_running = Arc::new(AtomicBool::new(true));
@@ -80,19 +80,19 @@ impl NetworkEngine {
         let (poll, controllers, processors) = launcher.launch();
 
         let thread =
-            Self::run_processor(running, poll, processors, move |endpoint, adapter_event| {
+            Self::run_processor(running, poll, processors, move |adapter_event| {
                 match adapter_event {
-                    AdapterEvent::Added => {
+                    AdapterEvent::Added(endpoint) => {
                         log::trace!("Endpoint added: {}", endpoint);
                     }
-                    AdapterEvent::Data(data) => {
+                    AdapterEvent::Data(endpoint, data) => {
                         log::trace!("Data received from {}, {} bytes", endpoint, data.len());
                     }
-                    AdapterEvent::Removed => {
+                    AdapterEvent::Removed(endpoint) => {
                         log::trace!("Endpoint removed: {}", endpoint);
                     }
                 }
-                event_callback(endpoint, adapter_event);
+                event_callback(adapter_event);
             });
 
         Self { thread: Some(thread), thread_running, controllers }
@@ -102,7 +102,7 @@ impl NetworkEngine {
         running: Arc<AtomicBool>,
         mut poll: Poll,
         mut processors: EventProcessors,
-        event_callback: impl Fn(Endpoint, AdapterEvent<'_>) + Send + 'static,
+        event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static,
     ) -> JoinHandle<()>
     {
         thread::Builder::new()
@@ -198,7 +198,7 @@ impl ActionController for UnimplementedActionController {
 
 struct UnimplementedEventProcessor;
 impl EventProcessor for UnimplementedEventProcessor {
-    fn try_process(&mut self, _: ResourceId, _: &dyn Fn(Endpoint, AdapterEvent<'_>)) {
+    fn try_process(&mut self, _: ResourceId, _: &dyn Fn(AdapterEvent<'_>)) {
         panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 }

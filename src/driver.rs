@@ -11,17 +11,17 @@ use std::sync::{Arc, RwLock};
 use std::io::{self};
 
 /// Struct used to identify and event that an adapter has been produced.
-/// The upper layer can traduce this event along with the associated endpoint
-/// into a [crate::network::NetEvent] that the user can manage easily.
+/// The upper layer can traduce this event into a [crate::network::NetEvent]
+/// that the user can manage easily.
 pub enum AdapterEvent<'a> {
     /// The endpoint has been added (it implies a connection).
-    Added,
+    Added(Endpoint),
 
     /// The endpoint has sent data that represents a message.
-    Data(&'a [u8]),
+    Data(Endpoint, &'a [u8]),
 
     /// The endpoint has been removed (it implies a disconnection).
-    Removed,
+    Removed(Endpoint),
 }
 
 pub struct ResourceRegister<S> {
@@ -65,7 +65,7 @@ pub trait ActionController {
 }
 
 pub trait EventProcessor {
-    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(Endpoint, AdapterEvent<'_>));
+    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
 }
 
 pub struct Driver<R: Remote, L: Local> {
@@ -154,7 +154,7 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
-    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(Endpoint, AdapterEvent<'_>)) {
+    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
         match id.resource_type() {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
@@ -163,7 +163,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                     let endpoint = Endpoint::new(id, *addr);
                     let status = remote.receive(&|data| {
                         log::trace!("Read {} bytes from {}", data.len(), id);
-                        event_callback(endpoint, AdapterEvent::Data(data));
+                        event_callback(AdapterEvent::Data(endpoint, data));
                     });
                     log::trace!("Processed receive {}, for {}", status, endpoint);
                     if let ReadStatus::Disconnected = status {
@@ -175,7 +175,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 
                 if let Some(endpoint) = to_remove {
                     self.remote_register.remove(id);
-                    event_callback(endpoint, AdapterEvent::Removed);
+                    event_callback(AdapterEvent::Removed(endpoint));
                 }
             }
             ResourceType::Local => {
@@ -190,11 +190,11 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                             AcceptedType::Remote(addr, remote) => {
                                 let id = remotes.add(remote, addr);
                                 let endpoint = Endpoint::new(id, addr);
-                                event_callback(endpoint, AdapterEvent::Added);
+                                event_callback(AdapterEvent::Added(endpoint));
                             }
                             AcceptedType::Data(addr, data) => {
                                 let endpoint = Endpoint::new(id, addr);
-                                event_callback(endpoint, AdapterEvent::Data(data));
+                                event_callback(AdapterEvent::Data(endpoint, data));
                             }
                         }
                     });

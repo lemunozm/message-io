@@ -207,7 +207,7 @@ fn burst_sender_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let mut network = Network::new(|_, _| ());
+                let mut network = Network::new(|_| ());
 
                 let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
 

@@ -6,6 +6,7 @@
   `Transport::FramedTcp` (that behaves the same).
 - Added `Transport::Tcp` that has no encoding layer. Now `Transport::Tcp` is purely TCP.
 - Renamed `Transport::max_payload()` to `Transport::max_message_size()`.
+- Added `Endpoint` into `AdapterEvent`.
 
 ## Release 0.9.4
 - Fixed ResourceId to works with 32-bits.

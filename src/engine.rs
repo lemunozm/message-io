@@ -29,12 +29,12 @@ impl Default for AdapterLauncher {
     fn default() -> AdapterLauncher {
         Self {
             poll: Poll::default(),
-            controllers: (0..ResourceId::ADAPTER_ID_MAX)
+            controllers: (0..ResourceId::MAX_ADAPTERS)
                 .map(|_| {
                     Box::new(UnimplementedActionController) as Box<dyn ActionController + Send>
                 })
                 .collect::<Vec<_>>(),
-            processors: (0..ResourceId::ADAPTER_ID_MAX)
+            processors: (0..ResourceId::MAX_ADAPTERS)
                 .map(|_| Box::new(UnimplementedEventProcessor) as Box<dyn EventProcessor + Send>)
                 .collect(),
         }

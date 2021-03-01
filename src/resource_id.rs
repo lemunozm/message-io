@@ -20,32 +20,34 @@ pub struct ResourceId {
 }
 
 impl ResourceId {
-    const RESOURCE_TYPE_BIT: usize = 1 << (Self::ADAPTER_ID_POS + 7); // 1 bit
-    const ADAPTER_ID_POS: usize = 8 * 7; // 7 bytes
+    const ADAPTER_ID_POS: usize = 0;
+    const RESOURCE_TYPE_POS: usize = 7;
+    const BASE_VALUE_POS: usize = 8;
     const ADAPTER_ID_MASK: u8 = 0b01111111; // 7 bits
-    const ADAPTER_ID_MASK_OVER_ID: usize = (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS;
-    const BASE_VALUE_MASK_OVER_ID: usize = 0x0FFFFFFF; // 7 bytes
+    const BASE_VALUE_MASK: usize = 0xFFFFFFFFFFFFFF00; // 7 bytes
 
-    pub const ADAPTER_ID_MAX: usize = Self::ADAPTER_ID_MASK as usize + 1; // 128
+    pub const MAX_BASE_VALUE: usize = (Self::BASE_VALUE_MASK >> Self::BASE_VALUE_POS);
+    pub const MAX_ADAPTER_ID: u8 = (Self::ADAPTER_ID_MASK >> Self::ADAPTER_ID_POS);
+    pub const MAX_ADAPTERS: usize = Self::MAX_ADAPTER_ID as usize + 1;
 
     fn new(adapter_id: u8, resource_type: ResourceType, base_value: usize) -> Self {
         assert_eq!(
-            adapter_id & Self::ADAPTER_ID_MASK,
-            adapter_id,
+            (adapter_id << Self::ADAPTER_ID_POS) & Self::ADAPTER_ID_MASK,
+            adapter_id << Self::ADAPTER_ID_POS,
             "The adapter_id value uses bits outside of the mask"
         );
         assert_eq!(
-            base_value & Self::BASE_VALUE_MASK_OVER_ID,
-            base_value,
+            (base_value << Self::BASE_VALUE_POS) & Self::BASE_VALUE_MASK,
+            base_value << Self::BASE_VALUE_POS,
             "The base_value value uses bits outside of the mask"
         );
 
         let resource_type = match resource_type {
-            ResourceType::Local => Self::RESOURCE_TYPE_BIT,
+            ResourceType::Local => 1 << Self::RESOURCE_TYPE_POS,
             ResourceType::Remote => 0,
         };
 
-        Self { id: base_value | resource_type | (adapter_id as usize) << Self::ADAPTER_ID_POS }
+        Self { id: base_value << Self::BASE_VALUE_POS | resource_type | adapter_id as usize}
     }
 
     /// Creates a [ResourceId] from an id
@@ -60,7 +62,7 @@ impl ResourceId {
 
     /// Returns the [ResourceType] of this resource
     pub fn resource_type(&self) -> ResourceType {
-        if self.id & Self::RESOURCE_TYPE_BIT != 0 {
+        if self.id & (1 << Self::RESOURCE_TYPE_POS) != 0 {
             ResourceType::Local
         }
         else {
@@ -70,12 +72,12 @@ impl ResourceId {
 
     /// Returns the associated transport adapter id.
     pub fn adapter_id(&self) -> u8 {
-        ((self.id & Self::ADAPTER_ID_MASK_OVER_ID) >> Self::ADAPTER_ID_POS) as u8
+        ((self.id & Self::ADAPTER_ID_MASK as usize) >> Self::ADAPTER_ID_POS) as u8
     }
 
     /// Returns the unique identifier inside this adapter.
     pub fn base_value(&self) -> usize {
-        self.id & Self::BASE_VALUE_MASK_OVER_ID
+        (self.id & Self::BASE_VALUE_MASK) >> Self::BASE_VALUE_POS
     }
 }
 
@@ -124,35 +126,35 @@ mod tests {
         let low_base_value = 0;
 
         let resource_id = ResourceId::new(1, ResourceType::Local, low_base_value);
-        assert_eq!(resource_id.base_value(), low_base_value);
+        assert_eq!(low_base_value, resource_id.base_value());
 
-        let high_base_value = ResourceId::BASE_VALUE_MASK_OVER_ID;
+        let high_base_value = ResourceId::MAX_BASE_VALUE;
 
         let resource_id = ResourceId::new(1, ResourceType::Local, high_base_value);
-        assert_eq!(resource_id.base_value(), high_base_value);
+        assert_eq!(high_base_value, resource_id.base_value());
     }
 
     #[test]
     fn resource_type() {
         let resource_id = ResourceId::new(0, ResourceType::Local, 0);
-        assert_eq!(resource_id.resource_type(), ResourceType::Local);
-        assert_eq!(resource_id.adapter_id(), 0);
+        assert_eq!(ResourceType::Local, resource_id.resource_type());
+        assert_eq!(0, resource_id.adapter_id());
 
         let resource_id = ResourceId::new(0, ResourceType::Remote, 0);
-        assert_eq!(resource_id.resource_type(), ResourceType::Remote);
-        assert_eq!(resource_id.adapter_id(), 0);
+        assert_eq!(ResourceType::Remote, resource_id.resource_type());
+        assert_eq!(0, resource_id.adapter_id());
     }
 
     #[test]
     fn adapter_id() {
-        let adapter_id = ResourceId::ADAPTER_ID_MASK;
+        let adapter_id = ResourceId::MAX_ADAPTER_ID;
 
         let resource_id = ResourceId::new(adapter_id, ResourceType::Local, 0);
-        assert_eq!(resource_id.adapter_id(), adapter_id);
-        assert_eq!(resource_id.resource_type(), ResourceType::Local);
+        assert_eq!(adapter_id, resource_id.adapter_id());
+        assert_eq!(ResourceType::Local, resource_id.resource_type());
 
         let resource_id = ResourceId::new(adapter_id, ResourceType::Remote, 0);
-        assert_eq!(resource_id.adapter_id(), adapter_id);
-        assert_eq!(resource_id.resource_type(), ResourceType::Remote);
+        assert_eq!(adapter_id, resource_id.adapter_id());
+        assert_eq!(ResourceType::Remote, resource_id.resource_type());
     }
 }

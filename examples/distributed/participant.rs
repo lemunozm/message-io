@@ -17,7 +17,7 @@ pub struct Participant {
 
 impl Participant {
     pub fn new(name: &str) -> Option<Participant> {
-        let (event_queue, mut network) = Network::split();
+        let (mut network, event_queue) = Network::split();
 
         // A listener for any other participant that want to establish connection.
         // 'addr' contains the port that the OS gives for us when we put a 0.

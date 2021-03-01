@@ -79,21 +79,20 @@ impl NetworkEngine {
 
         let (poll, controllers, processors) = launcher.launch();
 
-        let thread =
-            Self::run_processor(running, poll, processors, move |adapter_event| {
-                match adapter_event {
-                    AdapterEvent::Added(endpoint) => {
-                        log::trace!("Endpoint added: {}", endpoint);
-                    }
-                    AdapterEvent::Data(endpoint, data) => {
-                        log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                    }
-                    AdapterEvent::Removed(endpoint) => {
-                        log::trace!("Endpoint removed: {}", endpoint);
-                    }
+        let thread = Self::run_processor(running, poll, processors, move |adapter_event| {
+            match adapter_event {
+                AdapterEvent::Added(endpoint) => {
+                    log::trace!("Endpoint added: {}", endpoint);
                 }
-                event_callback(adapter_event);
-            });
+                AdapterEvent::Data(endpoint, data) => {
+                    log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+                }
+                AdapterEvent::Removed(endpoint) => {
+                    log::trace!("Endpoint removed: {}", endpoint);
+                }
+            }
+            event_callback(adapter_event);
+        });
 
         Self { thread: Some(thread), thread_running, controllers }
     }

@@ -73,15 +73,23 @@ impl Network {
     /// If you want to create a [`EventQueue`] that manages more events than `NetEvent`,
     /// You can create use instead [Network::split_and_map()].
     /// This function shall be used if you only want to manage `NetEvent` in the EventQueue.
-    pub fn split() -> (EventQueue<NetEvent>, Network) {
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use message_io::network::Network;
+    ///
+    /// let (mut network, mut events) = Network::split();
+    /// // Use network to perform actions: connect/listen/send/remove.
+    /// // Use events to read the network events: connected/disconnected/message
+    /// ```
+    pub fn split() -> (Network, EventQueue<NetEvent>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |adapter_event| {
-            sender.send(NetEvent::from(adapter_event))
-        });
+        let network = Network::new(move |adapter_event| sender.send(NetEvent::from(adapter_event)));
         // It is totally crucial to return the network at last element of the tuple
         // in order to be dropped before the event queue.
-        (event_queue, network)
+        (network, event_queue)
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
@@ -91,15 +99,29 @@ impl Network {
     /// The map function is computed by the internal read thread.
     /// It is not recomended to make expensive computations inside this map function to not blocks
     /// the internal jobs.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use message_io::network::{Network, NetEvent};
+    ///
+    /// enum AppEvent {
+    ///     Tick,
+    ///     Alarm(usize),
+    ///     Net(NetEvent),
+    ///     Close,
+    /// }
+    ///
+    /// let (mut network, mut events) = Network::split_and_map(|net| AppEvent::Net(net));
+    /// ```
     pub fn split_and_map<E: Send + 'static>(
         map: impl Fn(NetEvent) -> E + Send + 'static,
-    ) -> (EventQueue<E>, Network) {
+    ) -> (Network, EventQueue<E>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |adapter_event| {
-            sender.send(map(NetEvent::from(adapter_event)))
-        });
-        (event_queue, network)
+        let network =
+            Network::new(move |adapter_event| sender.send(map(NetEvent::from(adapter_event))));
+        (network, event_queue)
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
@@ -115,14 +137,48 @@ impl Network {
     /// avoiding a useless copy.
     /// It is not recomended to make expensive computations inside this map function to not blocks
     /// the internal jobs.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use message_io::network::{Network, AdapterEvent, Endpoint};
+    /// use serde::{Deserialize};
+    ///
+    /// #[derive(Deserialize)]
+    /// enum AppMessage {
+    ///     Ping,
+    ///     Pong,
+    ///     Hello(String),
+    /// }
+    ///
+    /// enum AppEvent {
+    ///     Tick,
+    ///     Alarm(usize),
+    ///     Connected(Endpoint),
+    ///     Disconnected(Endpoint),
+    ///     Message(Endpoint, AppMessage),
+    ///     DeserializationError(Endpoint),
+    ///     Close,
+    /// }
+    ///
+    /// let (mut network, mut events) = Network::split_and_map_from_adapter(|adapter_event| {
+    ///     match adapter_event {
+    ///         AdapterEvent::Added(endpoint) => AppEvent::Connected(endpoint),
+    ///         AdapterEvent::Data(endpoint, data) => match bincode::deserialize(&data) {
+    ///             Ok(message) => AppEvent::Message(endpoint, message),
+    ///             Err(_) => AppEvent::DeserializationError(endpoint),
+    ///         },
+    ///         AdapterEvent::Removed(endpoint) => AppEvent::Disconnected(endpoint),
+    ///     }
+    /// });
+    /// ```
     pub fn split_and_map_from_adapter<E: Send + 'static>(
         map: impl Fn(AdapterEvent<'_>) -> E + Send + 'static,
-    ) -> (EventQueue<E>, Network) {
+    ) -> (Network, EventQueue<E>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network =
-            Network::new(move |adapter_event| sender.send(map(adapter_event)));
-        (event_queue, network)
+        let network = Network::new(move |adapter_event| sender.send(map(adapter_event)));
+        (network, event_queue)
     }
 
     /// Creates a connection to the specific address.

@@ -2,10 +2,10 @@ use message_io::network::{Network, NetEvent, Transport};
 
 fn main() {
     // Create a Network with an associated event queue for reading its events.
-    let (mut events, mut network) = Network::split();
+    let (mut network, mut events) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
-    network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); // As Tcp but encoded for packets
+    network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); //As Tcp but encoded for packets
     network.listen(Transport::Udp, "0.0.0.0:3043").unwrap();
     network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); // WebSockets
 

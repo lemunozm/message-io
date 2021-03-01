@@ -14,7 +14,7 @@ pub struct Transfer {
 }
 
 pub fn run() {
-    let (mut event_queue, mut network) = Network::split();
+    let (mut network, mut event_queue) = Network::split();
 
     let listen_addr = "127.0.0.1:3005";
     match network.listen(Transport::FramedTcp, listen_addr) {

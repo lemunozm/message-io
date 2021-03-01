@@ -10,7 +10,7 @@ struct ClientInfo {
 }
 
 pub fn run(transport: Transport, addr: SocketAddr) {
-    let (mut event_queue, mut network) = Network::split();
+    let (mut network, mut events) = Network::split();
 
     let mut clients: HashMap<Endpoint, ClientInfo> = HashMap::new();
 
@@ -22,8 +22,8 @@ pub fn run(transport: Transport, addr: SocketAddr) {
     }
 
     loop {
-        match event_queue.receive() {
-            // Also you can use receive_timeout
+        // Also you can use receive_timeout
+        match events.receive() {
             NetEvent::Message(endpoint, input_data) => {
                 let message: FromClientMessage = bincode::deserialize(&input_data).unwrap();
                 match message {

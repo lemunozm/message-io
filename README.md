@@ -39,7 +39,7 @@ You could change the transport of your application in literally one line.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - Multiples transports: **TCP**, **UDP** (with multicast option) and
   **WebSockets** (secure and non-secure option). See the detailed list
-  [here](https://docs.rs/message-io/0.9.4/message_io/network/enum.Transport.html).
+  [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
 - Internal encoding layer: handle messages, not data streams.
@@ -69,7 +69,7 @@ message-io = "0.10"
 ```
 
 **Warning**: If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed to `Transport::FramedTcp` to be more according to its behaviour.
-See more [here](https://docs.rs/message-io/0.9.4/message_io/network/enum.Transport.html).
+See more [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 
 ### Documentation
 - [API documentation](https://docs.rs/message-io/)
@@ -99,7 +99,7 @@ fn main() {
     let (mut network, mut events) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
-    network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); // As Tcp but encoded for packets
+    network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); //As Tcp but encoded for packets
     network.listen(Transport::Udp, "0.0.0.0:3043").unwrap();
     network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); //WebSockets
 

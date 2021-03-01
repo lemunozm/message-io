@@ -17,27 +17,28 @@ use strum::{EnumIter};
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Transport {
-    /// The TCP stream protocol.
+    /// TCP protocol.
     /// Note that as stream protocol, receiving a message from TCP do not imply to read
     /// the entire message.
-    /// If you want a packet based way to send over TCP, use [`FramedTcp`]
+    /// If you want a packet based way to send over TCP, use `FramedTcp` instead.
     Tcp,
 
     /// Like TCP, but encoded with a slim frame layer to manage the data as a packet,
-    /// not as a stream. Note that most of the time you would want to use this instead of Tcp.
+    /// instead of as a stream.
+    /// Note that most of the time you would want to use this instead of the raw `Tcp`.
     FramedTcp,
 
     /// UDP protocol.
-    /// Note that UDP is not connection oriented, a packet can be lost or received disordered.
+    /// Note that UDP is not connection oriented and a packet can be lost or received disordered.
     /// If it is specified in the listener and the address is a Ipv4 in the range of multicast ips
-    /// (from `224.0.0.0` to `239.255.255.255`) it will be listening is multicast mode.
+    /// (from `224.0.0.0` to `239.255.255.255`), the listener will be configured in multicast mode.
     Udp,
 
     /// WebSocket protocol.
-    /// If uses an [`RemoteAddr::Url`] in the `connect()` method,
-    /// you can specify between `ws` and `wss` schemas to connect with or without security.
-    /// If uses a [`RemoteAddr::SocketAddr`] it defaults to normal websocket with the following
-    /// uri: 'ws://{SocketAddr}/message-io-default'.
+    /// If you use a [`crate::network::RemoteAddr::Url`] in the `connect()` method,
+    /// you can specify `wss` of `ws` schemas to connect with or without security.
+    /// If you use a [`crate::network::RemoteAddr::SocketAddr`] the socket will be a normal
+    /// websocket with the following uri: `ws://{SocketAddr}/message-io-default`.
     Ws,
 }
 

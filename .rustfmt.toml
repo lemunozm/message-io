@@ -7,5 +7,6 @@ use_field_init_shorthand = true
 use_try_shorthand = true
 where_single_line = true
 ignore = [
-    "examples/readme_example.rs"
+    "examples/readme_echo_client.rs"
+    "examples/readme_echo_server.rs"
 ]

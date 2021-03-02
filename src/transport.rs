@@ -18,18 +18,19 @@ use strum::{EnumIter};
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Transport {
     /// TCP protocol.
-    /// Note that as stream protocol, receiving a message from TCP do not imply to read
+    /// As stream protocol, receiving a message from TCP do not imply to read
     /// the entire message.
     /// If you want a packet based way to send over TCP, use `FramedTcp` instead.
     Tcp,
 
     /// Like TCP, but encoded with a slim frame layer to manage the data as a packet,
     /// instead of as a stream.
-    /// Note that most of the time you would want to use this instead of the raw `Tcp`.
+    /// Most of the time you would want to use this instead of the raw `Tcp`.
     FramedTcp,
 
     /// UDP protocol.
-    /// Note that UDP is not connection oriented and a packet can be lost or received disordered.
+    /// Take into account that UDP is not connection oriented and a packet can be lost
+    /// or received disordered.
     /// If it is specified in the listener and the address is a Ipv4 in the range of multicast ips
     /// (from `224.0.0.0` to `239.255.255.255`), the listener will be configured in multicast mode.
     Udp,

@@ -17,7 +17,7 @@ pub struct Participant {
 
 impl Participant {
     pub fn new(name: &str) -> Option<Participant> {
-        let (event_queue, mut network) = Network::split();
+        let (mut network, event_queue) = Network::split();
 
         // A listener for any other participant that want to establish connection.
         // 'addr' contains the port that the OS gives for us when we put a 0.
@@ -31,7 +31,7 @@ impl Participant {
         };
 
         let discovery_addr = "127.0.0.1:5000"; // Connection to the discovery server.
-        match network.connect(Transport::Tcp, discovery_addr) {
+        match network.connect(Transport::FramedTcp, discovery_addr) {
             Ok((endpoint, _)) => Some(Participant {
                 event_queue,
                 network,

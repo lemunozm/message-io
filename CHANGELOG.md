@@ -1,7 +1,18 @@
 # Changelog
 
+## Release 0.10.0
+- Renamed `Transport::Tcp` as `Transport::FramedTcp`.
+  **WARNING**: If previously you was using `Transport::Tcp` you probably want to use now
+  `Transport::FramedTcp` (that behaves the same).
+- Added `Transport::Tcp` that has no encoding layer. Now `Transport::Tcp` is purely TCP.
+- Renamed `Transport::max_payload()` to `Transport::max_message_size()`.
+- Added `Endpoint` into `AdapterEvent`.
+- Fixed `ResourceId` compilation in 32-bits.
+- Reverted inner tuple position of `Network::split()` in version 0.8.
+  First `Network` then `EventQueue`, as an user would expect.
+
 ## Release 0.9.4
-- Fixed ResourceId to works with 32-bits.
+- Fixed issue with `ResourceId`.
 
 ## Release 0.9.3
 - Removed `EventQueue` drop restriction of having already droped the associated senders.

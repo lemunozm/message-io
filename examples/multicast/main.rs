@@ -7,7 +7,7 @@ fn main() {
         None => return println!("Please choose a name"),
     };
 
-    let (mut event_queue, mut network) = Network::split();
+    let (mut network, mut events) = Network::split();
 
     let addr = "239.255.0.1:3010";
     match network.connect(Transport::Udp, addr) {
@@ -23,7 +23,7 @@ fn main() {
     network.listen(Transport::Udp, addr).unwrap();
 
     loop {
-        match event_queue.receive() {
+        match events.receive() {
             NetEvent::Message(_, data) => {
                 println!("{} greets to the network!", String::from_utf8_lossy(&data));
             }

@@ -14,10 +14,10 @@ pub struct Transfer {
 }
 
 pub fn run() {
-    let (mut event_queue, mut network) = Network::split();
+    let (mut network, mut event_queue) = Network::split();
 
     let listen_addr = "127.0.0.1:3005";
-    match network.listen(Transport::Tcp, listen_addr) {
+    match network.listen(Transport::FramedTcp, listen_addr) {
         Ok(_) => println!("Receiver running by TCP at {}", listen_addr),
         Err(_) => return println!("Can not listening by TCP at {}", listen_addr),
     }

@@ -9,7 +9,7 @@ pub enum ResourceType {
     Remote,
 }
 
-/// Unique identifier of a network resource.
+/// Unique identifier of a network resource in your system.
 /// The identifier wrap 3 values,
 /// - The type, that can be a value of [ResourceType].
 /// - The adapter id, that represent the adapter that creates this id
@@ -47,7 +47,7 @@ impl ResourceId {
             ResourceType::Remote => 0,
         };
 
-        Self { id: base_value << Self::BASE_VALUE_POS | resource_type | adapter_id as usize}
+        Self { id: base_value << Self::BASE_VALUE_POS | resource_type | adapter_id as usize }
     }
 
     /// Creates a [ResourceId] from an id

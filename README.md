@@ -38,7 +38,8 @@ You could change the transport of your application in literally one line.
   that allows to manage thousands of active connections.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - Multiples transports: **TCP**, **UDP** (with multicast option) and
-  **WebSockets** (secure and non-secure option).
+  **WebSockets** (secure and non-secure option). See the detailed list
+  [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
 - Internal encoding layer: handle messages, not data streams.
@@ -64,8 +65,11 @@ You could change the transport of your application in literally one line.
 ## Getting started
 Add to your `Cargo.toml`
 ```
-message-io = "0.9"
+message-io = "0.10"
 ```
+
+**Warning**: If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed to `Transport::FramedTcp` to be more according to its behaviour.
+See more [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 
 ### Documentation
 - [API documentation](https://docs.rs/message-io/)
@@ -78,8 +82,8 @@ message-io = "0.9"
 
 - Applications using `message-io`:
   - [Termchat](https://github.com/lemunozm/termchat): Distributed LAN chat in the terminal.
-  - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game.
-    (under development, but the communication part using `message-io` is almost complete for reference).
+  - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game
+    (alpha version).
 
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds
@@ -95,7 +99,7 @@ fn main() {
     let (mut network, mut events) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
-    network.listen(Transport::Tcp, "0.0.0.0:3042").unwrap();
+    network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); //As Tcp but encoded for packets
     network.listen(Transport::Udp, "0.0.0.0:3043").unwrap();
     network.listen(Transport::Ws, "0.0.0.0:3044").unwrap(); //WebSockets
 
@@ -115,7 +119,7 @@ fn main() {
 ### Echo client
 The following example shows a client that can connect to the previous server.
 It sends a message each second to the server and listen its echo response.
-Changing the `Transport::Tcp` to `Udp` or `Ws` will change the underlying transport used.
+Changing the `Transport::FramedTcp` to `Udp` or `Ws` will change the underlying transport used.
 Also, you can create the number of connections you want at the same time, without any extra thread.
 
 ```rust
@@ -131,8 +135,8 @@ fn main() {
     // The split_and_map() version allows to combine network events with your application events.
     let (mut network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
 
-    // You can change the transport to Udp or Websocket.
-    let (server, _ ) = network.connect(Transport::Tcp, "127.0.0.1:3042").unwrap();
+    // You can change the transport to Udp or Ws (WebSocket).
+    let (server, _) = network.connect(Transport::FramedTcp, "127.0.0.1:3042").unwrap();
 
     events.sender().send(Event::Tick); // Start sending
     loop {

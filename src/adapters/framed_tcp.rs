@@ -3,6 +3,7 @@ use crate::adapter::{
     ListeningInfo,
 };
 use crate::remote_addr::{RemoteAddr};
+use crate::encoding::{self, Decoder};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
@@ -10,28 +11,34 @@ use mio::event::{Source};
 use std::net::{SocketAddr, TcpStream as StdTcpStream};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
+use std::cell::{RefCell};
 use std::mem::{MaybeUninit};
 
-pub const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
+const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 
-pub struct TcpAdapter;
-impl Adapter for TcpAdapter {
+/// The max packet value for tcp.
+/// Although this size is very high, it is preferred send data in smaller chunks with a rate
+/// to not saturate the receiver thread in the endpoint.
+pub const MAX_TCP_PAYLOAD_LEN: usize = encoding::Padding::MAX as usize;
+
+pub struct FramedTcpAdapter;
+impl Adapter for FramedTcpAdapter {
     type Remote = RemoteResource;
     type Local = LocalResource;
 }
 
 pub struct RemoteResource {
     stream: TcpStream,
+    decoder: RefCell<Decoder>,
 }
 
-/// We are totally sure that RefCell<Decoder> can be used with Sync
-/// because it is only used in the read_event.
+/// That RefCell<Decoder> can be used with Sync because it is only used in the read_event.
 /// This way, we save the cost of a Mutex.
 unsafe impl Sync for RemoteResource {}
 
 impl From<TcpStream> for RemoteResource {
     fn from(stream: TcpStream) -> Self {
-        Self { stream }
+        Self { stream, decoder: RefCell::new(Decoder::default()) }
     }
 }
 
@@ -58,7 +65,14 @@ impl Remote for RemoteResource {
             let stream = &self.stream;
             match stream.deref().read(&mut input_buffer) {
                 Ok(0) => break ReadStatus::Disconnected,
-                Ok(size) => process_data(&input_buffer[..size]),
+                Ok(size) => {
+                    let data = &input_buffer[..size];
+                    let addr = self.stream.peer_addr().unwrap();
+                    log::trace!("Decoding data from {}, {} bytes", addr, data.len());
+                    self.decoder.borrow_mut().decode(data, |decoded_data| {
+                        process_data(decoded_data);
+                    });
+                }
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
                     break ReadStatus::WaitNextEvent
@@ -75,24 +89,25 @@ impl Remote for RemoteResource {
     }
 
     fn send(&self, data: &[u8]) -> SendStatus {
-        // TODO: The current implementation implies an active waiting,
-        // improve it using POLLIN instead to avoid active waiting.
-        // Note: Despite the fear that an active waiting could generate,
-        // this only occurs in the case when the receiver is full because reads slower that it sends.
+        let encoded_size = encoding::encode_size(data);
+
         let mut total_bytes_sent = 0;
+        let total_bytes = encoding::PADDING + data.len();
         loop {
+            let data_to_send = match total_bytes_sent < encoding::PADDING {
+                true => &encoded_size[total_bytes_sent..],
+                false => &data[total_bytes_sent - encoding::PADDING..],
+            };
+
             let stream = &self.stream;
-            match stream.deref().write(&data[total_bytes_sent..]) {
+            match stream.deref().write(data_to_send) {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
-                    if total_bytes_sent == data.len() {
+                    if total_bytes_sent == total_bytes {
                         break SendStatus::Sent
                     }
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
-
-                // Others errors are considered fatal for the connection.
-                // a Event::Disconnection will be generated later.
                 Err(err) => {
                     log::error!("TCP receive error: {}", err);
                     break SendStatus::ResourceNotFound // should not happen

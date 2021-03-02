@@ -33,13 +33,13 @@ pub enum NetEvent {
     Disconnected(Endpoint),
 }
 
-impl NetEvent {
+impl From<AdapterEvent<'_>> for NetEvent {
     /// Created a `NetEvent` from an [`AdapterEvent`].
-    pub fn from_adapter(endpoint: Endpoint, adapter_event: AdapterEvent<'_>) -> NetEvent {
+    fn from(adapter_event: AdapterEvent<'_>) -> NetEvent {
         match adapter_event {
-            AdapterEvent::Added => NetEvent::Connected(endpoint),
-            AdapterEvent::Data(data) => NetEvent::Message(endpoint, data.to_vec()),
-            AdapterEvent::Removed => NetEvent::Disconnected(endpoint),
+            AdapterEvent::Added(endpoint) => NetEvent::Connected(endpoint),
+            AdapterEvent::Data(endpoint, data) => NetEvent::Message(endpoint, data.to_vec()),
+            AdapterEvent::Removed(endpoint) => NetEvent::Disconnected(endpoint),
         }
     }
 }
@@ -59,7 +59,7 @@ impl Network {
     /// comming from an adapter, without using a [`EventQueue`].
     /// If you will want to use an `EventQueue` you can use [`Network::split()`],
     /// [`Network::split_and_map()`] or [`Network::split_and_map_from_adapter()`] functions.
-    pub fn new(event_callback: impl Fn(Endpoint, AdapterEvent) + Send + 'static) -> Network {
+    pub fn new(event_callback: impl Fn(AdapterEvent) + Send + 'static) -> Network {
         let mut launcher = AdapterLauncher::default();
         Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
@@ -73,15 +73,23 @@ impl Network {
     /// If you want to create a [`EventQueue`] that manages more events than `NetEvent`,
     /// You can create use instead [Network::split_and_map()].
     /// This function shall be used if you only want to manage `NetEvent` in the EventQueue.
-    pub fn split() -> (EventQueue<NetEvent>, Network) {
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use message_io::network::Network;
+    ///
+    /// let (mut network, mut events) = Network::split();
+    /// // Use network to perform actions: connect/listen/send/remove.
+    /// // Use events to read the network events: connected/disconnected/message
+    /// ```
+    pub fn split() -> (Network, EventQueue<NetEvent>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |endpoint, adapter_event| {
-            sender.send(NetEvent::from_adapter(endpoint, adapter_event))
-        });
+        let network = Network::new(move |adapter_event| sender.send(NetEvent::from(adapter_event)));
         // It is totally crucial to return the network at last element of the tuple
         // in order to be dropped before the event queue.
-        (event_queue, network)
+        (network, event_queue)
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
@@ -91,15 +99,29 @@ impl Network {
     /// The map function is computed by the internal read thread.
     /// It is not recomended to make expensive computations inside this map function to not blocks
     /// the internal jobs.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use message_io::network::{Network, NetEvent};
+    ///
+    /// enum AppEvent {
+    ///     Tick,
+    ///     Alarm(usize),
+    ///     Net(NetEvent),
+    ///     Close,
+    /// }
+    ///
+    /// let (mut network, mut events) = Network::split_and_map(|net| AppEvent::Net(net));
+    /// ```
     pub fn split_and_map<E: Send + 'static>(
         map: impl Fn(NetEvent) -> E + Send + 'static,
-    ) -> (EventQueue<E>, Network) {
+    ) -> (Network, EventQueue<E>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network = Network::new(move |endpoint, adapter_event| {
-            sender.send(map(NetEvent::from_adapter(endpoint, adapter_event)))
-        });
-        (event_queue, network)
+        let network =
+            Network::new(move |adapter_event| sender.send(map(NetEvent::from(adapter_event))));
+        (network, event_queue)
     }
 
     /// Creates a network instance with an associated [`EventQueue`] where the input network
@@ -115,18 +137,52 @@ impl Network {
     /// avoiding a useless copy.
     /// It is not recomended to make expensive computations inside this map function to not blocks
     /// the internal jobs.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use message_io::network::{Network, AdapterEvent, Endpoint};
+    /// use serde::{Deserialize};
+    ///
+    /// #[derive(Deserialize)]
+    /// enum AppMessage {
+    ///     Ping,
+    ///     Pong,
+    ///     Hello(String),
+    /// }
+    ///
+    /// enum AppEvent {
+    ///     Tick,
+    ///     Alarm(usize),
+    ///     Connected(Endpoint),
+    ///     Disconnected(Endpoint),
+    ///     Message(Endpoint, AppMessage),
+    ///     DeserializationError(Endpoint),
+    ///     Close,
+    /// }
+    ///
+    /// let (mut network, mut events) = Network::split_and_map_from_adapter(|adapter_event| {
+    ///     match adapter_event {
+    ///         AdapterEvent::Added(endpoint) => AppEvent::Connected(endpoint),
+    ///         AdapterEvent::Data(endpoint, data) => match bincode::deserialize(&data) {
+    ///             Ok(message) => AppEvent::Message(endpoint, message),
+    ///             Err(_) => AppEvent::DeserializationError(endpoint),
+    ///         },
+    ///         AdapterEvent::Removed(endpoint) => AppEvent::Disconnected(endpoint),
+    ///     }
+    /// });
+    /// ```
     pub fn split_and_map_from_adapter<E: Send + 'static>(
-        map: impl Fn(Endpoint, AdapterEvent<'_>) -> E + Send + 'static,
-    ) -> (EventQueue<E>, Network) {
+        map: impl Fn(AdapterEvent<'_>) -> E + Send + 'static,
+    ) -> (Network, EventQueue<E>) {
         let mut event_queue = EventQueue::new();
         let sender = event_queue.sender().clone();
-        let network =
-            Network::new(move |endpoint, adapter_event| sender.send(map(endpoint, adapter_event)));
-        (event_queue, network)
+        let network = Network::new(move |adapter_event| sender.send(map(adapter_event)));
+        (network, event_queue)
     }
 
     /// Creates a connection to the specific address.
-    /// The endpoint, an identified of the new connection, will be returned.
+    /// The endpoint, an identifier of the new connection, will be returned.
     /// If the connection can not be performed (e.g. the address is not reached)
     /// the corresponding IO error is returned.
     /// This function blocks until the resource has been connected and is ready to use.
@@ -145,9 +201,7 @@ impl Network {
     /// If the port can be opened, a [ResourceId] identifying the listener is returned
     /// along with the local address, or an error if not.
     /// The address is returned despite you passed as parameter because
-    /// when a `0` port is specified, the OS will give a value.
-    /// If the protocol is UDP and the address is Ipv4 in the range of multicast ips
-    /// (from `224.0.0.0` to `239.255.255.255`) it will be listening is multicast mode.
+    /// when a `0` port is specified, the OS will give choose the value.
     pub fn listen(
         &mut self,
         transport: Transport,
@@ -160,20 +214,23 @@ impl Network {
 
     /// Remove a network resource.
     /// Returns `None` if the resource id doesn't exists.
-    /// This is used to remove resources that the program has been created explicitely,
+    /// This is used to remove resources that the program has created explicitely,
     /// as connection or listeners.
     /// Resources of endpoints generated by listening in connection oriented transports
     /// can also be removed to close the connection.
-    /// Note: UDP endpoints generated by listening from UDP shared the resource.
-    /// This means that there is no resource to remove because there is no connection itself
-    /// to close ('there is no spoon').
+    /// Note that non-oriented connections as UDP use its listener resource to manage all
+    /// remote endpoints internally, the remotes have not resource for themselfs.
+    /// It means that all generated `Endpoint`s share the `ResourceId` of the listener and
+    /// if you remove this resource you are removing the listener of all of them.
+    /// For that cases there is no need to remove the resource because non-oriented connections
+    /// have not connection itself to close, 'there is no spoon'.
     pub fn remove(&mut self, resource_id: ResourceId) -> Option<()> {
         self.engine.remove(resource_id)
     }
 
     /// Send the data message thought the connection represented by the given endpoint.
     /// The funcion panics if the endpoint do not exists in the [`Network`].
-    /// If the endpoint disconnects during the sending, a RemoveEndpoint is generated.
+    /// If the endpoint disconnects during the sending, a `Disconnected` event is generated.
     /// A [`SendStatus`] is returned with the information about the sending.
     pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         self.engine.send(endpoint, data)

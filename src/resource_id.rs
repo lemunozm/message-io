@@ -24,7 +24,7 @@ impl ResourceId {
     const RESOURCE_TYPE_POS: usize = 7;
     const BASE_VALUE_POS: usize = 8;
     const ADAPTER_ID_MASK: u8 = 0b01111111; // 7 bits
-    const BASE_VALUE_MASK: usize = 0xFFFFFFFFFFFFFF00; // 7 bytes
+    const BASE_VALUE_MASK: usize = 0xFFFFFFFFFFFFFF00_u64 as usize; // 7 bytes
 
     pub const MAX_BASE_VALUE: usize = (Self::BASE_VALUE_MASK >> Self::BASE_VALUE_POS);
     pub const MAX_ADAPTER_ID: u8 = (Self::ADAPTER_ID_MASK >> Self::ADAPTER_ID_POS);

@@ -256,9 +256,6 @@ fn burst(transport: Transport, messages_count: usize) {
 // with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
     //util::init_logger(); // Enable it for better debugging
-    if std::mem::size_of::<usize>() == 4 {
-        panic!("32!!!!!!!!!")
-    }
 
     let (server_handle, server_addr) = echo_server_handle(transport, clients);
     let client_handle = echo_client_manager_handle(transport, server_addr, clients);

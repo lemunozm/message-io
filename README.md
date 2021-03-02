@@ -37,12 +37,11 @@ You could change the transport of your application in literally one line.
 - Highly scalable: **non-blocking sockets** (using [mio](https://github.com/tokio-rs/mio))
   that allows to manage thousands of active connections.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
-- Multiples transports: **TCP**, **UDP** (with multicast option) and
+- Multiples transports: **TCP** (native and framed version), **UDP** (with multicast option) and
   **WebSockets** (secure and non-secure option). See the detailed list
   [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
-- Internal encoding layer: handle messages, not data streams.
 - FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).

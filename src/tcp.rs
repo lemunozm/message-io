@@ -1,4 +1,4 @@
-use crate::adapter::{NetworkAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType,
+use crate::adapter::{TransportAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType,
     ResourceIdGenerator};
 
 use mio::net::{TcpListener, TcpStream};
@@ -24,7 +24,7 @@ pub struct TcpAdapter {
     store: Arc<Store>,
 }
 
-impl NetworkAdapter for TcpAdapter {
+impl TransportAdapter for TcpAdapter {
     type Listener = TcpListener;
     type Remote = TcpStream;
 

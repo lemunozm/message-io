@@ -7,10 +7,7 @@ use mio::{Poll, Interest, Token, Events, Registry};
 use std::net::{SocketAddr};
 use std::time::{Duration};
 use std::collections::{HashMap};
-use std::sync::{
-    Arc, Mutex, RwLock,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::{Arc, RwLock, atomic::{AtomicBool, Ordering}};
 use std::thread::{self, JoinHandle};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
@@ -20,24 +17,6 @@ const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 const EVENTS_SIZE: usize = 1024;
 
 const OTHER_THREAD_ERR: &'static str = "This error is shown because other thread has panicked";
-
-struct Store {
-    streams: RwLock<HashMap<ResourceId, (Arc<TcpStream>, SocketAddr)>>,
-    listeners: Mutex<HashMap<ResourceId, TcpListener>>,
-    id_generator: SharedResourceIdGenerator,
-    registry: Registry,
-}
-
-impl Store {
-    fn new(registry: Registry) -> Store {
-        Store {
-            streams: RwLock::new(HashMap::new()),
-            listeners: Mutex::new(HashMap::new()),
-            id_generator: SharedResourceIdGenerator::new(),
-            registry,
-        }
-    }
-}
 
 pub struct TcpAdapter {
     thread: Option<JoinHandle<()>>,
@@ -53,7 +32,7 @@ impl NetworkAdapter for TcpAdapter {
     C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) + Send + 'static {
 
         let poll = Poll::new().unwrap();
-        let store = Store::new(poll.registry().try_clone().unwrap()); //TODO: clone?
+        let store = Store::new(poll.registry().try_clone().unwrap());
         let store = Arc::new(store);
         let thread_store = store.clone();
 
@@ -86,7 +65,7 @@ impl NetworkAdapter for TcpAdapter {
         let id = self.store.id_generator.generate(ResourceType::Listener);
         let addr = listener.local_addr().unwrap();
         self.store.registry.register(&mut listener, Token(id.raw()), Interest::READABLE).unwrap();
-        self.store.listeners.lock().expect(OTHER_THREAD_ERR).insert(id, listener);
+        self.store.listeners.write().expect(OTHER_THREAD_ERR).insert(id, listener);
         (id, addr)
     }
 
@@ -99,7 +78,7 @@ impl NetworkAdapter for TcpAdapter {
     }
 
     fn remove_listener(&mut self, id: ResourceId) -> Option<()> {
-        self.store.listeners.lock().expect(OTHER_THREAD_ERR).remove(&id)
+        self.store.listeners.write().expect(OTHER_THREAD_ERR).remove(&id)
             .map(|mut listener|{
                 self.store.registry.deregister(&mut listener).unwrap();
             })
@@ -113,7 +92,13 @@ impl NetworkAdapter for TcpAdapter {
     }
 
     fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
-        self.store.streams.read().expect(OTHER_THREAD_ERR).get(&id).map(|(_, addr)| *addr)
+        match id.resource_type() {
+            ResourceType::Listener =>
+                self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id)
+                .map(|listener| listener.local_addr().unwrap()),
+            ResourceType::Remote =>
+                self.store.streams.read().expect(OTHER_THREAD_ERR).get(&id).map(|(_, addr)| *addr),
+        }
     }
 
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
@@ -158,6 +143,24 @@ impl Drop for TcpAdapter {
             .unwrap()
             .join()
             .expect(OTHER_THREAD_ERR);
+    }
+}
+
+struct Store {
+    streams: RwLock<HashMap<ResourceId, (Arc<TcpStream>, SocketAddr)>>,
+    listeners: RwLock<HashMap<ResourceId, TcpListener>>,
+    id_generator: SharedResourceIdGenerator,
+    registry: Registry,
+}
+
+impl Store {
+    fn new(registry: Registry) -> Store {
+        Store {
+            streams: RwLock::new(HashMap::new()),
+            listeners: RwLock::new(HashMap::new()),
+            id_generator: SharedResourceIdGenerator::new(),
+            registry,
+        }
     }
 }
 
@@ -229,7 +232,7 @@ impl<'a> TcpResourceProcessor<'a> {
     where C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) {
         // We check the existance of the listener because some event could be produced
         // before removing it.
-        if let Some(listener) = self.store.listeners.lock().expect(OTHER_THREAD_ERR).get(&id) {
+        if let Some(listener) = self.store.listeners.read().expect(OTHER_THREAD_ERR).get(&id) {
             let mut streams = self.store.streams.write().expect(OTHER_THREAD_ERR);
             loop {
                 match listener.accept() {
@@ -250,7 +253,7 @@ impl<'a> TcpResourceProcessor<'a> {
 
     fn process_stream<C>(&mut self, id: ResourceId, event_callback: &mut C)
     where C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) {
-        let remove =
+        let must_be_removed =
         if let Some((stream, addr)) = self.store.streams.read().expect(OTHER_THREAD_ERR).get(&id) {
             let endpoint = Endpoint::new(id, *addr);
             loop {
@@ -275,7 +278,8 @@ impl<'a> TcpResourceProcessor<'a> {
         }
         else { false };
 
-        if !remove {
+        // Here the read lock has been dropped and it's safe to perform the write lock
+        if must_be_removed {
             self.store.streams.write().expect(OTHER_THREAD_ERR).remove(&id).unwrap();
         }
     }

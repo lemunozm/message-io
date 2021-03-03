@@ -1,5 +1,5 @@
-use crate::adapter::{TransportAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType,
-    ResourceIdGenerator};
+use crate::adapter::{TransportAdapter, Endpoint, AdapterEvent};
+use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{Poll, Interest, Token, Events, Registry};

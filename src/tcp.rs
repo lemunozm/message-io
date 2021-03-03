@@ -1,5 +1,5 @@
 use crate::adapter::{NetworkAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType,
-    SharedResourceIdGenerator};
+    ResourceIdGenerator};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{Poll, Interest, Token, Events, Registry};
@@ -28,11 +28,11 @@ impl NetworkAdapter for TcpAdapter {
     type Listener = TcpListener;
     type Remote = TcpStream;
 
-    fn init<C>(mut event_callback: C) -> TcpAdapter where
+    fn init<C>(id_generator: ResourceIdGenerator, mut event_callback: C) -> TcpAdapter where
     C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) + Send + 'static {
 
         let poll = Poll::new().unwrap();
-        let store = Store::new(poll.registry().try_clone().unwrap());
+        let store = Store::new(id_generator, poll.registry().try_clone().unwrap());
         let store = Arc::new(store);
         let thread_store = store.clone();
 
@@ -149,16 +149,16 @@ impl Drop for TcpAdapter {
 struct Store {
     streams: RwLock<HashMap<ResourceId, (Arc<TcpStream>, SocketAddr)>>,
     listeners: RwLock<HashMap<ResourceId, TcpListener>>,
-    id_generator: SharedResourceIdGenerator,
+    id_generator: ResourceIdGenerator,
     registry: Registry,
 }
 
 impl Store {
-    fn new(registry: Registry) -> Store {
+    fn new(id_generator: ResourceIdGenerator, registry: Registry) -> Store {
         Store {
             streams: RwLock::new(HashMap::new()),
             listeners: RwLock::new(HashMap::new()),
-            id_generator: SharedResourceIdGenerator::new(),
+            id_generator,
             registry,
         }
     }

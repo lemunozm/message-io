@@ -1,58 +1,5 @@
 use std::net::{SocketAddr};
-use std::sync::{atomic::{Ordering, AtomicUsize}};
-
-pub enum ResourceType {
-    Listener,
-    Remote,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct ResourceId {
-    id: usize,
-}
-
-impl ResourceId {
-    fn new(id: usize, resource_type: ResourceType) -> Self {
-        Self {
-            id: match resource_type {
-                ResourceType::Listener => id & 1 << 63,
-                ResourceType::Remote => id,
-            }
-        }
-    }
-
-    pub fn from(raw: usize) -> Self {
-        Self { id: raw }
-    }
-
-    pub fn raw(&self) -> usize {
-        self.id
-    }
-
-    pub fn resource_type(&self) -> ResourceType {
-        if self.id & (1 << 63) != 0 {
-            ResourceType::Listener
-        }
-        else {
-            ResourceType::Remote
-        }
-    }
-}
-
-pub struct SharedResourceIdGenerator {
-    last_id: AtomicUsize,
-}
-
-impl SharedResourceIdGenerator {
-    pub fn new() -> Self {
-        Self { last_id: AtomicUsize::new(0) }
-    }
-
-    pub fn generate(&self, resource_type: ResourceType) -> ResourceId {
-        let last_id = self.last_id.fetch_add(1, Ordering::SeqCst);
-        ResourceId::new(last_id, resource_type)
-    }
-}
+use std::sync::{Arc, atomic::{Ordering, AtomicUsize}};
 
 /// Information to identify the remote endpoint.
 /// The endpoint is used mainly as a connection identified.
@@ -62,17 +9,9 @@ pub struct Endpoint {
     addr: SocketAddr,
 }
 
-/// Internal adapter event
-#[derive(Debug)]
-pub enum AdapterEvent<'a> {
-    Connection,
-    Data(&'a [u8]),
-    Disconnection,
-}
-
 impl Endpoint {
-    pub fn new(resource_id: ResourceId, addr: SocketAddr) -> Endpoint {
-        Endpoint { resource_id, addr }
+    pub fn new(resource_id: ResourceId, addr: SocketAddr) -> Self {
+        Self { resource_id, addr }
     }
 
     /// Returns the inner network resource id associated used for the endpoint.
@@ -87,11 +26,80 @@ impl Endpoint {
     }
 }
 
+/// Information about the type of resource
+pub enum ResourceType {
+    Listener,
+    Remote,
+}
+
+/// Identifier of the network resource. each network resource has an unique id.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ResourceId {
+    id: usize,
+}
+
+impl ResourceId {
+    const RESOURCE_TYPE_BIT: usize = 1 << 63;
+
+    fn new(id: usize, resource_type: ResourceType) -> Self {
+        Self {
+            id: match resource_type {
+                ResourceType::Listener => id | Self::RESOURCE_TYPE_BIT,
+                ResourceType::Remote => id,
+            }
+        }
+    }
+
+    /// Creates a [ResourceId] from an id
+    pub fn from(raw: usize) -> Self {
+        Self { id: raw }
+    }
+
+    /// Returns the internal representation of this id
+    pub fn raw(&self) -> usize {
+        self.id
+    }
+
+    /// Returns the ResourceType of this id
+    pub fn resource_type(&self) -> ResourceType {
+        if self.id & Self::RESOURCE_TYPE_BIT != 0 {
+            ResourceType::Listener
+        }
+        else {
+            ResourceType::Remote
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ResourceIdGenerator {
+    last_id: Arc<AtomicUsize>,
+}
+
+impl ResourceIdGenerator {
+    pub fn new() -> Self {
+        Self { last_id: Arc::new(AtomicUsize::new(0)) }
+    }
+
+    pub fn generate(&self, resource_type: ResourceType) -> ResourceId {
+        let last_id = self.last_id.fetch_add(1, Ordering::SeqCst);
+        ResourceId::new(last_id, resource_type)
+    }
+}
+
+/// Internal adapter event
+#[derive(Debug)]
+pub enum AdapterEvent<'a> {
+    Connection,
+    Data(&'a [u8]),
+    Disconnection,
+}
+
 pub trait NetworkAdapter {
     type Listener;
     type Remote;
 
-    fn init<C>(event_callback: C) -> Self where
+    fn init<C>(id_generator: ResourceIdGenerator, event_callback: C) -> Self where
         C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) + Send + 'static;
 
     fn add_listener(&mut self, listener: Self::Listener) -> (ResourceId, SocketAddr);

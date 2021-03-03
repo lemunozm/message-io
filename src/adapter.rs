@@ -1,25 +1,52 @@
 use std::net::{SocketAddr};
+use std::sync::{atomic::{Ordering, AtomicUsize}};
 
 pub enum ResourceType {
     Listener,
     Remote,
 }
 
-pub type ResourceId = usize;
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ResourceId {
+    id: usize,
+}
 
-pub fn resource_type(id: ResourceId) -> ResourceType {
-    if id & (1 << 63) != 0 {
-        ResourceType::Listener
+impl ResourceId {
+    fn new(id: usize, resource_type: ResourceType) -> Self {
+        Self {
+            id: match resource_type {
+                ResourceType::Listener => id & 1 << 63,
+                ResourceType::Remote => id,
+            }
+        }
     }
-    else {
-        ResourceType::Remote
+
+    pub fn from(raw: usize) -> Self {
+        Self { id: raw }
+    }
+
+    pub fn resource_type(&self) -> ResourceType {
+        if self.id & (1 << 63) != 0 {
+            ResourceType::Listener
+        }
+        else {
+            ResourceType::Remote
+        }
     }
 }
 
-pub fn stamp_resource_type(id: &mut ResourceId, resource_type: ResourceType) {
-    match resource_type {
-        ResourceType::Listener => *id &= 1 << 63,
-        ResourceType::Remote => (),
+pub struct SharedResourceIdGenerator {
+    last_id: AtomicUsize,
+}
+
+impl SharedResourceIdGenerator {
+    pub fn new() -> Self {
+        Self { last_id: AtomicUsize::new(0) }
+    }
+
+    pub fn generate(&self, resource_type: ResourceType) -> ResourceId {
+        let last_id = self.last_id.fetch_add(1, Ordering::SeqCst);
+        ResourceId::new(last_id, resource_type)
     }
 }
 

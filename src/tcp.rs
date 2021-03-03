@@ -1,4 +1,5 @@
-use crate::adapter::{self, NetworkAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType};
+use crate::adapter::{self, NetworkAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType,
+    SharedResourceIdGenerator};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{event, Poll, Interest, Token, Events, Registry};
@@ -23,7 +24,7 @@ const OTHER_THREAD_ERR: &'static str = "This error is shown because other thread
 struct Store {
     streams: RwLock<HashMap<ResourceId, (Arc<TcpStream>, SocketAddr)>>,
     listeners: Mutex<HashMap<ResourceId, TcpListener>>,
-    last_id: AtomicUsize,
+    id_generator: SharedResourceIdGenerator,
     registry: Registry,
 }
 
@@ -32,7 +33,7 @@ impl Store {
         Store {
             streams: RwLock::new(HashMap::new()),
             listeners: Mutex::new(HashMap::new()),
-            last_id: AtomicUsize::new(0),
+            id_generator: SharedResourceIdGenerator::new(),
             registry,
         }
     }
@@ -155,10 +156,10 @@ impl<'a> TcpEventProcessor<'a> {
     where C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) {
         for mio_event in &self.events {
             let token = mio_event.token();
-            let id = token.0;
-            log::trace!("Wake from poll for TCP resource id {}. ", id);
+            let id = ResourceId::from(token.0);
+            log::trace!("Wake from poll for TCP resource id {:?}. ", id);
 
-            match adapter::resource_type(id) {
+            match id.resource_type() {
                 ResourceType::Listener =>
                     self.resource_processor.process_listener(id, event_callback),
                 ResourceType::Remote =>
@@ -187,7 +188,7 @@ impl<'a> TcpResourceProcessor<'a> {
             loop {
                 match listener.accept() {
                     Ok((stream, addr)) => {
-                        let id = 0; //TODO
+                        let id = self.store.id_generator.generate(ResourceType::Remote); //TODO
                         streams.insert(id, (Arc::new(stream), addr));
 
                         let endpoint = Endpoint::new(id, addr);

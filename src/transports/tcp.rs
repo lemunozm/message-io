@@ -1,5 +1,6 @@
 use crate::adapter::{TransportAdapter, Endpoint, AdapterEvent};
 use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
+use crate::util::{OTHER_THREAD_ERR};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::{Poll, Interest, Token, Events, Registry};
@@ -16,8 +17,6 @@ const INPUT_BUFFER_SIZE: usize = 65536;
 const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
 const EVENTS_SIZE: usize = 1024;
 
-const OTHER_THREAD_ERR: &'static str = "This error is shown because other thread has panicked";
-
 pub struct TcpAdapter {
     thread: Option<JoinHandle<()>>,
     thread_running: Arc<AtomicBool>,
@@ -28,7 +27,7 @@ impl TransportAdapter for TcpAdapter {
     type Listener = TcpListener;
     type Remote = TcpStream;
 
-    fn init<C>(id_generator: ResourceIdGenerator, mut event_callback: C) -> TcpAdapter where
+    fn init<C>(id_generator: ResourceIdGenerator, mut event_callback: C) -> Self where
     C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) + Send + 'static {
 
         let poll = Poll::new().unwrap();
@@ -54,7 +53,7 @@ impl TransportAdapter for TcpAdapter {
             })
             .unwrap();
 
-        TcpAdapter {
+        Self {
             thread: Some(thread),
             thread_running,
             store,

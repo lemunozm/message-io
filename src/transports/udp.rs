@@ -1,4 +1,4 @@
-use crate::adapter::{TransportAdapter, Endpoint, AdapterEvent};
+use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
 use crate::util::{OTHER_THREAD_ERR};
 
@@ -23,17 +23,10 @@ pub struct UdpAdapter {
     store: Arc<Store>,
 }
 
-struct Store {
-    //TODO
-}
-
-impl TransportAdapter for UdpAdapter {
-    type Listener = UdpSocket;
-    type Remote = UdpSocket;
-
-    fn init<C>(id_generator: ResourceIdGenerator, mut event_callback: C) -> Self where
-    C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) + Send + 'static {
-
+impl UdpAdapter {
+    pub fn init<C>(adapter_id: u8, mut event_callback: C) -> Self
+    where C: for<'b> FnMut(Endpoint, &'b [u8]) + Send + 'static {
+        let id_generator = ResourceIdGenerator::new(adapter_id);
         let poll = Poll::new().unwrap();
         let store = Store{}; //TODO
         let store = Arc::new(store);
@@ -60,27 +53,23 @@ impl TransportAdapter for UdpAdapter {
         }
     }
 
-    fn add_listener(&mut self, mut listener: UdpSocket) -> (ResourceId, SocketAddr) {
+    pub fn add_listener(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         todo!()
     }
 
-    fn add_remote(&mut self, mut remote: UdpSocket) -> Endpoint {
+    pub fn add_remote(&mut self, addr: SocketAddr) -> io::Result<Endpoint> {
         todo!()
     }
 
-    fn remove_listener(&mut self, id: ResourceId) -> Option<()> {
+    pub fn remove(&mut self, id: ResourceId) -> Option<()> {
         todo!()
     }
 
-    fn remove_remote(&mut self, id: ResourceId) -> Option<()> {
+    pub fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
         todo!()
     }
 
-    fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
-        todo!()
-    }
-
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
+    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
         todo!()
     }
 }
@@ -95,3 +84,8 @@ impl Drop for UdpAdapter {
             .expect(OTHER_THREAD_ERR);
     }
 }
+
+struct Store {
+    //TODO
+}
+

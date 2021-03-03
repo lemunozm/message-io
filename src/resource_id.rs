@@ -6,7 +6,11 @@ pub enum ResourceType {
     Remote,
 }
 
-/// Identifier of the network resource. each network resource has an unique id.
+/// Unique identifier of a network resource.
+/// The identifier wrap three data,
+/// - The type, that can be a value of [ResourceType]
+/// - The adapter id, that represent the adapter that creates this id
+/// - The base value: that is the unique identifier of the resource inside of its adapter.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ResourceId {
     id: usize,
@@ -18,6 +22,7 @@ impl ResourceId {
     const ADAPTER_ID_POS: usize = 8 * 7; // 7 bytes
     const ADAPTER_ID_MASK_OVER_ID: usize =
         (Self::ADAPTER_ID_MASK as usize) << Self::ADAPTER_ID_POS; // 7 bytes
+    const BASE_VALUE_MASK_OVER_ID: usize = 0x0FFFFFFF;
 
     fn new(id: usize, resource_type: ResourceType, adapter_id: u8) -> Self {
         assert_eq!(adapter_id & Self::ADAPTER_ID_MASK, adapter_id,
@@ -56,6 +61,21 @@ impl ResourceId {
     pub fn adapter_id(&self) -> u8 {
         ((self.id & Self::ADAPTER_ID_MASK_OVER_ID) >> Self::ADAPTER_ID_POS) as u8
     }
+
+    /// Returns the unique identifier inside the adapter.
+    pub fn base_value(&self) -> usize {
+        self.id & Self::BASE_VALUE_MASK_OVER_ID
+    }
+}
+
+impl std::fmt::Display for ResourceId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let resource_type = match self.resource_type() {
+            ResourceType::Listener => "l",
+            ResourceType::Remote => "r",
+        };
+        write!(f, "{}-{}-{}", resource_type, self.adapter_id(), self.base_value())
+    }
 }
 
 /// Used by the adapters in order to create unique ids for their resources.
@@ -66,7 +86,7 @@ pub struct ResourceIdGenerator {
 
 impl ResourceIdGenerator {
     pub fn new(adapter_id: u8) -> Self {
-        Self { last: AtomicUsize::new(0), adapter_id, }
+        Self { last: AtomicUsize::new(0), adapter_id }
     }
 
     /// Generates a new id.

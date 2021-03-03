@@ -25,6 +25,10 @@ impl ResourceId {
         Self { id: raw }
     }
 
+    pub fn raw(&self) -> usize {
+        self.id
+    }
+
     pub fn resource_type(&self) -> ResourceType {
         if self.id & (1 << 63) != 0 {
             ResourceType::Listener
@@ -84,13 +88,16 @@ impl Endpoint {
 }
 
 pub trait NetworkAdapter {
+    type Listener;
+    type Remote;
+
     fn init<C>(event_callback: C) -> Self where
         C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) + Send + 'static;
 
-    fn add_remote<R>(&mut self, remote: R) -> Endpoint;
-    fn add_listener<L>(&mut self, listener: L) -> (ResourceId, SocketAddr);
-    fn remove_remote(&mut self, resource_id: ResourceId) -> Option<()>;
+    fn add_listener(&mut self, listener: Self::Listener) -> (ResourceId, SocketAddr);
+    fn add_remote(&mut self, remote: Self::Remote) -> Endpoint;
     fn remove_listener(&mut self, resource_id: ResourceId) -> Option<()>;
+    fn remove_remote(&mut self, resource_id: ResourceId) -> Option<()>;
     fn local_address(&self, resource_id: ResourceId) -> Option<SocketAddr>;
     fn send(&mut self, endpoint: Endpoint, data: &[u8]);
 }

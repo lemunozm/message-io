@@ -1,18 +1,18 @@
-use crate::adapter::{self, NetworkAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType,
+use crate::adapter::{NetworkAdapter, Endpoint, AdapterEvent, ResourceId, ResourceType,
     SharedResourceIdGenerator};
 
 use mio::net::{TcpListener, TcpStream};
-use mio::{event, Poll, Interest, Token, Events, Registry};
+use mio::{Poll, Interest, Token, Events, Registry};
 
 use std::net::{SocketAddr};
 use std::time::{Duration};
 use std::collections::{HashMap};
 use std::sync::{
     Arc, Mutex, RwLock,
-    atomic::{AtomicBool, Ordering, AtomicUsize},
+    atomic::{AtomicBool, Ordering},
 };
 use std::thread::{self, JoinHandle};
-use std::io::{ErrorKind, Read};
+use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 
 const INPUT_BUFFER_SIZE: usize = 65536;
@@ -46,6 +46,9 @@ pub struct TcpAdapter {
 }
 
 impl NetworkAdapter for TcpAdapter {
+    type Listener = TcpListener;
+    type Remote = TcpStream;
+
     fn init<C>(mut event_callback: C) -> TcpAdapter where
     C: for<'b> FnMut(Endpoint, AdapterEvent<'b>) + Send + 'static {
 
@@ -79,28 +82,71 @@ impl NetworkAdapter for TcpAdapter {
         }
     }
 
-    fn add_remote<R>(&mut self, remote: R) -> Endpoint {
-        todo!()
+    fn add_listener(&mut self, mut listener: TcpListener) -> (ResourceId, SocketAddr) {
+        let id = self.store.id_generator.generate(ResourceType::Listener);
+        let addr = listener.local_addr().unwrap();
+        self.store.registry.register(&mut listener, Token(id.raw()), Interest::READABLE).unwrap();
+        self.store.listeners.lock().expect(OTHER_THREAD_ERR).insert(id, listener);
+        (id, addr)
     }
 
-    fn add_listener<L>(&mut self, listener: L) -> (ResourceId, SocketAddr) {
-        todo!()
-    }
-
-    fn remove_remote(&mut self, id: ResourceId) -> Option<()> {
-        todo!()
+    fn add_remote(&mut self, mut remote: TcpStream) -> Endpoint {
+        let id = self.store.id_generator.generate(ResourceType::Remote);
+        let addr = remote.peer_addr().unwrap();
+        self.store.registry.register(&mut remote, Token(id.raw()), Interest::READABLE).unwrap();
+        self.store.streams.write().expect(OTHER_THREAD_ERR).insert(id, (Arc::new(remote), addr));
+        Endpoint::new(id, addr)
     }
 
     fn remove_listener(&mut self, id: ResourceId) -> Option<()> {
-        todo!()
+        self.store.listeners.lock().expect(OTHER_THREAD_ERR).remove(&id)
+            .map(|mut listener|{
+                self.store.registry.deregister(&mut listener).unwrap();
+            })
+    }
+
+    fn remove_remote(&mut self, id: ResourceId) -> Option<()> {
+        self.store.streams.write().expect(OTHER_THREAD_ERR).remove(&id)
+            .map(|(stream, _)|{
+                self.store.registry.deregister(&mut Arc::try_unwrap(stream).unwrap()).unwrap();
+            })
     }
 
     fn local_address(&self, id: ResourceId) -> Option<SocketAddr> {
-        todo!()
+        self.store.streams.read().expect(OTHER_THREAD_ERR).get(&id).map(|(_, addr)| *addr)
     }
 
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) {
-        todo!()
+        let streams = self.store.streams.read().expect(OTHER_THREAD_ERR);
+        let (stream, _) = streams.get(&endpoint.resource_id())
+            .expect("Resource id '{}' not exists in the network adapter");
+
+        // TODO: The current implementation implies an active waiting,
+        // improve it using POLLIN instead to avoid active waiting.
+        // Note: Despite the fear that an active waiting could generate,
+        // this waiting only occurs in the rare case when the send method needs block.
+        let mut total_bytes_sent = 0;
+        loop {
+            match stream.deref().write(&data[total_bytes_sent..]) {
+                Ok(bytes_sent) => {
+                    total_bytes_sent += bytes_sent;
+                    if total_bytes_sent == data.len() {
+                        break
+                    }
+                    // We get sending to data, but not the totality.
+                    // We start waiting actively.
+                }
+                // If WouldBlock is received in this non-blocking socket means that
+                // the sending buffer is full and it should wait to send more data.
+                // This occurs when huge amounts of data are sent and It could be
+                // intensified if the remote endpoint reads slower than this enpoint sends.
+                Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+                // Skipping. Others errors will be considered fatal for the connection.
+                // We skip here their handling because if the connection brokes,
+                // an Event::Disconnection will be generated later.
+                Err(_) => break,
+            }
+        }
     }
 }
 
@@ -188,7 +234,7 @@ impl<'a> TcpResourceProcessor<'a> {
             loop {
                 match listener.accept() {
                     Ok((stream, addr)) => {
-                        let id = self.store.id_generator.generate(ResourceType::Remote); //TODO
+                        let id = self.store.id_generator.generate(ResourceType::Remote);
                         streams.insert(id, (Arc::new(stream), addr));
 
                         let endpoint = Endpoint::new(id, addr);

@@ -44,8 +44,7 @@ pub fn run() {
                         }
                     };
 
-                    let output_data =
-                        bincode::serialize(&ReceiverMsg::CanReceive(able)).unwrap();
+                    let output_data = bincode::serialize(&ReceiverMsg::CanReceive(able)).unwrap();
                     node.network().send(endpoint, &output_data);
                 }
                 SenderMsg::Chunk(data) => {

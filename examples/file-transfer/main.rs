@@ -10,6 +10,6 @@ pub fn main() {
             None => println!("The sender needs a 'file path'"),
         },
         "recv" => receiver::run(),
-        _ => println!("Usage: file-transfer recv | (send <filepath>)"),
+        _ => println!("Usage: recv | (send <filepath>)"),
     }
 }

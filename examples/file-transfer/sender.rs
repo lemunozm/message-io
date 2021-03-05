@@ -75,6 +75,6 @@ pub fn run(file_path: String) {
                     node.stop();
                 }
             }
-        }
+        },
     });
 }

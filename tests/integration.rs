@@ -13,7 +13,7 @@ use std::time::{Duration};
 const LOCAL_ADDR: &'static str = "127.0.0.1:0";
 const MIN_MESSAGE: &'static [u8] = &[42];
 const SMALL_MESSAGE: &'static str = "Integration test message";
-const BIG_MESSAGE_SIZE: usize = 1024 * 1024 * 8; // 1MB
+const BIG_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
 
 lazy_static::lazy_static! {
     pub static ref TIMEOUT: Duration = Duration::from_millis(5000);

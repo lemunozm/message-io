@@ -5,13 +5,15 @@ pub(crate) const OTHER_THREAD_ERR: &str = "Avoid this 'panicked_at' error. \
                                    This error is shown because other thread has panicked \
                                    You can safety skip this error.";
 
+/// Thread similar to the std, but with a name that can be nested.
 pub struct NamespacedThread<T: Send + 'static> {
     namespace: String,
     join_handle: Option<JoinHandle<T>>,
 }
 
 impl<T: Send + 'static> NamespacedThread<T> {
-    pub fn new<F>(name: &str, f: F) -> Self
+    /// Similar to `thread::spawn()` but with a name.
+    pub fn spawn<F>(name: &str, f: F) -> Self
     where
         F: FnOnce() -> T,
         F: Send + 'static,
@@ -31,6 +33,7 @@ impl<T: Send + 'static> NamespacedThread<T> {
         }
     }
 
+    /// Wait the thread to finish.
     pub fn join(&mut self) -> T {
         log::trace!("Join thread [{}] ...", self.namespace);
         let content = self.join_handle.take().unwrap().join().expect(OTHER_THREAD_ERR);

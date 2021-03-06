@@ -16,7 +16,7 @@ lazy_static::lazy_static! {
 fn init_connection(transport: Transport) -> (NetworkController, NetworkProcessor, Endpoint) {
     let (controller, mut processor) = network::split();
 
-    let mut thread = NamespacedThread::new("perf-listening", move || {
+    let mut thread = NamespacedThread::spawn("perf-listening", move || {
         if transport.is_connection_oriented() {
             let mut connected = false;
             while !connected {
@@ -62,7 +62,7 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
             let thread_running = Arc::new(AtomicBool::new(true));
             let running = thread_running.clone();
             let (tx, rx) = std::sync::mpsc::channel();
-            let mut thread = NamespacedThread::new("perf-sender", move || {
+            let mut thread = NamespacedThread::spawn("perf-sender", move || {
                 let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
                 tx.send(()).unwrap(); // receiving thread ready
                 while running.load(Ordering::Relaxed) {

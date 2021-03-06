@@ -7,14 +7,14 @@ doc_comment::doctest!("../README.md");
 
 mod adapters;
 
-/// Main API.
+/// Main API. Create connections, send and receive message, signals,...
 pub mod node;
 
 /// It contains all the resources and tools to create and manage connections.
 pub mod network;
 
 /// A set of utilities to deal with asynchronous events.
-/// This module mainly offers a synchronized event queue and timed events.
+/// This module offers a synchronized event queue and timed events.
 pub mod events;
 
 /// General purpose utilities.

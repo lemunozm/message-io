@@ -13,8 +13,10 @@ use strum::{EnumIter};
 use serde::{Serialize, Deserialize};
 
 /// Enum to identified the underlying transport used.
-/// It can be passed to [`crate::network::NetworkController::connect()`] and
-/// [`crate::network::NetworkController::listen()`] methods to specify the transport used.
+/// It can be passed to
+/// [`NetworkController::connect()`](crate::network::NetworkController::connect()) and
+/// [`NetworkController::listen()`](crate::network::NetworkController::connect()) methods
+/// to specify the transport used.
 #[derive(EnumIter, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Transport {
     /// TCP protocol (available through the *tcp* feature).

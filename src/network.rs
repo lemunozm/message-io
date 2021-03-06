@@ -29,6 +29,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::{Duration};
 use std::io::{self};
 
+/// Create a network instance giving its controller and processor.
 pub fn split() -> (NetworkController, NetworkProcessor) {
     let mut loader = AdapterLoader::default();
     Transport::iter().for_each(|transport| transport.mount_adapter(&mut loader));

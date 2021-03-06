@@ -19,7 +19,7 @@ fn main() {
         Err(_) => return eprintln!("Could not connect to {}", addr),
     }
 
-    // Since the addrs belongs to the multicast range (from 224.0.0.0 to 239.255.255.255)
+    // Since the addrers belongs to the multicast range (from 224.0.0.0 to 239.255.255.255)
     // the internal resource will be configured to receive multicast messages.
     handler.network().listen(Transport::Udp, addr).unwrap();
 

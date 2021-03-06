@@ -67,7 +67,7 @@ fn start_echo_server(
     expected_clients: usize,
 ) -> (NamespacedThread<()>, SocketAddr) {
     let (tx, rx) = crossbeam::channel::bounded(1);
-    let thread = NamespacedThread::new("test-server", move || {
+    let thread = NamespacedThread::spawn("test-server", move || {
         std::panic::catch_unwind(|| {
             let mut messages_received = 0;
             let mut disconnections = 0;
@@ -136,7 +136,7 @@ fn start_echo_client_manager(
     server_addr: SocketAddr,
     clients_number: usize,
 ) -> NamespacedThread<()> {
-    NamespacedThread::new("test-client", move || {
+    NamespacedThread::spawn("test-client", move || {
         std::panic::catch_unwind(|| {
             let (node, listener) = node::split();
             node.signals().send_with_timer((), *TIMEOUT);
@@ -175,7 +175,7 @@ fn start_burst_receiver(
     expected_count: usize,
 ) -> (NamespacedThread<()>, SocketAddr) {
     let (tx, rx) = crossbeam::channel::bounded(1);
-    let thread = NamespacedThread::new("test-receiver", move || {
+    let thread = NamespacedThread::spawn("test-receiver", move || {
         std::panic::catch_unwind(|| {
             let (node, listener) = node::split();
             node.signals().send_with_timer((), *TIMEOUT);
@@ -210,7 +210,7 @@ fn start_burst_sender(
     receiver_addr: SocketAddr,
     expected_count: usize,
 ) -> NamespacedThread<()> {
-    NamespacedThread::new("test-sender", move || {
+    NamespacedThread::spawn("test-sender", move || {
         std::panic::catch_unwind(|| {
             let (node, _) = node::split::<()>();
 
@@ -303,7 +303,7 @@ fn message_size(transport: Transport, message_size: usize) {
                 if transport.is_connection_oriented() {
                     let node = node.clone();
                     let sent_message = sent_message.clone();
-                    _async_sender = Some(NamespacedThread::new("test-sender", move || {
+                    _async_sender = Some(NamespacedThread::spawn("test-sender", move || {
                         let status = node.network().send(receiver, &sent_message);
                         assert_eq!(status, SendStatus::Sent);
                         assert!(node.network().remove(receiver.resource_id()));

@@ -79,7 +79,7 @@ impl<'a, S> NodeEvent<'a, S> {
 /// ```
 /// use message_io::node::{self};
 ///
-/// let (handler, _) = node::split::<()>();
+/// let (handler, listener) = node::split::<()>();
 /// ```
 pub fn split<S: Send>() -> (NodeHandler<S>, NodeListener<S>) {
     let (network_controller, network_processor) = network::split();
@@ -193,7 +193,7 @@ impl<S: Send + 'static> NodeListener<S> {
         let network_cache_thread = {
             let cache_running = cache_running.clone();
             let mut cache = VecDeque::new();
-            NamespacedThread::new("node-network-cache-thread", move || {
+            NamespacedThread::spawn("node-network-cache-thread", move || {
                 while cache_running.load(Ordering::Relaxed) {
                     network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), |net_event| {
                         log::trace!("Cached {:?}", net_event);
@@ -277,7 +277,7 @@ impl<S: Send + 'static> NodeListener<S> {
             let multiplexed = multiplexed.clone();
             let running = self.running.clone();
 
-            NamespacedThread::new("node-network-thread", move || {
+            NamespacedThread::spawn("node-network-thread", move || {
                 // Dispatch the catched events first.
                 while let Some(event) = cache.pop_front() {
                     let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
@@ -305,7 +305,7 @@ impl<S: Send + 'static> NodeListener<S> {
             let mut signal_receiver = std::mem::take(&mut self.signal_receiver);
             let running = self.running.clone();
 
-            NamespacedThread::new("node-signal-thread", move || {
+            NamespacedThread::spawn("node-signal-thread", move || {
                 while running.load(Ordering::Relaxed) {
                     if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT) {
                         let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);

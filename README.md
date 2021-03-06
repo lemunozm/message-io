@@ -8,8 +8,8 @@
 # message-io
 `message-io` is an event-driven message library to build network applications **easy** and **fast**.
 The library handles the internal OS socket in order to offer a simple event message API to the user.
-It also allows you to make an adapter for your own transport protocol following some [rules](#custom-adapter),
-delegating to the library the tedious asynchrony and thread management.
+It also allows you to make an adapter for your own transport protocol following some
+[rules](#custom-adapter), delegating to the library the tedious asynchrony and thread management.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=653&h=305" width="653"/>
@@ -19,15 +19,15 @@ If you find a problem using the library or you have an improvement idea,
 do not hesitate to open an issue. **Any contribution is welcome!**
 
 ## Motivation
-Managing sockets is hard because you need to fight with threads, concurrency,
-IO errors that come from the OS (which are really difficult to understand in some situations), encoding...
-And if you make use of *non-blocking* sockets, it adds a new layer of complexity:
-synchronize the events that come asynchronously from the OS poll.
+Managing sockets is hard because you need to fight with threads, concurrency, full duplex, encoding,
+IO errors that come from the OS (which are really difficult to understand in some situations), etc.
+If you make use of *non-blocking* sockets, it adds a new layer of complexity:
+synchronize the events that come asynchronously from the Operative System.
 
 `message-io` offers an easy way to deal with all these mentioned problems,
 making them transparently for you,
 the programmer that wants to make an application with its own problems.
-For that, `message-io` offers a simple API and give only two concepts to understand:
+For that, the library gives you a simple API with two concepts to understand:
 **messages** (the data you send and receive), and **endpoints** (the recipients of that data).
 This abstraction also offers the possibility to use the same API independently
 of the transport protocol used.
@@ -44,42 +44,38 @@ You could change the transport of your application in literally one line.
     [tungstenite-rs](https://github.com/snapview/tungstenite-rs).
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
-- FIFO events with timers and priority.
+- Custom FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
   - Abstraction from transport layer: do not think about sockets, think about messages and endpoints.
   - Only two main entities to use:
-    - an extensible
-    [`Eventqueue`](https://docs.rs/message-io/latest/message_io/events/struct.EventQueue.html)
-    to manage all events synchronously,
-    - a [`Network`](https://docs.rs/message-io/latest/message_io/network/struct.Network.html)
-    to manage all connections (connect, listen, remove, send, receive).
+    - a [`NodeHandler`](https://docs.rs/message-io/latest/message_io/node/struct.NodeHandler.html)
+    to manage all connections (connect, listen, remove, send) and signals (timers, priority).
+    - a [`NodeListener`](https://docs.rs/message-io/latest/message_io/node/struct.NodeListener.html)
+    to process all signals and events from the network.
   - Forget concurrence problems: handle all connection and listeners from one thread:
     "One thread to rule them all".
   - Easy error handling:
     do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
-    - Using non-blocking sockets from one thread allows to not waste memory and time
-      synchonizing multiple threads.
+    - Non-blocking sockets: scale the application without wasting memory and time synchonizing
+    multiple threads.
+    - Zero-copy message. You write and read directly from the internal OS socket buffer without any copy in the middle by the library.
     - Full duplex: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
 Add to your `Cargo.toml` (all the transports included by default):
 ```toml
 [dependencies]
-message-io = "0.11"
+message-io = "0.12"
 ```
 If you **only** want to use a subset of the available transport battery,
 you can select them by their associated features `tcp`, `udp`, and `websocket`.
 For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
 ```toml
 [dependencies]
-message-io = { version = "0.11", default-features = false, features = ["tcp", "udp"] }
+message-io = { version = "0.12", default-features = false, features = ["tcp", "udp"] }
 ```
-
-**Warning**: If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed
-to `Transport::FramedTcp` to be more according to its behaviour.
-See more [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 
 ### Documentation
 - [API documentation](https://docs.rs/message-io/)
@@ -199,12 +195,12 @@ If a transport protocol can be built in top of [`mio`](https://github.com/tokio-
 (most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
-  traits that you find [here](https://docs.rs/message-io/latest/message_io/adapter/index.html).
+  traits that you find [here](https://docs.rs/message-io/latest/message_io/network/adapter/index.html).
   It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
   and take little more than 150 lines to implement an adapter file.
 
-1. Add a new field in the `Transport` enum found in [src/transport.rs](src/transport.rs)
-  to register your new adapter.
+1. Add a new field in the `Transport` enum found in
+[src/network/transport.rs](src/network/transport.rs) to register your new adapter.
 
 That's all.
 You can use your new transport with the `message-io` API like any other.

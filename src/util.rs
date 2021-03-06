@@ -1,4 +1,4 @@
-/// Utility for managing runnable/stoppable threads
+/// Utility for created nested named threads
 pub mod thread;
 
 /// Frame encoding to convert a data stream into packets.

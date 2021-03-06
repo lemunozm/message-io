@@ -20,7 +20,7 @@ pub use remote_addr::{RemoteAddr, ToRemoteAddr};
 pub use transport::{Transport};
 pub use driver::{NetEvent};
 
-use loader::{AdapterLoader, ActionControllerList, EventProcessorList};
+use loader::{DriverLoader, ActionControllerList, EventProcessorList};
 use poll::{Poll, PollEvent};
 
 use strum::{IntoEnumIterator};
@@ -31,10 +31,10 @@ use std::io::{self};
 
 /// Create a network instance giving its controller and processor.
 pub fn split() -> (NetworkController, NetworkProcessor) {
-    let mut loader = AdapterLoader::default();
-    Transport::iter().for_each(|transport| transport.mount_adapter(&mut loader));
+    let mut drivers = DriverLoader::default();
+    Transport::iter().for_each(|transport| transport.mount_adapter(&mut drivers));
 
-    let (poll, controllers, processors) = loader.take();
+    let (poll, controllers, processors) = drivers.take();
 
     let network_controller = NetworkController::new(controllers);
     let network_processor = NetworkProcessor::new(poll, processors);

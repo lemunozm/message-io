@@ -13,10 +13,10 @@ use std::time::{Duration};
 const LOCAL_ADDR: &'static str = "127.0.0.1:0";
 const MIN_MESSAGE: &'static [u8] = &[42];
 const SMALL_MESSAGE: &'static str = "Integration test message";
-const BIG_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
+const BIG_MESSAGE_SIZE: usize = 1024 * 1024 * 8; // 8MB
 
 lazy_static::lazy_static! {
-    pub static ref TIMEOUT: Duration = Duration::from_millis(5000);
+    pub static ref TIMEOUT: Duration = Duration::from_secs(30);
 }
 
 // Common error messages
@@ -241,18 +241,18 @@ fn start_burst_sender(
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
-    // util::init_logger(LogThread::Enabled); // Enable it for better debugging
+    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
     let (_server_thread, server_addr) = start_echo_server(transport, clients);
     let _client_thread = start_echo_client_manager(transport, server_addr, clients);
 }
 
 // Tcp: Does not apply: it's stream based
-//#[cfg_attr(feature = "udp", test_case(Transport::Udp, 2000))]
+#[cfg_attr(feature = "udp", test_case(Transport::Udp, 2000))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {
-    util::init_logger(LogThread::Enabled); // Enable it for better debugging
+    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
     let (_receiver_thread, server_addr) = start_burst_receiver(transport, messages_count);
     let _sender_thread = start_burst_sender(transport, server_addr, messages_count);

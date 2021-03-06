@@ -1,4 +1,4 @@
-use super::loader::{AdapterLoader};
+use super::loader::{DriverLoader};
 
 #[cfg(feature = "tcp")]
 use crate::adapters::tcp::{self, TcpAdapter};
@@ -54,7 +54,7 @@ pub enum Transport {
 impl Transport {
     /// Associates an adapter.
     /// This method mounts the adapters to be used in the network instance.
-    pub fn mount_adapter(self, loader: &mut AdapterLoader) {
+    pub fn mount_adapter(self, loader: &mut DriverLoader) {
         match self {
             #[cfg(feature = "tcp")]
             Self::Tcp => loader.mount(self.id(), TcpAdapter),

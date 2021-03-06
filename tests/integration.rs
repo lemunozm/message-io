@@ -248,11 +248,11 @@ fn echo(transport: Transport, clients: usize) {
 }
 
 // Tcp: Does not apply: it's stream based
-#[cfg_attr(feature = "udp", test_case(Transport::Udp, 2000))]
+//#[cfg_attr(feature = "udp", test_case(Transport::Udp, 2000))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {
-    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
+    util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
     let (_receiver_thread, server_addr) = start_burst_receiver(transport, messages_count);
     let _sender_thread = start_burst_sender(transport, server_addr, messages_count);

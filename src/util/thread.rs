@@ -12,7 +12,7 @@ pub struct NamespacedThread<T: Send + 'static> {
 }
 
 impl<T: Send + 'static> NamespacedThread<T> {
-    /// Similar to `thread::spawn()` but with a name.
+    /// Similar to [`thread::spawn()`] but with a name.
     pub fn spawn<F>(name: &str, f: F) -> Self
     where
         F: FnOnce() -> T,
@@ -62,7 +62,7 @@ mod tests {
         let called = Arc::new(AtomicBool::new(false));
         let mut thread = {
             let called = called.clone();
-            NamespacedThread::new("test", move || {
+            NamespacedThread::spawn("test", move || {
                 std::thread::sleep(Duration::from_millis(500));
                 called.store(true, Ordering::Relaxed);
             })
@@ -80,7 +80,7 @@ mod tests {
         let called = Arc::new(AtomicBool::new(false));
         let mut thread = {
             let called = called.clone();
-            NamespacedThread::new("test", move || {
+            NamespacedThread::spawn("test", move || {
                 std::thread::sleep(Duration::from_millis(500));
                 called.store(true, Ordering::Relaxed);
                 "result"
@@ -95,7 +95,7 @@ mod tests {
         let called = Arc::new(AtomicBool::new(false));
         let thread = {
             let called = called.clone();
-            NamespacedThread::new("test", move || {
+            NamespacedThread::spawn("test", move || {
                 std::thread::sleep(Duration::from_millis(500));
                 called.store(true, Ordering::Relaxed);
             })

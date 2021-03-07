@@ -8,7 +8,7 @@ license = "Apache-2.0"
 description = "Easy asynchronous network message library"
 homepage = "https://github.com/lemunozm/message-io/"
 repository = "https://github.com/lemunozm/message-io/"
-keywords = ["network", "message", "async", "events", "non-blocking", "tcp", "udp", "websocket"]
+keywords = ["network", "async", "events", "non-blocking", "tcp"]
 categories = ["asynchronous", "game-development", "network-programming", "rust-patterns", "encoding"]
 
 [badges]

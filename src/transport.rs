@@ -14,12 +14,12 @@ use crate::adapters::web_socket::{self, WsAdapter};
 use strum::{EnumIter};
 
 /// Enum to identified the underlying transport used.
-/// It can be passed to [`crate::network::Network::connect()]` and
+/// It can be passed to [`crate::network::Network::connect()`] and
 /// [`crate::network::Network::listen()`] methods to specify the transport used.
 #[derive(EnumIter)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Transport {
-    /// TCP protocol.
+    /// TCP protocol (available through the *tcp* feature).
     /// As stream protocol, receiving a message from TCP do not imply to read
     /// the entire message.
     /// If you want a packet based way to send over TCP, use `FramedTcp` instead.
@@ -27,12 +27,12 @@ pub enum Transport {
     Tcp,
 
     /// Like TCP, but encoded with a slim frame layer to manage the data as a packet,
-    /// instead of as a stream.
+    /// instead of as a stream (available through the *tcp* feature).
     /// Most of the time you would want to use this instead of the raw `Tcp`.
     #[cfg(feature = "tcp")]
     FramedTcp,
 
-    /// UDP protocol.
+    /// UDP protocol (available through the *udp* feature).
     /// Take into account that UDP is not connection oriented and a packet can be lost
     /// or received disordered.
     /// If it is specified in the listener and the address is a Ipv4 in the range of multicast ips
@@ -40,7 +40,7 @@ pub enum Transport {
     #[cfg(feature = "udp")]
     Udp,
 
-    /// WebSocket protocol.
+    /// WebSocket protocol (available through the *websocket* feature).
     /// If you use a [`crate::network::RemoteAddr::Url`] in the `connect()` method,
     /// you can specify `wss` of `ws` schemas to connect with or without security.
     /// If you use a [`crate::network::RemoteAddr::SocketAddr`] the socket will be a normal

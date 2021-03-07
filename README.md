@@ -62,12 +62,19 @@ You could change the transport of your application in literally one line.
     - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
-Add to your `Cargo.toml`
+Add to your `Cargo.toml` (that includes all the transports):
 ```
 message-io = "0.10"
 ```
+If you only want to use a subset of the available transport battery,
+you can select them by the features `tcp`, `udp`, and `websocket`.
+For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`.
+```
+message-io = { version = "0.10", features = ["tcp", "udp"] }
+```
 
-**Warning**: If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed to `Transport::FramedTcp` to be more according to its behaviour.
+**Warning**: If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed
+to `Transport::FramedTcp` to be more according to its behaviour.
 See more [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 
 ### Documentation

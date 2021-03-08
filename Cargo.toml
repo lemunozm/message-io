@@ -28,7 +28,6 @@ mio = { version = "0.7", features = ["os-poll"] }
 crossbeam = "0.8"
 log = "0.4"
 net2 = "0.2.34"
-num_enum = "0.5.1"
 strum = { version = "0.20", features = ["derive"] }
 url = "2.2.0"
 tungstenite = { version = "0.13.0", optional = true }

@@ -34,12 +34,14 @@ of the transport protocol used.
 You could change the transport of your application in literally one line.
 
 ## Features
-- Highly scalable: **non-blocking sockets** (using [mio](https://github.com/tokio-rs/mio))
-  that allows to manage thousands of active connections.
+- Highly scalable: **non-blocking sockets** that allows to manage thousands of active connections.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
-- Multiples transports: **TCP** (native and framed version), **UDP** (with multicast option) and
-  **WebSockets** (secure and non-secure option). See the detailed list
-  [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
+- Multiples transports
+([docs](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html)):
+  - **TCP**: native and framed version
+  - **UDP**, with multicast option
+  - **WebSocket**: basic and secure option using
+    [tungstenite-rs](https://github.com/snapview/tungstenite-rs)).
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
 - FIFO events with timers and priority.
@@ -62,15 +64,15 @@ You could change the transport of your application in literally one line.
     - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
-Add to your `Cargo.toml` (that includes all the transports):
+Add to your `Cargo.toml` (all the transports included by default):
 ```
 message-io = "0.10"
 ```
-If you only want to use a subset of the available transport battery,
-you can select them by the features `tcp`, `udp`, and `websocket`.
-For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`.
+If you **only** want to use a subset of the available transport battery,
+you can select them by their associated features `tcp`, `udp`, and `websocket`.
+For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
 ```
-message-io = { version = "0.10", features = ["tcp", "udp"] }
+message-io = { version = "0.10", default-features = false, features = ["tcp", "udp"] }
 ```
 
 **Warning**: If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed

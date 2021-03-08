@@ -21,7 +21,7 @@ all-features = true
 default = ["tcp", "udp", "websocket"] # All features by default
 tcp = ["mio/tcp"]
 udp = ["mio/udp"]
-websocket = ["tungstenite"]
+websocket = ["tungstenite", "mio/tcp"]
 
 [dependencies]
 mio = { version = "0.7", features = ["os-poll"] }

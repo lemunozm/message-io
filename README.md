@@ -81,7 +81,7 @@ See more [here](https://docs.rs/message-io/latest/message_io/network/enum.Transp
 - [API documentation](https://docs.rs/message-io/)
 - [Basic concepts](docs/basic_concepts.md)
 - [Examples](examples):
-  - [Ping Pong](examples/ping-pong) (a simple client server example)
+  - [Ping Pong](examples/ping-pong) (a simple client/server example)
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
   - [File transfer](examples/file-transfer)

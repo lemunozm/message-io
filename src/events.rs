@@ -109,6 +109,25 @@ where E: Send + 'static
             }
         }
     }
+
+    /// A non-blocking receive which returns instantly.
+    /// Returns Some(E) if an event was received by this queue, otherwise returns None.
+    pub fn try_recv(&mut self) -> Option<E> {
+        self.enque_timers();
+
+        if let Ok(priority_event) = self.priority_receiver.try_recv() {
+            return Some(priority_event);
+        } else if let Some(next_instant) = self.timers.iter().next() {
+            let instant = *next_instant.0;
+            if instant <= Instant::now() {
+                return self.timers.remove(&instant);
+            }
+        } else if let Ok(event) = self.receiver.try_recv() {
+            return Some(event);
+        }
+
+        None
+    }
 }
 
 impl<E> Default for EventQueue<E>
@@ -260,5 +279,72 @@ mod tests {
         let sender = queue.sender().clone();
         drop(queue);
         drop(sender);
+    }
+
+    #[test]
+    fn standard_events_order_try_recv() {
+        let mut queue = EventQueue::new();
+        queue.sender().send("first");
+        queue.sender().send("second");
+        assert_eq!(queue.try_recv().unwrap(), "first");
+        assert_eq!(queue.try_recv().unwrap(), "second");
+        assert_eq!(queue.try_recv(), None);
+    }
+
+    #[test]
+    fn priority_events_order_try_recv() {
+        let mut queue = EventQueue::new();
+        queue.sender().send("standard");
+        queue.sender().send_with_priority("priority_first");
+        queue.sender().send_with_priority("priority_second");
+        assert_eq!(queue.try_recv().unwrap(), "priority_first");
+        assert_eq!(queue.try_recv().unwrap(), "priority_second");
+        assert_eq!(queue.try_recv().unwrap(), "standard");
+        assert_eq!(queue.try_recv(), None);
+    }
+
+    #[test]
+    fn timer_events_order_try_recv() {
+        let mut queue = EventQueue::new();
+        queue.sender().send_with_timer("timed_last", *TIMER_TIME * 2);
+        queue.sender().send_with_timer("timed_short", *TIMER_TIME);
+
+        assert_eq!(queue.try_recv(), None);
+        std::thread::sleep(*TIMER_TIME);
+        // The timed event has been received at this point
+        assert_eq!(queue.try_recv().unwrap(), "timed_short");
+        std::thread::sleep(*TIMER_TIME);
+        assert_eq!(queue.try_recv().unwrap(), "timed_last");
+        assert_eq!(queue.try_recv(), None);
+    }
+
+    #[test]
+    fn default_and_timer_events_order_try_recv() {
+        let mut queue = EventQueue::new();
+        queue.sender().send_with_timer("timed", *TIMER_TIME);
+        queue.sender().send("standard_first");
+        queue.sender().send("standard_second");
+
+        std::thread::sleep(*TIMEOUT);
+        // The timed event has been received at this point
+
+        assert_eq!(queue.try_recv().unwrap(), "timed");
+        assert_eq!(queue.try_recv().unwrap(), "standard_first");
+        assert_eq!(queue.try_recv().unwrap(), "standard_second");
+        assert_eq!(queue.try_recv(), None);
+    }
+
+    #[test]
+    fn priority_and_timer_events_order_try_recv() {
+        let mut queue = EventQueue::new();
+        queue.sender().send_with_timer("timed", *TIMER_TIME);
+        queue.sender().send_with_priority("priority");
+
+        std::thread::sleep(*TIMEOUT);
+        // The timed event has been received at this point
+
+        assert_eq!(queue.try_recv().unwrap(), "priority");
+        assert_eq!(queue.try_recv().unwrap(), "timed");
+        assert_eq!(queue.try_recv(), None);
     }
 }

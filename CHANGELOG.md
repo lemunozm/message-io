@@ -1,5 +1,8 @@
 # Changelog
 
+## Current release
+- tests and benchmarks running with any number of features enabled.
+
 ## Release 0.10.1
 - Transport by features: `tcp`, `udp`, `websocket`.
 

@@ -222,10 +222,10 @@ fn burst_sender_handle(
         .unwrap()
 }
 
-//#[test_case(Transport::Udp, 200000)] // Inestable: UDP can lost packets and mess them up.
-//#[test_case(Transport::Tcp, 200000)] // Does not apply: Tcp is stream based
-#[test_case(Transport::FramedTcp, 200000)]
-#[test_case(Transport::Ws, 200000)]
+// Udp: Inestable: it's expected that it can lost packets and mess them up.
+// Tcp: Does not apply: it's stream based
+#[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {
     //util::init_logger(); // Enable it for better debugging
 
@@ -236,14 +236,14 @@ fn burst(transport: Transport, messages_count: usize) {
     sender_handle.join().unwrap();
 }
 
-#[test_case(Transport::Tcp, 1)]
-#[test_case(Transport::Tcp, 100)]
-#[test_case(Transport::Udp, 1)]
-#[test_case(Transport::Udp, 100)]
-#[test_case(Transport::FramedTcp, 1)]
-#[test_case(Transport::FramedTcp, 100)]
-#[test_case(Transport::Ws, 1)]
-#[test_case(Transport::Ws, 100)]
+#[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 1))]
+#[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 100))]
+#[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 1))]
+#[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 100))]
+#[cfg_attr(feature = "udp", test_case(Transport::Udp, 1))]
+#[cfg_attr(feature = "udp", test_case(Transport::Udp, 100))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 1))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 100))]
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
@@ -256,10 +256,10 @@ fn echo(transport: Transport, clients: usize) {
     client_handle.join().unwrap();
 }
 
-#[test_case(Transport::Tcp, BIG_MESSAGE_SIZE)]
-#[test_case(Transport::FramedTcp, BIG_MESSAGE_SIZE)]
-#[test_case(Transport::Udp, Transport::Udp.max_message_size())]
-#[test_case(Transport::Ws, BIG_MESSAGE_SIZE)]
+#[cfg_attr(feature = "tcp", test_case(Transport::Tcp, BIG_MESSAGE_SIZE))]
+#[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, BIG_MESSAGE_SIZE))]
+#[cfg_attr(feature = "udp", test_case(Transport::Udp, Transport::Udp.max_message_size()))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, BIG_MESSAGE_SIZE))]
 fn message_size(transport: Transport, message_size: usize) {
     //util::init_logger(); // Enable it for better debugging
 

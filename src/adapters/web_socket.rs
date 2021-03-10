@@ -101,7 +101,7 @@ impl Remote for RemoteResource {
             }
         };
 
-        Ok(ConnectionInfo { remote, peer_addr, local_addr })
+        Ok(ConnectionInfo { remote, local_addr, peer_addr })
     }
 
     fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {

@@ -2,7 +2,7 @@ use message_io::network::{Network, NetEvent, Transport};
 
 use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
 
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -73,9 +73,7 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
             rx.recv().unwrap();
 
             b.iter(|| {
-                let start = Instant::now();
                 events.receive_timeout(*SMALL_TIMEOUT).unwrap();
-                start.elapsed()
             });
 
             thread_running.store(false, Ordering::Relaxed);
@@ -84,18 +82,23 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
     }
 }
 
+/// Latency test considerations:
+/// The latency is adding the time to send&receive from the event queue, and maybe is a time that
+/// is out of scope of this tests. So, we could be adding an extra latency.
+/// How to avoid this time adition inside of Criterion framework?
 fn latency(c: &mut Criterion) {
-    latency_by(c, Transport::Udp);
-    latency_by(c, Transport::Tcp);
-    latency_by(c, Transport::FramedTcp);
-    latency_by(c, Transport::Ws);
+    #[cfg(feature = "udp")] latency_by(c, Transport::Udp);
+    #[cfg(feature = "tcp")] latency_by(c, Transport::Tcp);
+    #[cfg(feature = "tcp")] latency_by(c, Transport::FramedTcp);
+    #[cfg(feature = "websocket")] latency_by(c, Transport::Ws);
 }
 
 fn throughput(c: &mut Criterion) {
-    throughput_by(c, Transport::Udp);
-    //throughput_by(c, Transport::Tcp); //TODO: Fix this test: How to read inside of iter()?
-    throughput_by(c, Transport::FramedTcp);
-    throughput_by(c, Transport::Ws);
+    #[cfg(feature = "udp")] throughput_by(c, Transport::Udp);
+    //TODO: Fix this test: How to read inside of criterion iter()? an stream protocol?
+    //#[cfg(feature = "tcp")] throughput_by(c, Transport::Tcp);
+    #[cfg(feature = "tcp")] throughput_by(c, Transport::FramedTcp);
+    #[cfg(feature = "websocket")] throughput_by(c, Transport::Ws);
 }
 
 criterion_group!(benches, latency, throughput);

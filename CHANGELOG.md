@@ -1,6 +1,7 @@
 # Changelog
 
-## Current release
+## Release 0.10.2
+- Added `try_receive()` to `EventQueue` for non-blocking event read.
 - tests and benchmarks running with any number of features enabled.
 
 ## Release 0.10.1

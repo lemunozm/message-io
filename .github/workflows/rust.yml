@@ -61,3 +61,33 @@ jobs:
       if: matrix.rust == 'stable'
       run: cargo package
       continue-on-error: ${{ matrix.can-fail }}
+  test-cross:
+    # websocket requires openssl that complicates cross compilation
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - i686-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          override: true
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --no-default-features --features "tcp udp"
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: test
+          args: --tests --no-default-features --features "tcp udp"
+      - uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: bench
+          args: --no-run --no-default-features --features "tcp udp"

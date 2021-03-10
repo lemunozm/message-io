@@ -60,8 +60,8 @@ You could change the transport of your application in literally one line.
     do not deal with dark internal `std::io::Error` when send/receive from the network.
 - High performance:
     - Using non-blocking sockets from one thread allows to not waste memory and time
-      synchonizing many threads.
-    - Full duplex socket: simultaneous reading/writing operations over same internal OS sockets.
+      synchonizing multiple threads.
+    - Full duplex: simultaneous reading/writing operations over same internal OS sockets.
 
 ## Getting started
 Add to your `Cargo.toml` (all the transports included by default):

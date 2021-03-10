@@ -41,7 +41,7 @@ You could change the transport of your application in literally one line.
   - **TCP**: native and framed version
   - **UDP**, with multicast option
   - **WebSocket**: basic and secure option using
-    [tungstenite-rs](https://github.com/snapview/tungstenite-rs)).
+    [tungstenite-rs](https://github.com/snapview/tungstenite-rs).
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
 - FIFO events with timers and priority.

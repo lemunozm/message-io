@@ -20,4 +20,4 @@ the entire data.
 </p>
 
 To know more about `message-io` performance and how to interpret the results,
-see the [performance](../../docs/performance.md) document.
+see the [performance](../../docs/performance_benchmarks.md) document.

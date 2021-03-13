@@ -55,7 +55,7 @@ You could change the transport of your application in literally one line.
     "One thread to rule them all".
   - Easy error handling:
     do not deal with dark internal `std::io::Error` when send/receive from the network.
-- High performance (see [benchmarks](docs/performance.md)):
+- High performance (see [benchmarks](docs/performance_benchmarks.md)):
     - Non-blocking sockets: scale the application without wasting memory and time synchonizing
     multiple threads.
     - Write/read messages with zero-copy.

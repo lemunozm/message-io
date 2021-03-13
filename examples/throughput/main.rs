@@ -200,10 +200,14 @@ fn throughput_native_framed_tcp(packet_size: usize) {
     let mut total_received = 0;
     let mut decoder = Decoder::default();
     while total_received < EXPECTED_BYTES {
-        let received = receiver.read(&mut buffer).unwrap();
-        decoder.decode(&buffer[0..received], |decoded_data| {
-            total_received += decoded_data.len();
-        });
+        let mut message_received = false;
+        while !message_received {
+            let bytes = receiver.read(&mut buffer).unwrap();
+            decoder.decode(&buffer[0..bytes], |decoded_data| {
+                total_received += decoded_data.len();
+                message_received = true;
+            });
+        }
     }
     let end_time = Instant::now();
 

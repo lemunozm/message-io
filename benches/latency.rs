@@ -109,8 +109,12 @@ fn latency_by_native_framed_tcp(c: &mut Criterion) {
             let encoded_size = encoding::encode_size(&[0xFF], &mut framming);
             sender.write(&encoded_size).unwrap();
             sender.write(&[0xFF]).unwrap();
-            let received = receiver.read(&mut buffer).unwrap();
-            decoder.decode(&buffer[0..received], |_decoded_data| ());
+
+            let mut message_received = false;
+            while !message_received {
+                let bytes = receiver.read(&mut buffer).unwrap();
+                decoder.decode(&buffer[0..bytes], |_decoded_data| message_received = true);
+            }
         });
     });
 }

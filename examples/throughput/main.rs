@@ -16,6 +16,12 @@ use std::sync::{
 use std::io::{self, Write, Read};
 
 const EXPECTED_BYTES: usize = 1024 * 1024 * 1024; // 1GB
+
+// Used the localhost MTU size (arround 65000 bytes in most OS) to get the better performance.
+// Note: MacOS uses a lower localhost MTU (arround 9000 bytes).
+// If you are running this test in MacOS, you probably see lower values that in other OS.
+// This does not means that MacOS running slower,
+// since real environments uses an MTU of arround 1500 bytes.
 const CHUNK: usize =
     if cfg!(macos) { udp::MAX_COMPATIBLE_PAYLOAD_LEN } else { udp::MAX_PAYLOAD_LEN };
 

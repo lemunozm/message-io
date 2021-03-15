@@ -5,6 +5,10 @@
 - Implemented `Serialize`/`Deserialize` for `RemoteAddr`.
 - Changed `Url` to `String` in `RemoteAddr`.
 - Increase the `ToRemoteAddr` support for many types.
+- Returned value of `remove` as boolean. Rationale: Removing a connected connection
+could return `None` in the previous version of `remove` if just a disconnection happen.
+The user probably will use `.unwrap()` on it adding a potential bug.
+Changing from `Option<()>` to `bool` avoid this usage.
 
 ## Release 0.10.2
 - Added `try_receive()` to `EventQueue` for non-blocking event read.

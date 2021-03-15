@@ -61,7 +61,7 @@ pub trait ActionController {
     fn connect(&mut self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)>;
     fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
     fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
-    fn remove(&mut self, id: ResourceId) -> Option<()>;
+    fn remove(&mut self, id: ResourceId) -> bool;
 }
 
 pub trait EventProcessor {
@@ -144,10 +144,10 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
         }
     }
 
-    fn remove(&mut self, id: ResourceId) -> Option<()> {
+    fn remove(&mut self, id: ResourceId) -> bool {
         match id.resource_type() {
-            ResourceType::Remote => self.remote_register.remove(id).map(|_| ()),
-            ResourceType::Local => self.local_register.remove(id).map(|_| ()),
+            ResourceType::Remote => self.remote_register.remove(id).map(|_| ()).is_some(),
+            ResourceType::Local => self.local_register.remove(id).map(|_| ()).is_some(),
         }
     }
 }

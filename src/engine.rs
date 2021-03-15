@@ -144,7 +144,7 @@ impl NetworkEngine {
     }
 
     /// See [`crate::network::Network::remove_resource()`].
-    pub fn remove(&mut self, id: ResourceId) -> Option<()> {
+    pub fn remove(&mut self, id: ResourceId) -> bool {
         self.controllers[id.adapter_id() as usize].remove(id)
     }
 
@@ -186,7 +186,7 @@ impl ActionController for UnimplementedActionController {
         panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 
-    fn remove(&mut self, _: ResourceId) -> Option<()> {
+    fn remove(&mut self, _: ResourceId) -> bool {
         panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 }

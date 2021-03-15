@@ -235,3 +235,37 @@ impl Network {
         self.engine.send(endpoint, data)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration};
+
+    lazy_static::lazy_static! {
+        static ref TIMEOUT: Duration = Duration::from_millis(1000);
+    }
+
+    #[test]
+    fn remove_listener() {
+        let (mut network, mut events) = Network::split();
+        let (listener_id, _) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        assert!(network.remove(listener_id));
+        assert!(!network.remove(listener_id));
+        assert!(events.receive_timeout(*TIMEOUT).is_none());
+    }
+
+    #[test]
+    fn remove_listener_with_connections() {
+        let (mut network, mut events) = Network::split();
+        let (listener_id, addr) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        network.connect(Transport::Tcp, addr).unwrap();
+        match events.receive_timeout(*TIMEOUT).unwrap() {
+            NetEvent::Connected(_) => {
+                assert!(network.remove(listener_id));
+                assert!(!network.remove(listener_id));
+            },
+            _ => unreachable!(),
+        }
+        assert!(events.receive_timeout(*TIMEOUT).is_none());
+    }
+}

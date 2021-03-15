@@ -13,6 +13,7 @@ use std::io::{self};
 /// Struct used to identify and event that an adapter has been produced.
 /// The upper layer can traduce this event into a [crate::network::NetEvent]
 /// that the user can manage easily.
+#[derive(Debug)]
 pub enum AdapterEvent<'a> {
     /// The endpoint has been added (it implies a connection).
     Added(Endpoint),

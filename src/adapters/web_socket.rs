@@ -28,6 +28,12 @@ use std::ops::{DerefMut};
 // From https://docs.rs/tungstenite/0.13.0/src/tungstenite/protocol/mod.rs.html#65
 pub const MAX_WS_PAYLOAD_LEN: usize = 32 << 20;
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub enum WsConfig {
+    Binary,
+    Text,
+}
+
 pub struct WsAdapter;
 impl Adapter for WsAdapter {
     type Remote = RemoteResource;

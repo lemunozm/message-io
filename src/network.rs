@@ -3,7 +3,7 @@ pub use crate::resource_id::{ResourceId, ResourceType};
 pub use crate::endpoint::{Endpoint};
 pub use crate::adapter::{SendStatus};
 pub use crate::remote_addr::{RemoteAddr, ToRemoteAddr};
-pub use crate::transport::{Transport};
+pub use crate::transport::{Transport, TransportKind};
 pub use crate::driver::{AdapterEvent};
 
 use crate::events::{EventQueue};
@@ -61,7 +61,7 @@ impl Network {
     /// [`Network::split_and_map()`] or [`Network::split_and_map_from_adapter()`] functions.
     pub fn new(event_callback: impl Fn(AdapterEvent) + Send + 'static) -> Network {
         let mut launcher = AdapterLauncher::default();
-        Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
+        TransportKind::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
         let engine = NetworkEngine::new(launcher, event_callback);
 
@@ -193,7 +193,7 @@ impl Network {
     ) -> io::Result<(Endpoint, SocketAddr)>
     {
         let addr = addr.to_remote_addr().unwrap();
-        self.engine.connect(transport.id(), addr)
+        self.engine.connect(transport.kind().id(), addr)
     }
 
     /// Listen messages from specified transport.
@@ -209,7 +209,7 @@ impl Network {
     ) -> io::Result<(ResourceId, SocketAddr)>
     {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.engine.listen(transport.id(), addr)
+        self.engine.listen(transport.kind().id(), addr)
     }
 
     /// Remove a network resource.

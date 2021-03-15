@@ -2,17 +2,75 @@ use crate::engine::{AdapterLauncher};
 
 #[cfg(feature = "tcp")] use crate::adapters::tcp::{self, TcpAdapter};
 #[cfg(feature = "tcp")] use crate::adapters::framed_tcp::{self, FramedTcpAdapter};
-
 #[cfg(feature = "udp")] use crate::adapters::udp::{self, UdpAdapter};
-
-#[cfg(feature = "websocket")] use crate::adapters::web_socket::{self, WsAdapter};
+#[cfg(feature = "websocket")] use crate::adapters::web_socket::{self, WsAdapter, WsConfig};
 
 use strum::{EnumIter};
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, EnumIter)]
+pub enum TransportKind {
+    #[cfg(feature = "tcp")] Tcp,
+    #[cfg(feature = "tcp")] FramedTcp,
+    #[cfg(feature = "udp")] Udp,
+    #[cfg(feature = "websocket")] Ws,
+}
+
+impl TransportKind {
+    pub const fn id(self) -> u8 {
+        self as u8
+    }
+
+    pub fn mount_adapter(self, launcher: &mut AdapterLauncher) {
+        match self {
+            #[cfg(feature = "tcp")] Self::Tcp => launcher.mount(self.id(), TcpAdapter),
+            #[cfg(feature = "tcp")] Self::FramedTcp => launcher.mount(self.id(), FramedTcpAdapter),
+            #[cfg(feature = "udp")] Self::Udp => launcher.mount(self.id(), UdpAdapter),
+            #[cfg(feature = "websocket")] Self::Ws => launcher.mount(self.id(), WsAdapter),
+        };
+    }
+
+    /// Max packet payload size available for each transport.
+    /// If the protocol is not packet-based (e.g. TCP, that is a stream),
+    /// the returned value correspond with the maximum bytes that can produce a read event.
+    pub const fn max_message_size(self) -> usize {
+        match self {
+            #[cfg(feature = "tcp")] Self::Tcp => tcp::INPUT_BUFFER_SIZE,
+            #[cfg(feature = "tcp")] Self::FramedTcp => framed_tcp::MAX_TCP_PAYLOAD_LEN,
+            #[cfg(feature = "udp")] Self::Udp => udp::MAX_UDP_PAYLOAD_LEN,
+            #[cfg(feature = "websocket")] Self::Ws => web_socket::MAX_WS_PAYLOAD_LEN,
+        }
+    }
+
+    /// Tell if the transport protocol is a connection oriented protocol.
+    /// If it is, `Connection` and `Disconnection` events will be generated.
+    pub const fn is_connection_oriented(self) -> bool {
+        match self {
+            #[cfg(feature = "tcp")] Self::Tcp => true,
+            #[cfg(feature = "tcp")] Self::FramedTcp => true,
+            #[cfg(feature = "udp")] Self::Udp => false,
+            #[cfg(feature = "websocket")] Self::Ws => true,
+        }
+    }
+
+    /// Tell if the transport protocol is a packet based protocol.
+    /// It implies that any send call corresponds to a data message event.
+    /// The opossite of a packet based is a stream based transport (e.g Tcp).
+    /// In this case, reading a data message event do not imply reading the entire message sent.
+    /// It is in change of the user to determinate how to read the data.
+    pub const fn is_packet_based(self) -> bool {
+        match self {
+            #[cfg(feature = "tcp")] Self::Tcp => false,
+            #[cfg(feature = "tcp")] Self::FramedTcp => true,
+            #[cfg(feature = "udp")] Self::Udp => true,
+            #[cfg(feature = "websocket")] Self::Ws => true,
+        }
+    }
+
+}
 
 /// Enum to identified the underlying transport used.
 /// It can be passed to [`crate::network::Network::connect()`] and
 /// [`crate::network::Network::listen()`] methods to specify the transport used.
-#[derive(EnumIter)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Transport {
     /// TCP protocol (available through the *tcp* feature).
@@ -39,61 +97,21 @@ pub enum Transport {
     /// If you use a [`crate::network::RemoteAddr::SocketAddr`] the socket will be a normal
     /// websocket with the following uri: `ws://{SocketAddr}/message-io-default`.
     #[cfg(feature = "websocket")] Ws,
+
+    #[cfg(feature = "websocket")] WsWith(WsConfig),
 }
 
 impl Transport {
-    /// Associates an adapter.
-    /// This method mounts the adapter to be used in the `Network`.
-    pub fn mount_adapter(self, launcher: &mut AdapterLauncher) {
-        match self {
-            #[cfg(feature = "tcp")] Self::Tcp => launcher.mount(self.id(), TcpAdapter),
-            #[cfg(feature = "tcp")] Self::FramedTcp => launcher.mount(self.id(), FramedTcpAdapter),
-            #[cfg(feature = "udp")] Self::Udp => launcher.mount(self.id(), UdpAdapter),
-            #[cfg(feature = "websocket")] Self::Ws => launcher.mount(self.id(), WsAdapter),
-        };
-    }
-
-    /// Max packet payload size available for each transport.
-    /// If the protocol is not packet-based (e.g. TCP, that is a stream),
-    /// the returned value correspond with the maximum bytes that can produce a read event.
-    pub const fn max_message_size(self) -> usize {
-        match self {
-            #[cfg(feature = "tcp")] Self::Tcp => tcp::INPUT_BUFFER_SIZE,
-            #[cfg(feature = "tcp")] Self::FramedTcp => framed_tcp::MAX_TCP_PAYLOAD_LEN,
-            #[cfg(feature = "udp")] Self::Udp => udp::MAX_UDP_PAYLOAD_LEN,
-            #[cfg(feature = "websocket")] Self::Ws => web_socket::MAX_WS_PAYLOAD_LEN,
-        }
-    }
-
-    /// Tell if the transport protocol is a connection oriented protocol.
-    /// If it is, `Connection` and `Disconnection` events will be generated.
-    pub const fn is_connection_oriented(self) -> bool {
-        match self {
-            #[cfg(feature = "tcp")] Transport::Tcp => true,
-            #[cfg(feature = "tcp")] Transport::FramedTcp => true,
-            #[cfg(feature = "udp")] Transport::Udp => false,
-            #[cfg(feature = "websocket")] Transport::Ws => true,
-        }
-    }
-
-    /// Tell if the transport protocol is a packet based protocol.
-    /// It implies that any send call corresponds to a data message event.
-    /// The opossite of a packet based is a stream based transport (e.g Tcp).
-    /// In this case, reading a data message event do not imply reading the entire message sent.
-    /// It is in change of the user to determinate how to read the data.
-    pub const fn is_packet_based(self) -> bool {
-        match self {
-            #[cfg(feature = "tcp")] Transport::Tcp => false,
-            #[cfg(feature = "tcp")] Transport::FramedTcp => true,
-            #[cfg(feature = "udp")] Transport::Udp => true,
-            #[cfg(feature = "websocket")] Transport::Ws => true,
-        }
-    }
-
     /// Returns the adapter id used for this transport.
     /// It is equivalent to the position of the enum starting by 0
-    pub fn id(self) -> u8 {
-        self as u8
+    pub fn kind(self) -> TransportKind {
+        match self {
+            #[cfg(feature = "tcp")] Self::Tcp => TransportKind::Tcp,
+            #[cfg(feature = "tcp")] Self::FramedTcp => TransportKind::FramedTcp,
+            #[cfg(feature = "udp")] Self::Udp => TransportKind::Udp,
+            #[cfg(feature = "websocket")] Self::Ws => TransportKind::Ws,
+            #[cfg(feature = "websocket")] Self::WsWith(_) => TransportKind::Ws,
+        }
     }
 }
 

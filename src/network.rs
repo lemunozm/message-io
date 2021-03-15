@@ -263,10 +263,10 @@ mod tests {
         let (listener_id, addr) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
         network.connect(Transport::Tcp, addr).unwrap();
         match events.receive_timeout(*TIMEOUT).unwrap() {
-            NetEvent::Connected(_) => {
+            NetEvent::Connected(_, _) => {
                 assert!(network.remove(listener_id));
                 assert!(!network.remove(listener_id));
-            },
+            }
             _ => unreachable!(),
         }
         assert!(events.receive_timeout(*TIMEOUT).is_none());

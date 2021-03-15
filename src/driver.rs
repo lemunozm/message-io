@@ -16,7 +16,8 @@ use std::io::{self};
 #[derive(Debug)]
 pub enum AdapterEvent<'a> {
     /// The endpoint has been added (it implies a connection).
-    Added(Endpoint),
+    /// It also contains the resource id of the listener that accepted this endpoint.
+    Added(Endpoint, ResourceId),
 
     /// The endpoint has sent data that represents a message.
     Data(Endpoint, &'a [u8]),
@@ -188,9 +189,9 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                         log::trace!("Processed accept {} for {}", accepted, id);
                         match accepted {
                             AcceptedType::Remote(addr, remote) => {
-                                let id = remotes.add(remote, addr);
-                                let endpoint = Endpoint::new(id, addr);
-                                event_callback(AdapterEvent::Added(endpoint));
+                                let remote_id = remotes.add(remote, addr);
+                                let endpoint = Endpoint::new(remote_id, addr);
+                                event_callback(AdapterEvent::Added(endpoint, id));
                             }
                             AcceptedType::Data(addr, data) => {
                                 let endpoint = Endpoint::new(id, addr);

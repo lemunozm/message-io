@@ -79,16 +79,8 @@ impl NetworkEngine {
         let (poll, controllers, processors) = launcher.launch();
 
         let thread = Self::run_processor(running, poll, processors, move |adapter_event| {
-            match adapter_event {
-                AdapterEvent::Added(endpoint) => {
-                    log::trace!("Endpoint added: {}", endpoint);
-                }
-                AdapterEvent::Data(endpoint, data) => {
-                    log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-                }
-                AdapterEvent::Removed(endpoint) => {
-                    log::trace!("Endpoint removed: {}", endpoint);
-                }
+            if log::log_enabled!(log::Level::Trace) {
+                Self::log_adapter_event(&adapter_event);
             }
             event_callback(adapter_event);
         });
@@ -96,7 +88,21 @@ impl NetworkEngine {
         Self { thread: Some(thread), thread_running, controllers }
     }
 
-    pub fn run_processor(
+    fn log_adapter_event(adapter_event: &AdapterEvent) {
+        match adapter_event {
+            AdapterEvent::Added(endpoint, listener_id) => {
+                log::trace!("Endpoint added: {} by {}", endpoint, listener_id);
+            }
+            AdapterEvent::Data(endpoint, data) => {
+                log::trace!("Data received from {}, {} bytes", endpoint, data.len());
+            }
+            AdapterEvent::Removed(endpoint) => {
+                log::trace!("Endpoint removed: {}", endpoint);
+            }
+        }
+    }
+
+    fn run_processor(
         running: Arc<AtomicBool>,
         mut poll: Poll,
         mut processors: EventProcessors,

@@ -45,7 +45,7 @@ pub fn run(file_path: &str) {
                         },
                     }
                 }
-                NetEvent::Connected(_) => unreachable!(),
+                NetEvent::Connected(_, _) => unreachable!(),
                 NetEvent::Disconnected(_) => return println!("\nReceiver disconnected"),
             },
             Event::SendChunk => {

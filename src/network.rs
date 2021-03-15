@@ -17,12 +17,13 @@ use std::io::{self};
 /// Input network events.
 #[derive(Debug)]
 pub enum NetEvent {
-    /// Input message received by the network.
-    Message(Endpoint, Vec<u8>),
-
     /// New endpoint has been connected to a listener.
     /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
-    Connected(Endpoint),
+    /// It also contains the resource id of the listener that accepted this connection.
+    Connected(Endpoint, ResourceId),
+
+    /// Input message received by the network.
+    Message(Endpoint, Vec<u8>),
 
     /// This event is only dispatched when a connection is lost.
     /// Call to [`Network::remove()`] will NOT generate the event.
@@ -38,7 +39,7 @@ impl From<AdapterEvent<'_>> for NetEvent {
     /// Created a `NetEvent` from an [`AdapterEvent`].
     fn from(adapter_event: AdapterEvent<'_>) -> NetEvent {
         match adapter_event {
-            AdapterEvent::Added(endpoint) => NetEvent::Connected(endpoint),
+            AdapterEvent::Added(endpoint, id) => NetEvent::Connected(endpoint, id),
             AdapterEvent::Data(endpoint, data) => NetEvent::Message(endpoint, data.to_vec()),
             AdapterEvent::Removed(endpoint) => NetEvent::Disconnected(endpoint),
         }
@@ -142,7 +143,7 @@ impl Network {
     /// # Example
     ///
     /// ```
-    /// use message_io::network::{Network, AdapterEvent, Endpoint};
+    /// use message_io::network::{Network, AdapterEvent, Endpoint, ResourceId};
     /// use serde::{Deserialize};
     ///
     /// #[derive(Deserialize)]
@@ -155,7 +156,7 @@ impl Network {
     /// enum AppEvent {
     ///     Tick,
     ///     Alarm(usize),
-    ///     Connected(Endpoint),
+    ///     Connected(Endpoint, ResourceId),
     ///     Disconnected(Endpoint),
     ///     Message(Endpoint, AppMessage),
     ///     DeserializationError(Endpoint),
@@ -164,7 +165,9 @@ impl Network {
     ///
     /// let (mut network, mut events) = Network::split_and_map_from_adapter(|adapter_event| {
     ///     match adapter_event {
-    ///         AdapterEvent::Added(endpoint) => AppEvent::Connected(endpoint),
+    ///         AdapterEvent::Added(endpoint, listener_id) => {
+    ///             AppEvent::Connected(endpoint, listener_id)
+    ///         },
     ///         AdapterEvent::Data(endpoint, data) => match bincode::deserialize(&data) {
     ///             Ok(message) => AppEvent::Message(endpoint, message),
     ///             Err(_) => AppEvent::DeserializationError(endpoint),

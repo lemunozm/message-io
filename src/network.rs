@@ -190,8 +190,7 @@ impl Network {
         &mut self,
         transport: Transport,
         addr: impl ToRemoteAddr,
-    ) -> io::Result<(Endpoint, SocketAddr)>
-    {
+    ) -> io::Result<(Endpoint, SocketAddr)> {
         let addr = addr.to_remote_addr().unwrap();
         self.engine.connect(transport.id(), addr)
     }
@@ -206,8 +205,7 @@ impl Network {
         &mut self,
         transport: Transport,
         addr: impl ToSocketAddrs,
-    ) -> io::Result<(ResourceId, SocketAddr)>
-    {
+    ) -> io::Result<(ResourceId, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.engine.listen(transport.id(), addr)
     }

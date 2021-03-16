@@ -1,5 +1,11 @@
 # Changelog
 
+## Release 0.11.0
+- Implemented `Serialize`/`Deserialize` for `Transport`.
+- Implemented `Serialize`/`Deserialize` for `RemoteAddr`.
+- Changed `Url` to `String` in `RemoteAddr`.
+- Increase the `ToRemoteAddr` support for many types.
+
 ## Release 0.10.2
 - Added `try_receive()` to `EventQueue` for non-blocking event read.
 - tests and benchmarks running with any number of features enabled.

@@ -78,8 +78,7 @@ impl<R: Remote, L: Local> Driver<R, L> {
         _: impl Adapter<Remote = R, Local = L>,
         adapter_id: u8,
         poll: &mut Poll,
-    ) -> Driver<R, L>
-    {
+    ) -> Driver<R, L> {
         let remote_poll_register = poll.create_register(adapter_id, ResourceType::Remote);
         let local_poll_register = poll.create_register(adapter_id, ResourceType::Local);
 

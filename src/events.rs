@@ -155,8 +155,7 @@ where E: Send + 'static
         sender: Sender<E>,
         timer_sender: Sender<(Instant, E)>,
         priority_sender: Sender<E>,
-    ) -> EventSender<E>
-    {
+    ) -> EventSender<E> {
         EventSender { sender, timer_sender, priority_sender }
     }
 

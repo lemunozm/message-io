@@ -64,7 +64,8 @@ impl Remote for RemoteResource {
             RemoteAddr::SocketAddr(addr) => {
                 (addr, Url::parse(&format!("ws://{}/message-io-default", addr)).unwrap())
             }
-            RemoteAddr::Url(url) => {
+            RemoteAddr::Path(path) => {
+                let url = Url::parse(&path).expect("A valid URL");
                 let addr = url
                     .socket_addrs(|| match url.scheme() {
                         "ws" => Some(80),   // Plain

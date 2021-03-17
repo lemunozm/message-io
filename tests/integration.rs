@@ -54,8 +54,7 @@ mod util {
 fn echo_server_handle(
     transport: Transport,
     expected_clients: usize,
-) -> (JoinHandle<()>, SocketAddr)
-{
+) -> (JoinHandle<()>, SocketAddr) {
     let (tx, rx) = crossbeam::channel::bounded(1);
     let handle = thread::Builder::new()
         .name("test-server".into())
@@ -123,8 +122,7 @@ fn echo_client_manager_handle(
     transport: Transport,
     server_addr: SocketAddr,
     clients_number: usize,
-) -> JoinHandle<()>
-{
+) -> JoinHandle<()> {
     thread::Builder::new()
         .name("test-client".into())
         .spawn(move || {
@@ -163,8 +161,7 @@ fn echo_client_manager_handle(
 fn burst_receiver_handle(
     transport: Transport,
     expected_count: usize,
-) -> (JoinHandle<()>, SocketAddr)
-{
+) -> (JoinHandle<()>, SocketAddr) {
     let (tx, rx) = crossbeam::channel::bounded(1);
     let handle = thread::Builder::new()
         .name("test-client".into())
@@ -201,8 +198,7 @@ fn burst_sender_handle(
     transport: Transport,
     receiver_addr: SocketAddr,
     expected_count: usize,
-) -> JoinHandle<()>
-{
+) -> JoinHandle<()> {
     thread::Builder::new()
         .name("test-client".into())
         .spawn(move || {

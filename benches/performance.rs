@@ -87,18 +87,25 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
 /// is out of scope of this tests. So, we could be adding an extra latency.
 /// How to avoid this time adition inside of Criterion framework?
 fn latency(c: &mut Criterion) {
-    #[cfg(feature = "udp")] latency_by(c, Transport::Udp);
-    #[cfg(feature = "tcp")] latency_by(c, Transport::Tcp);
-    #[cfg(feature = "tcp")] latency_by(c, Transport::FramedTcp);
-    #[cfg(feature = "websocket")] latency_by(c, Transport::Ws);
+    #[cfg(feature = "udp")]
+    latency_by(c, Transport::Udp);
+    #[cfg(feature = "tcp")]
+    latency_by(c, Transport::Tcp);
+    #[cfg(feature = "tcp")]
+    latency_by(c, Transport::FramedTcp);
+    #[cfg(feature = "websocket")]
+    latency_by(c, Transport::Ws);
 }
 
 fn throughput(c: &mut Criterion) {
-    #[cfg(feature = "udp")] throughput_by(c, Transport::Udp);
+    #[cfg(feature = "udp")]
+    throughput_by(c, Transport::Udp);
     //TODO: Fix this test: How to read inside of criterion iter()? an stream protocol?
     //#[cfg(feature = "tcp")] throughput_by(c, Transport::Tcp);
-    #[cfg(feature = "tcp")] throughput_by(c, Transport::FramedTcp);
-    #[cfg(feature = "websocket")] throughput_by(c, Transport::Ws);
+    #[cfg(feature = "tcp")]
+    throughput_by(c, Transport::FramedTcp);
+    #[cfg(feature = "websocket")]
+    throughput_by(c, Transport::Ws);
 }
 
 criterion_group!(benches, latency, throughput);

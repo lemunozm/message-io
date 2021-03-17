@@ -1,16 +1,16 @@
-use url::{Url};
+use serde::{Serialize, Deserialize};
 
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 use std::io::{self};
 
 /// An struct that contains a remote address.
-/// It can be Either, an address similar to [`SocketAddr`] or an [`Url`] used for protocols
-/// that needs more than the `SocketAddr` to get connected (e.g. WebSocket)
+/// It can be Either, a [`SocketAddr`] as usual or a `String` used for protocols
+/// that needs more than a `SocketAddr` to get connected (e.g. WebSocket)
 /// It is usually used in [`crate::network::Network::connect()`] to specify the remote address.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum RemoteAddr {
     SocketAddr(SocketAddr),
-    Url(Url),
+    Path(String),
 }
 
 impl RemoteAddr {
@@ -19,12 +19,13 @@ impl RemoteAddr {
         matches!(self, RemoteAddr::SocketAddr(_))
     }
 
-    /// Check if the `RemoteAddr` is an [`Url`].
-    pub fn is_url(&self) -> bool {
-        matches!(self, RemoteAddr::Url(_))
+    /// Check if the `RemoteAddr` is a path.
+    pub fn is_path(&self) -> bool {
+        matches!(self, RemoteAddr::SocketAddr(_))
     }
 
-    /// Trait the `RemoteAddr` as a [`SocketAddr`].
+    /// Extract the [`SocketAddr`].
+    /// This function panics if the `RemoteAddr` do not represent a `SocketAddr`.
     pub fn socket_addr(&self) -> &SocketAddr {
         match self {
             RemoteAddr::SocketAddr(addr) => addr,
@@ -32,11 +33,12 @@ impl RemoteAddr {
         }
     }
 
-    /// Trait the `RemoteAddr` as an [`Url`].
-    pub fn url(&self) -> &Url {
+    /// Extract the path.
+    /// This function panics if the `RemoteAddr` do not represent a path.
+    pub fn path(&self) -> &str {
         match self {
-            RemoteAddr::Url(url) => url,
-            _ => panic!("The RemoteAddr must be an Url"),
+            RemoteAddr::Path(addr) => addr,
+            _ => panic!("The RemoteAddr must be a path"),
         }
     }
 }
@@ -46,11 +48,28 @@ impl ToSocketAddrs for RemoteAddr {
     fn to_socket_addrs(&self) -> io::Result<Self::Iter> {
         match self {
             RemoteAddr::SocketAddr(addr) => addr.to_socket_addrs(),
-            RemoteAddr::Url(_) => Err(io::Error::new(io::ErrorKind::InvalidInput, "Malformed url")),
+            RemoteAddr::Path(_) => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "The RemoteAddr is not a SocketAddr",
+            )),
         }
     }
 }
 
+impl std::fmt::Display for RemoteAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RemoteAddr::SocketAddr(addr) => write!(f, "{}", addr),
+            RemoteAddr::Path(path) => write!(f, "{}", path),
+        }
+    }
+}
+
+/// Similar to [`ToSocketAddrs`] but for a `RemoteAddr`.
+/// Instead of `ToSocketAddrs` that only can accept valid 'ip:port' string format,
+/// `ToRemoteAddr` accept any string without panic.
+/// If the string has the 'ip:port' format, it will be interpreted as a [`SocketAddr`],
+/// if not, it will be interpreted as a string path.
 pub trait ToRemoteAddr {
     fn to_remote_addr(&self) -> io::Result<RemoteAddr>;
 }
@@ -59,10 +78,7 @@ impl ToRemoteAddr for &str {
     fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
         Ok(match self.parse() {
             Ok(addr) => RemoteAddr::SocketAddr(addr),
-            Err(_) => RemoteAddr::Url(
-                Url::parse(self)
-                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "Malformed url"))?,
-            ),
+            Err(_) => RemoteAddr::Path(self.to_string()),
         })
     }
 }
@@ -85,18 +101,51 @@ impl ToRemoteAddr for SocketAddr {
     }
 }
 
+impl ToRemoteAddr for SocketAddrV4 {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(RemoteAddr::SocketAddr(SocketAddr::V4(*self)))
+    }
+}
+
+impl ToRemoteAddr for SocketAddrV6 {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(RemoteAddr::SocketAddr(SocketAddr::V6(*self)))
+    }
+}
+
 impl ToRemoteAddr for RemoteAddr {
     fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
         Ok(self.clone())
     }
 }
 
-impl std::fmt::Display for RemoteAddr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RemoteAddr::SocketAddr(addr) => write!(f, "{}", addr),
-            RemoteAddr::Url(url) => write!(f, "{}", url),
-        }
+impl ToRemoteAddr for (&str, u16) {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(RemoteAddr::SocketAddr(self.to_socket_addrs().unwrap().next().unwrap()))
+    }
+}
+
+impl ToRemoteAddr for (String, u16) {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(RemoteAddr::SocketAddr(self.to_socket_addrs().unwrap().next().unwrap()))
+    }
+}
+
+impl ToRemoteAddr for (IpAddr, u16) {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(RemoteAddr::SocketAddr(self.to_socket_addrs().unwrap().next().unwrap()))
+    }
+}
+
+impl ToRemoteAddr for (Ipv4Addr, u16) {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(RemoteAddr::SocketAddr(self.to_socket_addrs().unwrap().next().unwrap()))
+    }
+}
+
+impl ToRemoteAddr for (Ipv6Addr, u16) {
+    fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
+        Ok(RemoteAddr::SocketAddr(self.to_socket_addrs().unwrap().next().unwrap()))
     }
 }
 
@@ -106,13 +155,15 @@ mod tests {
     use std::net::{IpAddr, Ipv4Addr};
 
     #[test]
-    fn str_to_url() {
-        assert!("ws://domain:1234/socket".to_remote_addr().unwrap().is_url());
+    fn str_to_path() {
+        let path = "ws://domain:1234/socket";
+        assert_eq!(path, path.to_remote_addr().unwrap().path());
     }
 
     #[test]
-    fn string_to_url() {
-        assert!(String::from("ws://domain:1234/socket").to_remote_addr().unwrap().is_url());
+    fn string_to_path() {
+        let path = String::from("ws://domain:1234/socket");
+        assert_eq!(&path, path.to_remote_addr().unwrap().path());
     }
 
     #[test]

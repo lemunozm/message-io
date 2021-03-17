@@ -72,8 +72,7 @@ impl NetworkEngine {
     pub fn new(
         launcher: AdapterLauncher,
         event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static,
-    ) -> Self
-    {
+    ) -> Self {
         let thread_running = Arc::new(AtomicBool::new(true));
         let running = thread_running.clone();
 
@@ -102,8 +101,7 @@ impl NetworkEngine {
         mut poll: Poll,
         mut processors: EventProcessors,
         event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static,
-    ) -> JoinHandle<()>
-    {
+    ) -> JoinHandle<()> {
         thread::Builder::new()
             .name("message-io: event processor".into())
             .spawn(move || {
@@ -126,8 +124,7 @@ impl NetworkEngine {
         &mut self,
         adapter_id: u8,
         addr: RemoteAddr,
-    ) -> io::Result<(Endpoint, SocketAddr)>
-    {
+    ) -> io::Result<(Endpoint, SocketAddr)> {
         self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)| {
             log::trace!("Connected endpoint {} by {}", endpoint, adapter_id);
             (endpoint, addr)
@@ -139,8 +136,7 @@ impl NetworkEngine {
         &mut self,
         adapter_id: u8,
         addr: SocketAddr,
-    ) -> io::Result<(ResourceId, SocketAddr)>
-    {
+    ) -> io::Result<(ResourceId, SocketAddr)> {
         self.controllers[adapter_id as usize].listen(addr).map(|(resource_id, addr)| {
             log::trace!("New resource {} listening by {}", resource_id, adapter_id);
             (resource_id, addr)

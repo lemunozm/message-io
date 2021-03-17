@@ -4,6 +4,8 @@
 - Implemented `Serialize`/`Deserialize` for `Transport`.
 - Implemented `Serialize`/`Deserialize` for `RemoteAddr`.
 - Changed `Url` to `String` in `RemoteAddr`.
+- Changed `RemoteAddr` variant from `SocketAddr` to `Socket`.
+- Changed `RemoteAddr` variant from `Url` to `Str`.
 - Increase the `ToRemoteAddr` support for many types.
 - Returned value of `remove` as boolean. Rationale: Removing a connected connection
 could return `None` in the previous version of `remove` if just a disconnection happen.

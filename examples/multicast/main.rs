@@ -27,7 +27,7 @@ fn main() {
             NetEvent::Message(_, data) => {
                 println!("{} greets to the network!", String::from_utf8_lossy(&data));
             }
-            NetEvent::Connected(_) => (),
+            NetEvent::Connected(_, _) => (),
             NetEvent::Disconnected(_) => (),
         }
     }

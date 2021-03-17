@@ -65,7 +65,7 @@ pub fn run() {
                     }
                 }
             }
-            NetEvent::Connected(_) => {}
+            NetEvent::Connected(_, _) => {}
             NetEvent::Disconnected(endpoint) => {
                 // Unexpected sender disconnection. Cleaninig.
                 if transfers.contains_key(&endpoint) {

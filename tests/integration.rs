@@ -89,10 +89,12 @@ fn echo_server_handle(
                                 }
                             }
                         }
-                        NetEvent::Connected(endpoint) => match transport.is_connection_oriented() {
-                            true => assert!(clients.insert(endpoint)),
-                            false => unreachable!(),
-                        },
+                        NetEvent::Connected(endpoint, _) => {
+                            match transport.is_connection_oriented() {
+                                true => assert!(clients.insert(endpoint)),
+                                false => unreachable!(),
+                            }
+                        }
                         NetEvent::Disconnected(endpoint) => {
                             match transport.is_connection_oriented() {
                                 true => {
@@ -148,7 +150,7 @@ fn echo_client_manager_handle(
                                 break //Exit from thread.
                             }
                         }
-                        NetEvent::Connected(_) => unreachable!(),
+                        NetEvent::Connected(..) => unreachable!(),
                         NetEvent::Disconnected(_) => unreachable!(),
                     }
                 }
@@ -183,7 +185,7 @@ fn burst_receiver_handle(
                                 break
                             }
                         }
-                        NetEvent::Connected(_) => (),
+                        NetEvent::Connected(..) => (),
                         NetEvent::Disconnected(_) => (),
                     }
                 }
@@ -276,7 +278,7 @@ fn message_size(transport: Transport, message_size: usize) {
     }
     else {
         match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
-            NetEvent::Connected(_) => {
+            NetEvent::Connected(..) => {
                 thread::Builder::new()
                     .name("test-client".into())
                     .spawn(move || {
@@ -303,7 +305,7 @@ fn message_size(transport: Transport, message_size: usize) {
                     received_message.extend_from_slice(&data);
                 }
             }
-            NetEvent::Connected(_) => unreachable!(),
+            NetEvent::Connected(..) => unreachable!(),
             NetEvent::Disconnected(_) => {
                 assert_eq!(sent_message.len(), received_message.len());
                 assert_eq!(sent_message, received_message);

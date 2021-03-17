@@ -45,7 +45,7 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
                         FromServerMessage::UnknownPong => println!("Pong from server"),
                     }
                 }
-                NetEvent::Connected(_) => unreachable!(), // Only generated when listen
+                NetEvent::Connected(_, _) => unreachable!(), // Only generated when listen
                 NetEvent::Disconnected(_) => return println!("Server is disconnected"),
             },
         }

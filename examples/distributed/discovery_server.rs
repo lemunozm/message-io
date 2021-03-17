@@ -49,7 +49,7 @@ impl DiscoveryServer {
                         _ => unreachable!(),
                     }
                 }
-                NetEvent::Connected(_) => (),
+                NetEvent::Connected(_, _) => (),
                 NetEvent::Disconnected(endpoint) => {
                     // Participant disconection without explict unregistration.
                     // We must remove from the registry too.

@@ -15,7 +15,7 @@ fn main() {
                 println!("Received: {}", String::from_utf8_lossy(&data));
                 network.send(endpoint, &data);
             },
-            NetEvent::Connected(_endpoint) => println!("Client connected"), // Tcp or Ws
+            NetEvent::Connected(_endpoint, _) => println!("Client connected"), // Tcp or Ws
             NetEvent::Disconnected(_endpoint) => println!("Client disconnected"), //Tcp or Ws
         }
     }

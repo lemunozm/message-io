@@ -46,7 +46,7 @@ pub fn run(transport: Transport, addr: SocketAddr) {
                     }
                 }
             }
-            NetEvent::Connected(endpoint) => {
+            NetEvent::Connected(endpoint, _) => {
                 // Only connection oriented protocols will generate this event
                 clients.insert(endpoint, ClientInfo { count: 0 });
                 println!(

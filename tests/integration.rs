@@ -89,7 +89,8 @@ fn echo_server_handle(
                                 }
                             }
                         }
-                        NetEvent::Connected(endpoint, _) => {
+                        NetEvent::Connected(endpoint, id) => {
+                            assert_eq!(listener_id, id);
                             match transport.is_connection_oriented() {
                                 true => assert!(clients.insert(endpoint)),
                                 false => unreachable!(),

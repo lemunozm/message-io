@@ -99,7 +99,7 @@ impl NetworkThread {
                         log::trace!("Resource id {} woke up by an event", resource_id);
 
                         processors[resource_id.adapter_id() as usize]
-                            .try_process(resource_id, &event_callback);
+                            .process(resource_id, &event_callback);
                     });
                 }
                 (poll, processors)
@@ -230,7 +230,7 @@ impl ActionController for UnimplementedActionController {
 
 struct UnimplementedEventProcessor;
 impl EventProcessor for UnimplementedEventProcessor {
-    fn try_process(&self, _: ResourceId, _: &dyn Fn(AdapterEvent<'_>)) {
+    fn process(&self, _: ResourceId, _: &dyn Fn(AdapterEvent<'_>)) {
         panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
     }
 }

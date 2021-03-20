@@ -32,8 +32,8 @@ impl Poll {
         }
     }
 
-    pub fn create_register(&mut self, adapter_id: u8, resource_type: ResourceType) -> PollRegister {
-        PollRegister::new(adapter_id, resource_type, self.mio_poll.registry().try_clone().unwrap())
+    pub fn create_registry(&mut self, adapter_id: u8, resource_type: ResourceType) -> PollRegistry {
+        PollRegistry::new(adapter_id, resource_type, self.mio_poll.registry().try_clone().unwrap())
     }
 }
 
@@ -43,14 +43,14 @@ impl Default for Poll {
     }
 }
 
-pub struct PollRegister {
+pub struct PollRegistry {
     id_generator: Arc<ResourceIdGenerator>,
     registry: Registry,
 }
 
-impl PollRegister {
-    fn new(adapter_id: u8, resource_type: ResourceType, registry: Registry) -> PollRegister {
-        PollRegister {
+impl PollRegistry {
+    fn new(adapter_id: u8, resource_type: ResourceType, registry: Registry) -> PollRegistry {
+        PollRegistry {
             id_generator: Arc::new(ResourceIdGenerator::new(adapter_id, resource_type)),
             registry,
         }
@@ -67,9 +67,9 @@ impl PollRegister {
     }
 }
 
-impl Clone for PollRegister {
+impl Clone for PollRegistry {
     fn clone(&self) -> Self {
-        PollRegister {
+        PollRegistry {
             id_generator: self.id_generator.clone(),
             registry: self.registry.try_clone().unwrap(),
         }

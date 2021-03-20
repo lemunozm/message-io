@@ -5,6 +5,7 @@ mod util;
 mod resource_id;
 mod endpoint;
 mod poll;
+mod registry;
 mod driver;
 mod engine;
 mod adapters;

@@ -525,6 +525,22 @@ mod tests {
     }
 
     #[test]
+    fn enqueue() {
+        let (handler, listener) = split();
+        assert!(handler.is_running());
+        handler.signals().send_with_timer((), Duration::from_millis(1000));
+
+        let (mut task, mut receiver) = listener.enqueue();
+        assert!(handler.is_running());
+
+        receiver.receive_timeout(Duration::from_millis(2000)).unwrap().signal();
+        handler.stop();
+
+        assert!(!handler.is_running());
+        task.wait();
+    }
+
+    #[test]
     fn wait_task() {
         let (handler, listener) = split();
 

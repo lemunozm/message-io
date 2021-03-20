@@ -33,6 +33,7 @@ pub struct ResourceRegister<S> {
     // If the resource is a local resource, the addr will be the local addr.
     resources: RwLock<HashMap<ResourceId, (S, SocketAddr)>>,
     poll_register: PollRegister,
+    //pending_insertions: Receiver<(S, SocketAddr)>
 }
 
 impl<S: Resource> ResourceRegister<S> {
@@ -46,12 +47,14 @@ impl<S: Resource> ResourceRegister<S> {
         id
     }
 
-    pub fn remove(&self, id: ResourceId) -> Option<(S, SocketAddr)> {
+    pub fn remove(&self, id: ResourceId) -> bool {
         let poll_register = &self.poll_register;
-        self.resources.write().expect(OTHER_THREAD_ERR).remove(&id).map(|(mut resource, addr)| {
-            poll_register.remove(resource.source());
-            (resource, addr)
-        })
+        self.resources
+            .write()
+            .expect(OTHER_THREAD_ERR)
+            .remove(&id)
+            .map(|(mut resource, _)| poll_register.remove(resource.source()))
+            .is_some()
     }
 
     pub fn resources(&self) -> &RwLock<HashMap<ResourceId, (S, SocketAddr)>> {
@@ -59,15 +62,15 @@ impl<S: Resource> ResourceRegister<S> {
     }
 }
 
-pub trait ActionController {
-    fn connect(&mut self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)>;
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
-    fn remove(&mut self, id: ResourceId) -> bool;
+pub trait ActionController: Send + Sync {
+    fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)>;
+    fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
+    fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
+    fn remove(&self, id: ResourceId) -> bool;
 }
 
-pub trait EventProcessor {
-    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
+pub trait EventProcessor: Send + Sync {
+    fn try_process(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
 }
 
 pub struct Driver<R: Remote, L: Local> {
@@ -101,22 +104,24 @@ impl<R: Remote, L: Local> Clone for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local> ActionController for Driver<R, L> {
-    fn connect(&mut self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
-        let remotes = &mut self.remote_register;
+    fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         R::connect(addr).map(|info| {
             (
-                Endpoint::new(remotes.add(info.remote, info.peer_addr), info.peer_addr),
+                Endpoint::new(
+                    self.remote_register.add(info.remote, info.peer_addr),
+                    info.peer_addr,
+                ),
                 info.local_addr,
             )
         })
     }
 
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        let locals = &mut self.local_register;
-        L::listen(addr).map(|info| (locals.add(info.local, info.local_addr), info.local_addr))
+    fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+        L::listen(addr)
+            .map(|info| (self.local_register.add(info.local, info.local_addr), info.local_addr))
     }
 
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
+    fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         match endpoint.resource_id().resource_type() {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
@@ -146,16 +151,16 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
         }
     }
 
-    fn remove(&mut self, id: ResourceId) -> bool {
+    fn remove(&self, id: ResourceId) -> bool {
         match id.resource_type() {
-            ResourceType::Remote => self.remote_register.remove(id).map(|_| ()).is_some(),
-            ResourceType::Local => self.local_register.remove(id).map(|_| ()).is_some(),
+            ResourceType::Remote => self.remote_register.remove(id),
+            ResourceType::Local => self.local_register.remove(id),
         }
     }
 }
 
 impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
-    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+    fn try_process(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
         match id.resource_type() {
             ResourceType::Remote => {
                 let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
@@ -182,14 +187,12 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
             ResourceType::Local => {
                 let locals = self.local_register.resources().read().expect(OTHER_THREAD_ERR);
 
-                let remotes = &mut self.remote_register;
-
                 if let Some((local, _)) = locals.get(&id) {
                     local.accept(&|accepted| {
                         log::trace!("Processed accept {} for {}", accepted, id);
                         match accepted {
                             AcceptedType::Remote(addr, remote) => {
-                                let remote_id = remotes.add(remote, addr);
+                                let remote_id = self.remote_register.add(remote, addr);
                                 let endpoint = Endpoint::new(remote_id, addr);
                                 event_callback(AdapterEvent::Added(endpoint, id));
                             }

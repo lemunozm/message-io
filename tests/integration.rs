@@ -60,7 +60,7 @@ fn echo_server_handle(
         .name("test-server".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split();
+                let (network, mut event_queue) = Network::split();
 
                 let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
                 tx.send(server_addr).unwrap();
@@ -130,7 +130,7 @@ fn echo_client_manager_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split();
+                let (network, mut event_queue) = Network::split();
 
                 let mut clients = HashSet::new();
 
@@ -170,7 +170,7 @@ fn burst_receiver_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (mut network, mut event_queue) = Network::split();
+                let (network, mut event_queue) = Network::split();
                 let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
                 tx.send(receiver_addr).unwrap();
@@ -206,7 +206,7 @@ fn burst_sender_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let mut network = Network::new(|_| ());
+                let network = Network::new(|_| ());
 
                 let (receiver, _) = network.connect(transport, receiver_addr).unwrap();
 
@@ -267,7 +267,7 @@ fn message_size(transport: Transport, message_size: usize) {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();
 
-    let (mut network, mut event_queue) = Network::split();
+    let (network, mut event_queue) = Network::split();
     let (_, receiver_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
 
     let (receiver, _) = network.connect(transport, receiver_addr).unwrap();

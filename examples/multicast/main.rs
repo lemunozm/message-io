@@ -4,10 +4,10 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let my_name = match args.get(1) {
         Some(name) => name,
-        None => return println!("Please choose a name"),
+        None => return println!("Please, choose a name"),
     };
 
-    let (mut network, mut events) = Network::split();
+    let (network, mut events) = Network::split();
 
     let addr = "239.255.0.1:3010";
     match network.connect(Transport::Udp, addr) {

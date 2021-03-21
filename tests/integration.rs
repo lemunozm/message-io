@@ -221,20 +221,6 @@ fn burst_sender_handle(
         .unwrap()
 }
 
-// Udp: Inestable: it's expected that it can lost packets and mess them up.
-// Tcp: Does not apply: it's stream based
-#[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
-#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
-fn burst(transport: Transport, messages_count: usize) {
-    //util::init_logger(); // Enable it for better debugging
-
-    let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
-    let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
-
-    receiver_handle.join().unwrap();
-    sender_handle.join().unwrap();
-}
-
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 1))]
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 100))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 1))]
@@ -253,6 +239,20 @@ fn echo(transport: Transport, clients: usize) {
 
     server_handle.join().unwrap();
     client_handle.join().unwrap();
+}
+
+// Udp: Inestable: it's expected that it can lost packets and mess them up.
+// Tcp: Does not apply: it's stream based
+#[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
+fn burst(transport: Transport, messages_count: usize) {
+    //util::init_logger(); // Enable it for better debugging
+
+    let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
+    let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
+
+    receiver_handle.join().unwrap();
+    sender_handle.join().unwrap();
 }
 
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, BIG_MESSAGE_SIZE))]
@@ -285,7 +285,7 @@ fn message_size(transport: Transport, message_size: usize) {
                     .spawn(move || {
                         let status = network.send(receiver, &sent_message_cloned);
                         assert_eq!(status, SendStatus::Sent);
-                        network.remove(receiver.resource_id());
+                        assert!(network.remove(receiver.resource_id()));
                     })
                     .unwrap();
             }

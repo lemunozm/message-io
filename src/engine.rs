@@ -152,11 +152,13 @@ impl NetworkEngine {
     pub fn run(&self, event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static) {
         let mut network_thread = self.network_thread.lock().unwrap();
         *network_thread = Some(network_thread.take().unwrap().run(event_callback));
+        log::trace!("Network thread running");
     }
 
     pub fn stop(&self) {
         let mut network_thread = self.network_thread.lock().unwrap();
         *network_thread = Some(network_thread.take().unwrap().stop());
+        log::trace!("Network thread stopped");
     }
 
     pub fn is_running(&self) -> bool {
@@ -169,20 +171,22 @@ impl NetworkEngine {
 
     pub fn connect(&self, adapter_id: u8, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)| {
-            log::trace!("Connected endpoint {} by {}", endpoint, adapter_id);
+            log::trace!("Connected endpoint {}", endpoint);
             (endpoint, addr)
         })
     }
 
     pub fn listen(&self, adapter_id: u8, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         self.controllers[adapter_id as usize].listen(addr).map(|(resource_id, addr)| {
-            log::trace!("New resource {} listening by {}", resource_id, adapter_id);
+            log::trace!("Listening by {}", resource_id);
             (resource_id, addr)
         })
     }
 
     pub fn remove(&self, id: ResourceId) -> bool {
-        self.controllers[id.adapter_id() as usize].remove(id)
+        let value = self.controllers[id.adapter_id() as usize].remove(id);
+        log::trace!("Remove {}", id);
+        value
     }
 
     pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {

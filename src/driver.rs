@@ -4,7 +4,6 @@ use crate::poll::{Poll};
 use crate::registry::{ResourceRegistry};
 use crate::remote_addr::{RemoteAddr};
 use crate::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
-use crate::util::{OTHER_THREAD_ERR};
 
 use std::net::{SocketAddr};
 use std::sync::{Arc};
@@ -88,9 +87,8 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         match endpoint.resource_id().resource_type() {
             ResourceType::Remote => {
-                let remotes = self.remote_registry.resources().read().expect(OTHER_THREAD_ERR);
-                match remotes.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => resource.send(data),
+                match self.remote_registry.get(endpoint.resource_id()) {
+                    Some(resource) => resource.0.send(data),
 
                     // TODO: currently there is not a safe way to know if this is
                     // reached because of a user API error (send over already resource removed)
@@ -100,18 +98,15 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
                     None => SendStatus::ResourceNotFound,
                 }
             }
-            ResourceType::Local => {
-                let locals = self.local_registry.resources().read().expect(OTHER_THREAD_ERR);
-                match locals.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => resource.send_to(endpoint.addr(), data),
-                    None => {
-                        panic!(
-                            "Error: You are trying to send by a local resource \
-                               that does not exists"
-                        )
-                    }
+            ResourceType::Local => match self.local_registry.get(endpoint.resource_id()) {
+                Some(resource) => resource.0.send_to(endpoint.addr(), data),
+                None => {
+                    panic!(
+                        "Error: You are trying to send by a local resource \
+                        that does not exists"
+                    )
                 }
-            }
+            },
         }
     }
 
@@ -127,32 +122,22 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
     fn process(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
         match id.resource_type() {
             ResourceType::Remote => {
-                let remotes = self.remote_registry.resources().read().expect(OTHER_THREAD_ERR);
-                let mut to_remove: Option<Endpoint> = None;
-                if let Some((remote, addr)) = remotes.get(&id) {
-                    let endpoint = Endpoint::new(id, *addr);
-                    let status = remote.receive(&|data| {
+                if let Some(remote) = self.remote_registry.get(id) {
+                    let endpoint = Endpoint::new(id, remote.1);
+                    let status = remote.0.receive(&|data| {
                         log::trace!("Read {} bytes from {}", data.len(), id);
                         event_callback(AdapterEvent::Data(endpoint, data));
                     });
                     log::trace!("Processed receive {}, for {}", status, endpoint);
                     if let ReadStatus::Disconnected = status {
-                        to_remove = Some(endpoint);
+                        self.remote_registry.remove(id);
+                        event_callback(AdapterEvent::Removed(endpoint));
                     }
-                }
-
-                drop(remotes);
-
-                if let Some(endpoint) = to_remove {
-                    self.remote_registry.remove(id);
-                    event_callback(AdapterEvent::Removed(endpoint));
                 }
             }
             ResourceType::Local => {
-                let locals = self.local_registry.resources().read().expect(OTHER_THREAD_ERR);
-
-                if let Some((local, _)) = locals.get(&id) {
-                    local.accept(&|accepted| {
+                if let Some(local) = self.local_registry.get(id) {
+                    local.0.accept(&|accepted| {
                         log::trace!("Processed accept {} for {}", accepted, id);
                         match accepted {
                             AcceptedType::Remote(addr, remote) => {
@@ -169,8 +154,10 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                 }
             }
         }
-        self.remote_registry.register_pending();
-        self.local_registry.register_pending();
+
+        // Check for any pending removing in order to totally remove from the poll
+        self.remote_registry.finish_pending_removings();
+        self.local_registry.finish_pending_removings();
     }
 }
 

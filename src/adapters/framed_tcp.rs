@@ -89,7 +89,8 @@ impl Remote for RemoteResource {
     }
 
     fn send(&self, data: &[u8]) -> SendStatus {
-        let encoded_size = encoding::encode_size(data);
+        let mut buf = [0; 10]; // used to avoid a heap allocation
+        let encoded_size = encoding::encode_size(data, &mut buf);
 
         let mut total_bytes_sent = 0;
         let total_bytes = encoded_size.len() + data.len();

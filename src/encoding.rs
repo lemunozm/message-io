@@ -1,8 +1,11 @@
 use integer_encoding::VarInt;
 
 /// Encode a message, returning the bytes that must be sent before the message.
-pub fn encode_size(message: &[u8]) -> Vec<u8> {
-    message.len().encode_var_vec()
+/// A buffer is used to avoid heap allocation.
+/// It is size 10=ceil(64/7), the max required bytes to encode a u64.
+pub fn encode_size<'a>(message: &[u8], buf: &'a mut [u8; 10]) -> &'a [u8] {
+    let varint_size = message.len().encode_var(buf);
+    &buf[..varint_size]
 }
 
 /// Decodes an encoded value in a buffer.
@@ -111,7 +114,8 @@ mod tests {
     const MESSAGE_C: [u8; MESSAGE_SIZE] = ['C' as u8; MESSAGE_SIZE];
 
     fn encode_message(buffer: &mut Vec<u8>, message: &[u8]) {
-        buffer.extend_from_slice(&*encode_size(message));
+        let mut buf = [0; 10];
+        buffer.extend_from_slice(&*encode_size(message, &mut buf));
         buffer.extend_from_slice(message);
     }
 

@@ -20,7 +20,7 @@ type EventProcessors = Vec<Box<dyn EventProcessor + Send>>;
 
 /// Used to configured the engine
 pub struct AdapterLauncher {
-    poll: Poll<()>,
+    poll: Poll,
     controllers: ActionControllers,
     processors: EventProcessors,
 }
@@ -53,7 +53,7 @@ impl AdapterLauncher {
     }
 
     /// Consume this instance to obtain the adapter handles.
-    fn launch(self) -> (Poll<()>, ActionControllers, EventProcessors) {
+    fn launch(self) -> (Poll, ActionControllers, EventProcessors) {
         (self.poll, self.controllers, self.processors)
     }
 }
@@ -61,8 +61,8 @@ impl AdapterLauncher {
 /// The core of the message-io system network.
 /// It is in change of managing the adapters, wake up from events and performs the user actions.
 enum NetworkThread {
-    Ready(Poll<()>, EventProcessors),
-    Running(JoinHandle<(Poll<()>, EventProcessors)>, Arc<AtomicBool>),
+    Ready(Poll, EventProcessors),
+    Running(JoinHandle<(Poll, EventProcessors)>, Arc<AtomicBool>),
 }
 
 impl NetworkThread {
@@ -84,10 +84,10 @@ impl NetworkThread {
 
     fn run_processor(
         running: Arc<AtomicBool>,
-        mut poll: Poll<()>,
+        mut poll: Poll,
         processors: EventProcessors,
         event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static,
-    ) -> JoinHandle<(Poll<()>, EventProcessors)> {
+    ) -> JoinHandle<(Poll, EventProcessors)> {
         thread::Builder::new()
             .name(format!("{}/message-io::engine", thread::current().name().unwrap_or("")))
             .spawn(move || {
@@ -100,9 +100,7 @@ impl NetworkThread {
                             processors[resource_id.adapter_id() as usize]
                                 .process(resource_id, &event_callback);
                         }
-                        PollEvent::Waker(_event) => {
-                            todo!();
-                        }
+                        PollEvent::Waker => todo!(),
                     });
                 }
                 (poll, processors)

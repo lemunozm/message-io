@@ -45,7 +45,7 @@ impl<R: Remote, L: Local> Driver<R, L> {
     pub fn new(
         _: impl Adapter<Remote = R, Local = L>,
         adapter_id: u8,
-        poll: &mut Poll<()>,
+        poll: &mut Poll,
     ) -> Driver<R, L> {
         let remote_poll_registry = poll.create_registry(adapter_id, ResourceType::Remote);
         let local_poll_registry = poll.create_registry(adapter_id, ResourceType::Local);

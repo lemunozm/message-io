@@ -3,58 +3,51 @@ use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
 use mio::{Poll as MioPoll, Interest, Token, Events, Registry, Waker};
 use mio::event::{Source};
 
-use crossbeam::channel::{self, Sender, Receiver};
-
 use std::time::{Duration};
 use std::sync::{Arc};
 use std::io::{ErrorKind};
 
-pub enum PollEvent<E> {
+pub enum PollEvent {
     Network(ResourceId),
-    Waker(E),
+    Waker,
 }
 
 impl From<Token> for ResourceId {
     fn from(token: Token) -> Self {
-        Self::from(token.0 >> Poll::<()>::RESERVED_BITS)
+        Self::from(token.0 >> Poll::RESERVED_BITS)
     }
 }
 
 impl From<ResourceId> for Token {
     fn from(id: ResourceId) -> Self {
-        Token((id.raw() << Poll::<()>::RESERVED_BITS) | 1)
+        Token((id.raw() << Poll::RESERVED_BITS) | 1)
     }
 }
 
-pub struct Poll<E> {
+pub struct Poll {
     mio_poll: MioPoll,
     events: Events,
     waker: Arc<Waker>,
-    event_sender: Sender<E>,
-    event_receiver: Receiver<E>,
 }
 
-impl<E> Default for Poll<E> {
+impl Default for Poll {
     fn default() -> Self {
         let mio_poll = MioPoll::new().unwrap();
-        let (event_sender, event_receiver) = channel::unbounded();
         Self {
             waker: Arc::new(Waker::new(&mio_poll.registry(), Self::WAKER_TOKEN).unwrap()),
             mio_poll,
             events: Events::with_capacity(Self::EVENTS_SIZE),
-            event_sender,
-            event_receiver,
         }
     }
 }
 
-impl<E> Poll<E> {
+impl Poll {
     const EVENTS_SIZE: usize = 1024;
     const RESERVED_BITS: usize = 1;
     const WAKER_TOKEN: Token = Token(0);
 
     pub fn process_event<C>(&mut self, timeout: Option<Duration>, mut event_callback: C)
-    where C: FnMut(PollEvent<E>) {
+    where C: FnMut(PollEvent) {
         loop {
             match self.mio_poll.poll(&mut self.events, timeout) {
                 Ok(_) => {
@@ -62,10 +55,7 @@ impl<E> Poll<E> {
                         let poll_event = match mio_event.token() {
                             Self::WAKER_TOKEN => {
                                 log::trace!("POLL EVENT: waker");
-                                // As long as a waker token is received,
-                                // there is contain an event in the receiver. So it never blocks.
-                                let signal = self.event_receiver.recv().unwrap();
-                                PollEvent::Waker(signal)
+                                PollEvent::Waker
                             }
                             token => {
                                 let resource_id = ResourceId::from(token);
@@ -88,12 +78,9 @@ impl<E> Poll<E> {
         PollRegistry::new(adapter_id, resource_type, self.mio_poll.registry().try_clone().unwrap())
     }
 
-    /*
-    pub fn create_signaling(&mut self) -> PollEventSender<E>
-    {
-        PollEventSender::new(self.waker.clone(), self.event_sender.clone())
+    pub fn create_waker(&mut self) -> PollWaker {
+        PollWaker::new(self.waker.clone())
     }
-    */
 }
 
 pub struct PollRegistry {
@@ -130,16 +117,17 @@ impl Clone for PollRegistry {
     }
 }
 
-/*
-pub struct PollEventSender<E> {
+pub struct PollWaker {
     waker: Arc<Waker>,
-    event_sender: Sender<E>,
 }
-impl<E> PollEventSender<E> {
-    pub fn send(&self, event: E) {
-        self.sender.send();
+
+impl PollWaker {
+    fn new(waker: Arc<Waker>) -> Self {
+        Self { waker }
+    }
+
+    pub fn wake(&self) {
         self.waker.wake().unwrap();
         log::trace!("Wake poll...");
     }
 }
-*/

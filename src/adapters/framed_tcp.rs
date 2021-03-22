@@ -3,7 +3,7 @@ use crate::adapter::{
     ListeningInfo,
 };
 use crate::remote_addr::{RemoteAddr};
-use crate::encoding::{self, Decoder};
+use crate::encoding::{self, Decoder, MAX_ENCODED_SIZE};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
@@ -19,7 +19,7 @@ const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 /// The max packet value for tcp.
 /// Although this size is very high, it is preferred send data in smaller chunks with a rate
 /// to not saturate the receiver thread in the endpoint.
-pub const MAX_TCP_PAYLOAD_LEN: usize = usize::MAX;
+pub const MAX_TCP_PAYLOAD_LEN: usize = u32::MAX as usize;
 
 pub struct FramedTcpAdapter;
 impl Adapter for FramedTcpAdapter {
@@ -89,7 +89,11 @@ impl Remote for RemoteResource {
     }
 
     fn send(&self, data: &[u8]) -> SendStatus {
-        let mut buf = [0; 10]; // used to avoid a heap allocation
+        if data.len() > MAX_TCP_PAYLOAD_LEN {
+            return SendStatus::MaxPacketSizeExceeded(data.len(), MAX_TCP_PAYLOAD_LEN);
+        }
+
+        let mut buf = [0; MAX_ENCODED_SIZE]; // used to avoid a heap allocation
         let encoded_size = encoding::encode_size(data, &mut buf);
 
         let mut total_bytes_sent = 0;

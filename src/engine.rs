@@ -1,6 +1,6 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId};
-use crate::poll::{Poll};
+use crate::poll::{Poll, PollEvent};
 use crate::adapter::{Adapter, SendStatus};
 use crate::remote_addr::{RemoteAddr};
 use crate::driver::{AdapterEvent, ActionController, EventProcessor, Driver};
@@ -20,7 +20,7 @@ type EventProcessors = Vec<Box<dyn EventProcessor + Send>>;
 
 /// Used to configured the engine
 pub struct AdapterLauncher {
-    poll: Poll,
+    poll: Poll<()>,
     controllers: ActionControllers,
     processors: EventProcessors,
 }
@@ -53,7 +53,7 @@ impl AdapterLauncher {
     }
 
     /// Consume this instance to obtain the adapter handles.
-    fn launch(self) -> (Poll, ActionControllers, EventProcessors) {
+    fn launch(self) -> (Poll<()>, ActionControllers, EventProcessors) {
         (self.poll, self.controllers, self.processors)
     }
 }
@@ -61,8 +61,8 @@ impl AdapterLauncher {
 /// The core of the message-io system network.
 /// It is in change of managing the adapters, wake up from events and performs the user actions.
 enum NetworkThread {
-    Ready(Poll, EventProcessors),
-    Running(JoinHandle<(Poll, EventProcessors)>, Arc<AtomicBool>),
+    Ready(Poll<()>, EventProcessors),
+    Running(JoinHandle<(Poll<()>, EventProcessors)>, Arc<AtomicBool>),
 }
 
 impl NetworkThread {
@@ -84,22 +84,25 @@ impl NetworkThread {
 
     fn run_processor(
         running: Arc<AtomicBool>,
-        mut poll: Poll,
+        mut poll: Poll<()>,
         processors: EventProcessors,
         event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static,
-    ) -> JoinHandle<(Poll, EventProcessors)> {
+    ) -> JoinHandle<(Poll<()>, EventProcessors)> {
         thread::Builder::new()
-            .name("message-io: event processor".into())
+            .name(format!("{}/message-io::engine", thread::current().name().unwrap_or("")))
             .spawn(move || {
                 //stop here until run
                 let timeout = Some(Duration::from_millis(Self::NETWORK_SAMPLING_TIMEOUT));
 
                 while running.load(Ordering::Relaxed) {
-                    poll.process_event(timeout, |resource_id| {
-                        log::trace!("Resource id {} woke up by an event", resource_id);
-
-                        processors[resource_id.adapter_id() as usize]
-                            .process(resource_id, &event_callback);
+                    poll.process_event(timeout, |poll_event| match poll_event {
+                        PollEvent::Network(resource_id) => {
+                            processors[resource_id.adapter_id() as usize]
+                                .process(resource_id, &event_callback);
+                        }
+                        PollEvent::Waker(_event) => {
+                            todo!();
+                        }
                     });
                 }
                 (poll, processors)
@@ -170,6 +173,7 @@ impl NetworkEngine {
     }
 
     pub fn connect(&self, adapter_id: u8, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
+        log::trace!("Connect to {} by adapter: {}", addr, adapter_id);
         self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)| {
             log::trace!("Connected endpoint {}", endpoint);
             (endpoint, addr)
@@ -177,6 +181,7 @@ impl NetworkEngine {
     }
 
     pub fn listen(&self, adapter_id: u8, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+        log::trace!("Listen to {} by adapter: {}", addr, adapter_id);
         self.controllers[adapter_id as usize].listen(addr).map(|(resource_id, addr)| {
             log::trace!("Listening by {}", resource_id);
             (resource_id, addr)
@@ -185,14 +190,14 @@ impl NetworkEngine {
 
     pub fn remove(&self, id: ResourceId) -> bool {
         let value = self.controllers[id.adapter_id() as usize].remove(id);
-        log::trace!("Remove {}", id);
+        log::trace!("Remove {}: {}", id, value);
         value
     }
 
     pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         let status =
             self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
-        log::trace!("Message ({} bytes) sent to {}, {:?}", data.len(), endpoint, status);
+        log::trace!("Send {} bytes to {}: {:?}", data.len(), endpoint, status);
         status
     }
 }

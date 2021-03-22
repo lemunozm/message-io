@@ -33,7 +33,7 @@ pub trait ActionController: Send + Sync {
 }
 
 pub trait EventProcessor: Send + Sync {
-    fn process(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
+    fn process(&self, resource_id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
 }
 
 pub struct Driver<R: Remote, L: Local> {
@@ -45,7 +45,7 @@ impl<R: Remote, L: Local> Driver<R, L> {
     pub fn new(
         _: impl Adapter<Remote = R, Local = L>,
         adapter_id: u8,
-        poll: &mut Poll,
+        poll: &mut Poll<()>,
     ) -> Driver<R, L> {
         let remote_poll_registry = poll.create_registry(adapter_id, ResourceType::Remote);
         let local_poll_registry = poll.create_registry(adapter_id, ResourceType::Local);
@@ -121,43 +121,49 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
 impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
     fn process(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
         match id.resource_type() {
-            ResourceType::Remote => {
-                if let Some(remote) = self.remote_registry.get(id) {
-                    let endpoint = Endpoint::new(id, remote.1);
-                    let status = remote.0.receive(&|data| {
-                        log::trace!("Read {} bytes from {}", data.len(), id);
-                        event_callback(AdapterEvent::Data(endpoint, data));
-                    });
-                    log::trace!("Processed receive {}, for {}", status, endpoint);
-                    if let ReadStatus::Disconnected = status {
-                        self.remote_registry.remove(id);
-                        event_callback(AdapterEvent::Removed(endpoint));
-                    }
-                }
-            }
-            ResourceType::Local => {
-                if let Some(local) = self.local_registry.get(id) {
-                    local.0.accept(&|accepted| {
-                        log::trace!("Processed accept {} for {}", accepted, id);
-                        match accepted {
-                            AcceptedType::Remote(addr, remote) => {
-                                let remote_id = self.remote_registry.add(remote, addr);
-                                let endpoint = Endpoint::new(remote_id, addr);
-                                event_callback(AdapterEvent::Added(endpoint, id));
-                            }
-                            AcceptedType::Data(addr, data) => {
-                                let endpoint = Endpoint::new(id, addr);
-                                event_callback(AdapterEvent::Data(endpoint, data));
-                            }
-                        }
-                    });
-                }
+            ResourceType::Remote => self.process_remote(id, event_callback),
+            ResourceType::Local => self.process_local(id, event_callback),
+        }
+    }
+}
+
+impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
+    fn process_remote(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+        if let Some(remote) = self.remote_registry.get(id) {
+            let endpoint = Endpoint::new(id, remote.1);
+            log::trace!("Processed remote for {}", endpoint);
+            let status = remote.0.receive(&|data| {
+                event_callback(AdapterEvent::Data(endpoint, data));
+            });
+            log::trace!("Processed remote receive status {}", status);
+
+            // We do not want the remote living if we need to perform the removing.
+            drop(remote);
+            if let ReadStatus::Disconnected = status {
+                self.remote_registry.remove(id);
+                event_callback(AdapterEvent::Removed(endpoint));
             }
         }
+    }
 
-        // Check for any pending removing in order to totally remove from the poll
-        self.remote_registry.finish_pending_removings();
-        self.local_registry.finish_pending_removings();
+    fn process_local(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+        if let Some(local) = self.local_registry.get(id) {
+            log::trace!("Processed local for {}", id);
+            local.0.accept(&|accepted| {
+                log::trace!("Processed local accepted type {}", accepted);
+                match accepted {
+                    AcceptedType::Remote(addr, remote) => {
+                        let remote_id = self.remote_registry.add(remote, addr);
+                        let endpoint = Endpoint::new(remote_id, addr);
+                        event_callback(AdapterEvent::Added(endpoint, id));
+                    }
+                    AcceptedType::Data(addr, data) => {
+                        let endpoint = Endpoint::new(id, addr);
+                        event_callback(AdapterEvent::Data(endpoint, data));
+                    }
+                }
+            });
+        }
     }
 }
 

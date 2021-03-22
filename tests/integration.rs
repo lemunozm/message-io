@@ -28,20 +28,27 @@ mod util {
     static INIT: Once = Once::new();
 
     #[allow(dead_code)]
-    pub fn init_logger() {
-        INIT.call_once(|| configure_logger().unwrap());
+    pub enum LogThread {
+        Enabled,
+        Disabled,
     }
 
-    fn configure_logger() -> Result<(), fern::InitError> {
+    #[allow(dead_code)]
+    pub fn init_logger(log_thread: LogThread) {
+        INIT.call_once(|| configure_logger(log_thread).unwrap());
+    }
+
+    fn configure_logger(log_thread: LogThread) -> Result<(), fern::InitError> {
         fern::Dispatch::new()
             .filter(|metadata| metadata.target().starts_with("message_io"))
-            .format(|out, message, record| {
+            .format(move |out, message, record| {
+                let thread_name = format!("[{}]", std::thread::current().name().unwrap());
                 out.finish(format_args!(
-                    "[{}][{}][{}][{}] {}",
+                    "[{}][{}][{}]{} {}",
                     chrono::Local::now().format("%M:%S:%f"), // min:sec:nano
                     record.level(),
-                    record.target(),
-                    std::thread::current().name().unwrap(),
+                    record.target().strip_prefix("message_io::").unwrap_or(record.target()),
+                    if let LogThread::Enabled = log_thread { thread_name } else { String::new() },
                     message,
                 ))
             })
@@ -50,6 +57,9 @@ mod util {
         Ok(())
     }
 }
+
+#[allow(unused_imports)]
+use util::{LogThread};
 
 fn echo_server_handle(
     transport: Transport,
@@ -232,7 +242,7 @@ fn burst_sender_handle(
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
-    //util::init_logger(); // Enable it for better debugging
+    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
     let (server_handle, server_addr) = echo_server_handle(transport, clients);
     let client_handle = echo_client_manager_handle(transport, server_addr, clients);
@@ -246,7 +256,7 @@ fn echo(transport: Transport, clients: usize) {
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {
-    //util::init_logger(); // Enable it for better debugging
+    //util::init_logger(LogThread::Disabled); // Enable it for better debugging
 
     let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
     let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
@@ -260,7 +270,7 @@ fn burst(transport: Transport, messages_count: usize) {
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, Transport::Udp.max_message_size()))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, BIG_MESSAGE_SIZE))]
 fn message_size(transport: Transport, message_size: usize) {
-    //util::init_logger(); // Enable it for better debugging
+    //util::init_logger(LogThread::Disabled); // Enable it for better debugging
 
     assert!(!transport.is_packet_based() || message_size <= transport.max_message_size());
 

@@ -3,8 +3,6 @@ use crate::poll::{PollRegistry};
 use crate::adapter::{Resource};
 use crate::util::{OTHER_THREAD_ERR};
 
-use crossbeam::channel::{self, Sender, Receiver};
-
 use std::collections::{HashMap};
 use std::net::{SocketAddr};
 use std::sync::{Arc, RwLock};
@@ -16,19 +14,11 @@ pub struct ResourceRegistry<S> {
     // If the resource is a local resource, the addr will be the local addr.
     resources: RwLock<HashMap<ResourceId, Arc<(S, SocketAddr)>>>,
     poll_registry: PollRegistry,
-    future_removings: Sender<Arc<(S, SocketAddr)>>,
-    pending_removings: Receiver<Arc<(S, SocketAddr)>>,
 }
 
 impl<S: Resource> ResourceRegistry<S> {
     pub fn new(poll_registry: PollRegistry) -> ResourceRegistry<S> {
-        let (sender, receiver) = channel::unbounded();
-        ResourceRegistry {
-            resources: RwLock::new(HashMap::new()),
-            poll_registry,
-            future_removings: sender,
-            pending_removings: receiver,
-        }
+        ResourceRegistry { resources: RwLock::new(HashMap::new()), poll_registry }
     }
 
     pub fn add(&self, mut resource: S, addr: SocketAddr) -> ResourceId {
@@ -42,23 +32,25 @@ impl<S: Resource> ResourceRegistry<S> {
             .write()
             .expect(OTHER_THREAD_ERR)
             .remove(&id)
-            .map(|resource| self.future_removings.send(resource).unwrap())
+            .map(|mut resource| {
+                loop {
+                    // Yeah, it is an active waiting, but relax:
+                    // You will only fail to get the Arc access when the resource is either
+                    // reading or writing.
+                    // This active waiting only wait to finish those read/write operations
+                    // to remove it.
+                    // Since this is under the write() of the resource, you only will wait
+                    // to the last pending operation, if there was, that is exactly you want.
+                    match Arc::get_mut(&mut resource) {
+                        Some(resource) => break self.poll_registry.remove(resource.0.source()),
+                        None => continue,
+                    }
+                }
+            })
             .is_some()
     }
 
     pub fn get(&self, id: ResourceId) -> Option<Arc<(S, SocketAddr)>> {
-        self.resources.read().expect(OTHER_THREAD_ERR).get(&id).map(|resource| resource.clone())
-    }
-
-    pub fn finish_pending_removings(&self) {
-        for mut resource in self.pending_removings.try_iter() {
-            match Arc::get_mut(&mut resource) {
-                Some(resource) => self.poll_registry.remove(resource.0.source()),
-                // Really rare case when there was a disconnect while
-                // the user was trying to write data.
-                // We can not remove yet, so we enque again.
-                None => self.future_removings.send(resource).unwrap(),
-            }
-        }
+        self.resources.read().expect(OTHER_THREAD_ERR).get(&id).cloned()
     }
 }

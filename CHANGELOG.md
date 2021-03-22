@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.11.1
+- Reduce the bandwidth of `FramedTcp` transport using variadic encoding instead of constant padding.
+
 ## Release 0.11.0
 - Implemented `Serialize`/`Deserialize` for `Transport`.
 - Implemented `Serialize`/`Deserialize` for `RemoteAddr`.

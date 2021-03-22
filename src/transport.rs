@@ -24,8 +24,10 @@ pub enum Transport {
     #[cfg(feature = "tcp")]
     Tcp,
 
+    /// Tcp framed protocol (available through the *tcp* feature).
     /// Like TCP, but encoded with a slim frame layer to manage the data as a packet,
-    /// instead of as a stream (available through the *tcp* feature).
+    /// instead of as a stream.
+    /// It prefixes the message using variable integer encoding with the size of the message.
     /// Most of the time you would want to use this instead of the raw `Tcp`.
     #[cfg(feature = "tcp")]
     FramedTcp,
@@ -39,9 +41,9 @@ pub enum Transport {
     Udp,
 
     /// WebSocket protocol (available through the *websocket* feature).
-    /// If you use a [`crate::network::RemoteAddr::Url`] in the `connect()` method,
-    /// you can specify `wss` of `ws` schemas to connect with or without security.
-    /// If you use a [`crate::network::RemoteAddr::SocketAddr`] the socket will be a normal
+    /// If you use a [`crate::network::RemoteAddr::Str`] in the `connect()` method,
+    /// you can specify an URL with `wss` of `ws` schemas to connect with or without security.
+    /// If you use a [`crate::network::RemoteAddr::Socket`] the socket will be a normal
     /// websocket with the following uri: `ws://{SocketAddr}/message-io-default`.
     #[cfg(feature = "websocket")]
     Ws,

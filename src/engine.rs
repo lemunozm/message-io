@@ -105,6 +105,7 @@ impl NetworkThread {
                                 event_callback(adapter_event);
                             });
                         }
+                        #[allow(dead_code)] //TODO: remove it with native event support
                         PollEvent::Waker => todo!(),
                     });
                 }

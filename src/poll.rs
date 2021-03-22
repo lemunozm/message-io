@@ -27,6 +27,7 @@ impl From<ResourceId> for Token {
 pub struct Poll {
     mio_poll: MioPoll,
     events: Events,
+    #[allow(dead_code)] //TODO: remove it with poll native event support
     waker: Arc<Waker>,
 }
 
@@ -78,6 +79,7 @@ impl Poll {
         PollRegistry::new(adapter_id, resource_type, self.mio_poll.registry().try_clone().unwrap())
     }
 
+    #[allow(dead_code)] //TODO: remove it with poll native event support
     pub fn create_waker(&mut self) -> PollWaker {
         PollWaker::new(self.waker.clone())
     }
@@ -117,15 +119,18 @@ impl Clone for PollRegistry {
     }
 }
 
+#[allow(dead_code)] //TODO: remove it with poll native event support
 pub struct PollWaker {
     waker: Arc<Waker>,
 }
 
 impl PollWaker {
+    #[allow(dead_code)] //TODO: remove it with poll native event support
     fn new(waker: Arc<Waker>) -> Self {
         Self { waker }
     }
 
+    #[allow(dead_code)] //TODO: remove it with poll native event support
     pub fn wake(&self) {
         self.waker.wake().unwrap();
         log::trace!("Wake poll...");

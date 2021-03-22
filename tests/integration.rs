@@ -224,6 +224,10 @@ fn burst_sender_handle(
                     let message = format!("{}: {}", SMALL_MESSAGE, count);
                     let status = network.send(receiver, message.as_bytes());
                     assert_eq!(SendStatus::Sent, status);
+                    if !transport.is_connection_oriented() {
+                        // We need a rate to not lose packet.
+                        std::thread::sleep(Duration::from_micros(10));
+                    }
                 }
             })
             .unwrap();
@@ -251,8 +255,8 @@ fn echo(transport: Transport, clients: usize) {
     client_handle.join().unwrap();
 }
 
-// Udp: Inestable: it's expected that it can lost packets and mess them up.
 // Tcp: Does not apply: it's stream based
+#[cfg_attr(feature = "udp", test_case(Transport::Udp, 10000))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {

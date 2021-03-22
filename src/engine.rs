@@ -97,8 +97,13 @@ impl NetworkThread {
                 while running.load(Ordering::Relaxed) {
                     poll.process_event(timeout, |poll_event| match poll_event {
                         PollEvent::Network(resource_id) => {
-                            processors[resource_id.adapter_id() as usize]
-                                .process(resource_id, &event_callback);
+                            let adapter_id = resource_id.adapter_id() as usize;
+                            processors[adapter_id].process(resource_id, &|adapter_event| {
+                                if log::log_enabled!(log::Level::Trace) {
+                                    Self::log_adapter_event(&adapter_event);
+                                }
+                                event_callback(adapter_event);
+                            });
                         }
                         PollEvent::Waker => todo!(),
                     });
@@ -113,12 +118,7 @@ impl NetworkThread {
             NetworkThread::Ready(poll, processors) => {
                 let thread_running = Arc::new(AtomicBool::new(true));
                 let running = thread_running.clone();
-                let thread = Self::run_processor(running, poll, processors, move |adapter_event| {
-                    if log::log_enabled!(log::Level::Trace) {
-                        Self::log_adapter_event(&adapter_event);
-                    }
-                    event_callback(adapter_event);
-                });
+                let thread = Self::run_processor(running, poll, processors, event_callback);
                 NetworkThread::Running(thread, thread_running)
             }
             NetworkThread::Running(..) => panic!("Network thread already running"),

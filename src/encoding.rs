@@ -1,13 +1,12 @@
 use integer_encoding::VarInt;
 
 /// This is the max required bytes to encode a u64 using the varint encoding scheme.
-/// It is size 5=ceil(32/7)
-pub const MAX_ENCODED_SIZE: usize = 5;
+/// It is size 10=ceil(64/7)
+pub const MAX_ENCODED_SIZE: usize = 10;
 
 /// Encode a message, returning the bytes that must be sent before the message.
 /// A buffer is used to avoid heap allocation.
 pub fn encode_size<'a>(message: &[u8], buf: &'a mut [u8; MAX_ENCODED_SIZE]) -> &'a [u8] {
-    assert!(message.len() <= u32::MAX as usize);
     let varint_size = message.len().encode_var(buf);
     &buf[..varint_size]
 }

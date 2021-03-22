@@ -11,7 +11,8 @@ enum Event {
 }
 
 pub fn run(file_path: &str) {
-    let (network, mut event_queue) = Network::split_and_map(|net_event| Event::Network(net_event));
+    let (mut network, mut event_queue) =
+        Network::split_and_map(|net_event| Event::Network(net_event));
 
     let server_addr = "127.0.0.1:3005";
     let (server_id, _) = match network.connect(Transport::FramedTcp, server_addr) {

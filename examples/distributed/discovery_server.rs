@@ -19,7 +19,7 @@ pub struct DiscoveryServer {
 
 impl DiscoveryServer {
     pub fn new() -> Option<DiscoveryServer> {
-        let (network, event_queue) = Network::split();
+        let (mut network, event_queue) = Network::split();
 
         let listen_addr = "127.0.0.1:5000";
         match network.listen(Transport::FramedTcp, listen_addr) {

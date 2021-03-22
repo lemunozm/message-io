@@ -8,7 +8,7 @@ enum Event {
 
 fn main() {
     // The split_and_map() version allows to combine network events with your application events.
-    let (network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
+    let (mut network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
 
     // You can change the transport to Udp or Ws (WebSocket).
     let (server, _) = network.connect(Transport::FramedTcp, "127.0.0.1:3042").unwrap();

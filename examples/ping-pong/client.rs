@@ -14,7 +14,7 @@ enum Event {
 }
 
 pub fn run(transport: Transport, remote_addr: RemoteAddr) {
-    let (network, mut events) = Network::split_and_map(|net_event| Event::Network(net_event));
+    let (mut network, mut events) = Network::split_and_map(|net_event| Event::Network(net_event));
 
     let (server_id, local_addr) = match network.connect(transport, remote_addr.clone()) {
         Ok(conn_info) => conn_info,

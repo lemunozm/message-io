@@ -6,7 +6,10 @@ use crate::remote_addr::{RemoteAddr};
 use crate::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
 
 use std::net::{SocketAddr};
-use std::sync::{Arc};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::io::{self};
 
 /// Struct used to identify and event that an adapter has been produced.
@@ -39,6 +42,8 @@ pub trait EventProcessor: Send + Sync {
 pub struct Driver<R: Remote, L: Local> {
     remote_registry: Arc<ResourceRegistry<R>>,
     local_registry: Arc<ResourceRegistry<L>>,
+    remote_removal_indicator: Arc<AtomicBool>,
+    local_removal_indicator: Arc<AtomicBool>,
 }
 
 impl<R: Remote, L: Local> Driver<R, L> {
@@ -47,12 +52,23 @@ impl<R: Remote, L: Local> Driver<R, L> {
         adapter_id: u8,
         poll: &mut Poll,
     ) -> Driver<R, L> {
+        let remote_removal_indicator = Arc::new(AtomicBool::new(false));
+        let local_removal_indicator = Arc::new(AtomicBool::new(false));
+
         let remote_poll_registry = poll.create_registry(adapter_id, ResourceType::Remote);
         let local_poll_registry = poll.create_registry(adapter_id, ResourceType::Local);
 
         Driver {
-            remote_registry: Arc::new(ResourceRegistry::<R>::new(remote_poll_registry)),
-            local_registry: Arc::new(ResourceRegistry::<L>::new(local_poll_registry)),
+            remote_registry: Arc::new(ResourceRegistry::<R>::new(
+                remote_poll_registry,
+                remote_removal_indicator.clone(),
+            )),
+            local_registry: Arc::new(ResourceRegistry::<L>::new(
+                local_poll_registry,
+                local_removal_indicator.clone(),
+            )),
+            remote_removal_indicator,
+            local_removal_indicator,
         }
     }
 }
@@ -62,6 +78,8 @@ impl<R: Remote, L: Local> Clone for Driver<R, L> {
         Driver {
             remote_registry: self.remote_registry.clone(),
             local_registry: self.local_registry.clone(),
+            remote_removal_indicator: self.remote_removal_indicator.clone(),
+            local_removal_indicator: self.local_removal_indicator.clone(),
         }
     }
 }
@@ -130,6 +148,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
     fn process_remote(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
         if let Some(remote) = self.remote_registry.get(id) {
+            let guard = RemovalGuard::from(&*self.remote_removal_indicator);
             let endpoint = Endpoint::new(id, remote.1);
             log::trace!("Processed remote for {}", endpoint);
             let status = remote.0.receive(&|data| {
@@ -137,17 +156,23 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
             });
             log::trace!("Processed remote receive status {}", status);
 
-            // We do not want the remote living if we need to perform the removing.
+            // We do not want the remote access living to perform the removing.
             drop(remote);
-            if let ReadStatus::Disconnected = status {
-                self.remote_registry.remove(id);
-                event_callback(AdapterEvent::Removed(endpoint));
+            drop(guard);
+
+            // The user in the callback could have removed the same resource.
+            if !self.remote_registry.remove_pending_resource() {
+                if let ReadStatus::Disconnected = status {
+                    self.remote_registry.remove(id);
+                    event_callback(AdapterEvent::Removed(endpoint));
+                }
             }
         }
     }
 
     fn process_local(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
         if let Some(local) = self.local_registry.get(id) {
+            let guard = RemovalGuard::from(&*self.local_removal_indicator);
             log::trace!("Processed local for {}", id);
             local.0.accept(&|accepted| {
                 log::trace!("Processed local accepted type {}", accepted);
@@ -163,7 +188,30 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
                     }
                 }
             });
+
+            drop(local);
+            drop(guard);
+
+            self.remote_registry.remove_pending_resource();
         }
+    }
+}
+
+/// Guard using for ensure that no removings are performed during the lifetime of the guard.
+struct RemovalGuard<'a> {
+    indicator: &'a AtomicBool,
+}
+
+impl<'a> From<&'a AtomicBool> for RemovalGuard<'a> {
+    fn from(indicator: &'a AtomicBool) -> Self {
+        indicator.store(true, Ordering::Relaxed);
+        Self {indicator}
+    }
+}
+
+impl<'a> Drop for RemovalGuard<'a> {
+    fn drop(&mut self) {
+        self.indicator.store(false, Ordering::Relaxed);
     }
 }
 

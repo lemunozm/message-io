@@ -173,13 +173,13 @@ impl NetworkEngine {
     pub fn connect(&self, adapter_id: u8, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         log::trace!("Connect to {} by adapter: {}", addr, adapter_id);
         self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)| {
-            log::trace!("Connected endpoint {}", endpoint);
+            log::trace!("Connected to {}", endpoint);
             (endpoint, addr)
         })
     }
 
     pub fn listen(&self, adapter_id: u8, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        log::trace!("Listen to {} by adapter: {}", addr, adapter_id);
+        log::trace!("Listen by {} by adapter: {}", addr, adapter_id);
         self.controllers[adapter_id as usize].listen(addr).map(|(resource_id, addr)| {
             log::trace!("Listening by {}", resource_id);
             (resource_id, addr)
@@ -187,15 +187,17 @@ impl NetworkEngine {
     }
 
     pub fn remove(&self, id: ResourceId) -> bool {
+        log::trace!("Remove {}", id);
         let value = self.controllers[id.adapter_id() as usize].remove(id);
-        log::trace!("Remove {}: {}", id, value);
+        log::trace!("Removed: {}", value);
         value
     }
 
     pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
+        log::trace!("Send {} bytes to {}", data.len(), endpoint);
         let status =
             self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
-        log::trace!("Send {} bytes to {}: {:?}", data.len(), endpoint, status);
+        log::trace!("Send status: {:?}", status);
         status
     }
 }

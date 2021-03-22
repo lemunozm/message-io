@@ -256,7 +256,7 @@ fn echo(transport: Transport, clients: usize) {
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {
-    //util::init_logger(LogThread::Disabled); // Enable it for better debugging
+    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
     let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
     let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
@@ -270,7 +270,7 @@ fn burst(transport: Transport, messages_count: usize) {
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, Transport::Udp.max_message_size()))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, BIG_MESSAGE_SIZE))]
 fn message_size(transport: Transport, message_size: usize) {
-    //util::init_logger(LogThread::Disabled); // Enable it for better debugging
+    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
     assert!(!transport.is_packet_based() || message_size <= transport.max_message_size());
 

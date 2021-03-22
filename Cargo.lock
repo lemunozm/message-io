@@ -418,6 +418,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "integer-encoding"
+version = "3.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "90c11140ffea82edce8dcd74137ce9324ec24b3cf0175fc9d7e29164da9915b8"
+
+[[package]]
 name = "itertools"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -502,6 +508,7 @@ dependencies = [
  "crossbeam",
  "fern",
  "httparse",
+ "integer-encoding",
  "lazy_static",
  "log",
  "mio",

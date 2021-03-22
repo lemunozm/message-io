@@ -1,20 +1,20 @@
-use std::convert::{TryInto};
+use integer_encoding::VarInt;
 
-pub type Padding = u32;
-pub const PADDING: usize = std::mem::size_of::<Padding>();
+/// This is the max required bytes to encode a u64 using the varint encoding scheme.
+/// It is size 10=ceil(64/7)
+pub const MAX_ENCODED_SIZE: usize = 10;
 
 /// Encode a message, returning the bytes that must be sent before the message.
-pub fn encode_size(message: &[u8]) -> [u8; PADDING] {
-    (message.len() as Padding).to_le_bytes()
+/// A buffer is used to avoid heap allocation.
+pub fn encode_size<'a>(message: &[u8], buf: &'a mut [u8; MAX_ENCODED_SIZE]) -> &'a [u8] {
+    let varint_size = message.len().encode_var(buf);
+    &buf[..varint_size]
 }
 
 /// Decodes an encoded value in a buffer.
-/// The function returns the message size or none if the buffer is less than [`PADDING`].
-pub fn decode_size(data: &[u8]) -> Option<usize> {
-    if data.len() < PADDING {
-        return None
-    }
-    data[..PADDING].try_into().map(|encoded| Padding::from_le_bytes(encoded) as usize).ok()
+/// The function returns the message size and the consumed bytes or none if the buffer is too small.
+pub fn decode_size(data: &[u8]) -> Option<(usize, usize)> {
+    usize::decode_var(data)
 }
 
 /// Used to decoded one message from several/partial data chunks
@@ -34,8 +34,8 @@ impl Decoder {
     fn try_decode(&mut self, data: &[u8], mut decoded_callback: impl FnMut(&[u8])) {
         let mut next_data = data;
         loop {
-            if let Some(expected_size) = decode_size(&next_data) {
-                let remaining = &next_data[PADDING..];
+            if let Some((expected_size, used_bytes)) = decode_size(&next_data) {
+                let remaining = &next_data[used_bytes..];
                 if remaining.len() >= expected_size {
                     let (decoded, not_decoded) = remaining.split_at(expected_size);
                     decoded_callback(decoded);
@@ -55,25 +55,25 @@ impl Decoder {
 
     fn store_and_decoded_data<'a>(&mut self, data: &'a [u8]) -> Option<(&[u8], &'a [u8])> {
         // Process frame header
-        let (expected_size, data) = match decode_size(&self.stored) {
-            Some(size) => (size, data),
+        let ((expected_size, used_bytes), data) = match decode_size(&self.stored) {
+            Some(size_info) => (size_info, data),
             None => {
-                let remaining = PADDING - self.stored.len();
-                if data.len() >= remaining {
-                    // Now, we can now the size
-                    self.stored.extend_from_slice(&data[..remaining]);
-                    (decode_size(&self.stored).unwrap(), &data[remaining..])
-                }
-                else {
-                    // We need more data to know the size
-                    self.stored.extend_from_slice(data);
+                // we append at most the potential data needed to decode the size
+                let max_remaining = (MAX_ENCODED_SIZE - self.stored.len()).min(data.len());
+                self.stored.extend_from_slice(&data[..max_remaining]);
+
+                if let Some(x) = decode_size(&self.stored) {
+                    // Now we know the size
+                    (x, &data[max_remaining..])
+                } else {
+                    // We still don't know the size (data was too small)
                     return None
                 }
             }
         };
 
         // At this point we know at least the expected size of the frame.
-        let remaining = expected_size - (self.stored.len() - PADDING);
+        let remaining = expected_size - (self.stored.len() - used_bytes);
         if data.len() < remaining {
             // We need more data to decoder
             self.stored.extend_from_slice(data);
@@ -83,7 +83,7 @@ impl Decoder {
             // We can complete a message here
             let (to_store, remaining) = data.split_at(remaining);
             self.stored.extend_from_slice(to_store);
-            Some((&self.stored[PADDING..], remaining))
+            Some((&self.stored[used_bytes..], remaining))
         }
     }
 
@@ -118,14 +118,15 @@ mod tests {
     use super::*;
 
     const MESSAGE_SIZE: usize = 20; // only works if (X + PADDING ) % 6 == 0
-    const ENCODED_MESSAGE_SIZE: usize = PADDING + MESSAGE_SIZE;
+    const ENCODED_MESSAGE_SIZE: usize = 1 + MESSAGE_SIZE; // 1 = log_2(20)/7
     const MESSAGE: [u8; MESSAGE_SIZE] = [42; MESSAGE_SIZE];
     const MESSAGE_A: [u8; MESSAGE_SIZE] = ['A' as u8; MESSAGE_SIZE];
     const MESSAGE_B: [u8; MESSAGE_SIZE] = ['B' as u8; MESSAGE_SIZE];
     const MESSAGE_C: [u8; MESSAGE_SIZE] = ['C' as u8; MESSAGE_SIZE];
 
     fn encode_message(buffer: &mut Vec<u8>, message: &[u8]) {
-        buffer.extend_from_slice(&encode_size(message));
+        let mut buf = [0; MAX_ENCODED_SIZE];
+        buffer.extend_from_slice(&*encode_size(message, &mut buf));
         buffer.extend_from_slice(message);
     }
 
@@ -135,9 +136,22 @@ mod tests {
         encode_message(&mut buffer, &MESSAGE);
 
         assert_eq!(ENCODED_MESSAGE_SIZE, buffer.len());
-        let expected_size = decode_size(&buffer).unwrap();
+        let (expected_size, used_bytes) = decode_size(&buffer).unwrap();
         assert_eq!(MESSAGE_SIZE, expected_size);
-        assert_eq!(&MESSAGE, &buffer[PADDING..]);
+        assert_eq!(used_bytes, 1);
+        assert_eq!(&MESSAGE, &buffer[used_bytes..]);
+    }
+
+    #[test]
+    fn encode_one_big_message() {
+        let mut buffer = Vec::new();
+        encode_message(&mut buffer, &vec![0; 1000]);
+
+        assert_eq!(1002, buffer.len());
+        let (expected_size, used_bytes) = decode_size(&buffer).unwrap();
+        assert_eq!(1000, expected_size);
+        assert_eq!(used_bytes, 2);
+        assert_eq!(&vec![0; 1000], &buffer[used_bytes..]);
     }
 
     #[test]
@@ -307,28 +321,29 @@ mod tests {
     }
 
     #[test]
-    // [ 3B ][   remaining   ]
+    // [ 1B ][   remaining   ]
     // [       message       ]
     fn decode_message_after_non_enough_padding() {
+        let msg = [0; 1000];
         let mut buffer = Vec::new();
-        encode_message(&mut buffer, &MESSAGE);
+        encode_message(&mut buffer, &msg);
 
-        let (start_3b, remaining) = buffer.split_at(3);
+        let (start_1b, remaining) = buffer.split_at(2);
 
         let mut decoder = Decoder::default();
 
         let mut times_called = 0;
-        decoder.decode(&start_3b, |_decoded| {
+        decoder.decode(&start_1b, |_decoded| {
             // Should not be called
             times_called += 1;
         });
 
         assert_eq!(0, times_called);
-        assert_eq!(3, decoder.stored.len());
+        assert_eq!(2, decoder.stored.len());
 
         decoder.decode(&remaining, |decoded| {
             times_called += 1;
-            assert_eq!(MESSAGE, decoded);
+            assert_eq!(msg, decoded);
         });
 
         assert_eq!(1, times_called);
@@ -336,29 +351,40 @@ mod tests {
     }
 
     #[test]
-    // [ 3B ][ 1B ]
-    // [  message ]
-    fn decode_message_no_size_after_non_enough_padding() {
+    // [ 1B ][ 1B ][ remaining   ]
+    // [         message         ]
+    fn decode_message_var_size_in_two_data() {
+        let msg = [0; 1000];
         let mut buffer = Vec::new();
-        encode_message(&mut buffer, &[]);
+        encode_message(&mut buffer, &msg);
 
-        let (start_3b, remaining) = buffer.split_at(3);
+        let (start_1b, remaining) = buffer.split_at(1);
 
         let mut decoder = Decoder::default();
 
         let mut times_called = 0;
-        decoder.decode(&start_3b, |_decoded| {
+        decoder.decode(&start_1b, |_decoded| {
             // Should not be called
             times_called += 1;
         });
 
         assert_eq!(0, times_called);
-        assert_eq!(3, decoder.stored.len());
+        assert_eq!(1, decoder.stored.len());
+
+        let (next_1b, remaining) = remaining.split_at(1);
 
         let mut times_called = 0;
-        decoder.decode(&remaining, |_decoded| {
+        decoder.decode(&next_1b, |_decoded| {
             // Should not be called
             times_called += 1;
+        });
+
+        assert_eq!(0, times_called);
+        assert_eq!(2, decoder.stored.len());
+
+        decoder.decode(&remaining, |decoded| {
+            times_called += 1;
+            assert_eq!(msg, decoded);
         });
 
         assert_eq!(1, times_called);

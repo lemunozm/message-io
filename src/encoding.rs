@@ -9,7 +9,7 @@ pub fn encode_size<'a>(message: &[u8], buf: &'a mut [u8; 10]) -> &'a [u8] {
 }
 
 /// Decodes an encoded value in a buffer.
-/// The function returns the message size or none if the buffer is less than [`PADDING`].
+/// The function returns the message size or none if the buffer is too small.
 pub fn decode_size(data: &[u8]) -> Option<(usize, usize)> {
     usize::decode_var(data)
 }

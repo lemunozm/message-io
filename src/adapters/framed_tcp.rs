@@ -19,7 +19,7 @@ const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
 /// The max packet value for tcp.
 /// Although this size is very high, it is preferred send data in smaller chunks with a rate
 /// to not saturate the receiver thread in the endpoint.
-pub const MAX_TCP_PAYLOAD_LEN: usize = encoding::Padding::MAX as usize;
+pub const MAX_TCP_PAYLOAD_LEN: usize = usize::MAX;
 
 pub struct FramedTcpAdapter;
 impl Adapter for FramedTcpAdapter {
@@ -92,11 +92,11 @@ impl Remote for RemoteResource {
         let encoded_size = encoding::encode_size(data);
 
         let mut total_bytes_sent = 0;
-        let total_bytes = encoding::PADDING + data.len();
+        let total_bytes = encoded_size.len() + data.len();
         loop {
-            let data_to_send = match total_bytes_sent < encoding::PADDING {
+            let data_to_send = match total_bytes_sent < encoded_size.len() {
                 true => &encoded_size[total_bytes_sent..],
-                false => &data[total_bytes_sent - encoding::PADDING..],
+                false => &data[total_bytes_sent - encoded_size.len()..],
             };
 
             let stream = &self.stream;

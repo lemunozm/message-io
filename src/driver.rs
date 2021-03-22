@@ -129,7 +129,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
     fn process_remote(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
-        if let Some(remote) = self.remote_registry.get_protected(id) {
+        if let Some(remote) = self.remote_registry.get(id) {
             let endpoint = Endpoint::new(id, remote.addr);
             log::trace!("Processed remote for {}", endpoint);
             let status = remote.resource.receive(&|data| {
@@ -137,8 +137,8 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
             });
             log::trace!("Processed remote receive status {}", status);
 
-            // The user in the callback could have removed the same resource.
             if let ReadStatus::Disconnected = status {
+                // Checked becasue, the user in the callback could have removed the same resource.
                 if self.remote_registry.remove(id) {
                     event_callback(AdapterEvent::Removed(endpoint));
                 }
@@ -147,7 +147,7 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
     }
 
     fn process_local(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
-        if let Some(local) = self.local_registry.get_protected(id) {
+        if let Some(local) = self.local_registry.get(id) {
             log::trace!("Processed local for {}", id);
             local.resource.accept(&|accepted| {
                 log::trace!("Processed local accepted type {}", accepted);

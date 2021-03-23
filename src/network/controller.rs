@@ -206,7 +206,7 @@ impl Network {
     /// the corresponding IO error is returned.
     /// This function blocks until the resource has been connected and is ready to use.
     pub fn connect(
-        &mut self,
+        &self,
         transport: Transport,
         addr: impl ToRemoteAddr,
     ) -> io::Result<(Endpoint, SocketAddr)> {
@@ -221,7 +221,7 @@ impl Network {
     /// The address is returned despite you passed as parameter because
     /// when a `0` port is specified, the OS will give choose the value.
     pub fn listen(
-        &mut self,
+        &self,
         transport: Transport,
         addr: impl ToSocketAddrs,
     ) -> io::Result<(ResourceId, SocketAddr)> {
@@ -241,7 +241,7 @@ impl Network {
     /// if you remove this resource you are removing the listener of all of them.
     /// For that cases there is no need to remove the resource because non-oriented connections
     /// have not connection itself to close, 'there is no spoon'.
-    pub fn remove(&mut self, resource_id: ResourceId) -> bool {
+    pub fn remove(&self, resource_id: ResourceId) -> bool {
         self.engine.remove(resource_id)
     }
 
@@ -249,7 +249,7 @@ impl Network {
     /// The funcion panics if the endpoint do not exists in the [`Network`].
     /// If the endpoint disconnects during the sending, a `Disconnected` event is generated.
     /// A [`SendStatus`] is returned with the information about the sending.
-    pub fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
+    pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         self.engine.send(endpoint, data)
     }
 }
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn remove_listener() {
-        let (mut network, mut events) = Network::split();
+        let (network, mut events) = Network::split();
         let (listener_id, _) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
         assert!(network.remove(listener_id));
         assert!(!network.remove(listener_id));
@@ -274,7 +274,7 @@ mod tests {
 
     #[test]
     fn remove_listener_with_connections() {
-        let (mut network, mut events) = Network::split();
+        let (network, mut events) = Network::split();
         let (listener_id, addr) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
         network.connect(Transport::Tcp, addr).unwrap();
         match events.receive_timeout(*TIMEOUT).unwrap() {

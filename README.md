@@ -106,7 +106,7 @@ use message_io::network::{Network, NetEvent, Transport};
 
 fn main() {
     // Create a Network with an associated event queue for reading its events.
-    let (mut network, mut events) = Network::split();
+    let (network, mut events) = Network::split();
 
     // Listen for TCP, UDP and WebSocket messages.
     network.listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap(); // Tcp encoded for packets
@@ -143,7 +143,7 @@ enum Event {
 
 fn main() {
     // The split_and_map() version allows to combine network events with your application events.
-    let (mut network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
+    let (network, mut events) = Network::split_and_map(|net_event| Event::Net(net_event));
 
     // You can change the transport to Udp or Ws (WebSocket).
     let (server, _) = network.connect(Transport::FramedTcp, "127.0.0.1:3042").unwrap();

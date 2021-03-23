@@ -19,7 +19,7 @@ pub const TIMEOUT_MSG_EXPECTED_ERR: &'static str = "Timeout, but a message was e
 fn latency_by(c: &mut Criterion, transport: Transport) {
     let msg = format!("latency by {}", transport);
     c.bench_function(&msg, |b| {
-        let (mut network, mut events) = Network::split();
+        let (network, mut events) = Network::split();
 
         let receiver_addr = network.listen(transport, "127.0.0.1:0").unwrap().1;
         let receiver = network.connect(transport, receiver_addr).unwrap().0;
@@ -49,7 +49,7 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
         let mut group = c.benchmark_group(format!("throughput by {}", transport));
         group.throughput(Throughput::Bytes(block_size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(block_size), &block_size, |b, &size| {
-            let (mut network, mut events) = Network::split();
+            let (network, mut events) = Network::split();
             let receiver_addr = network.listen(transport, "127.0.0.1:0").unwrap().1;
             let receiver = network.connect(transport, receiver_addr).unwrap().0;
 

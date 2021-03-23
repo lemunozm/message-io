@@ -1,7 +1,6 @@
 //! See the [Github README](https://github.com/lemunozm/message-io),
 //! to see an overview of this library.
 
-mod thread;
 mod resource_id;
 mod endpoint;
 mod poll;
@@ -28,6 +27,5 @@ pub mod events;
 /// it must be used from the internals to build new adapters.
 pub mod adapter;
 
-/// Frame encoding to convert a data stream into packets.
-/// It can be used as a utility to build adapters.
-pub mod encoding;
+/// General purpose utilities.
+pub mod util;

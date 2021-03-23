@@ -3,7 +3,7 @@ use crate::adapter::{
     ListeningInfo,
 };
 use crate::remote_addr::{RemoteAddr};
-use crate::encoding::{self, Decoder, MAX_ENCODED_SIZE};
+use crate::util::encoding::{self, Decoder, MAX_ENCODED_SIZE};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};

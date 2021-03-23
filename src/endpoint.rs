@@ -31,6 +31,6 @@ impl Endpoint {
 
 impl std::fmt::Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}:{}", self.resource_id, self.addr)
+        write!(f, "{} {}", self.resource_id, self.addr)
     }
 }

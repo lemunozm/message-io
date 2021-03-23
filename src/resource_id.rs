@@ -12,7 +12,7 @@ pub enum ResourceType {
 /// Unique identifier of a network resource in your system.
 /// The identifier wrap 3 values,
 /// - The type, that can be a value of [ResourceType].
-/// - The adapter id, that represent the adapter that creates this id
+/// - The adapter id, that represents the adapter that creates this id
 /// - The base value: that is an unique identifier of the resource inside of its adapter.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ResourceId {
@@ -23,7 +23,8 @@ impl ResourceId {
     const ADAPTER_ID_POS: usize = 0;
     const RESOURCE_TYPE_POS: usize = 7;
     const BASE_VALUE_POS: usize = 8;
-    const ADAPTER_ID_MASK: u8 = 0b01111111; // 7 bits
+
+    const ADAPTER_ID_MASK: u8 = 0b01111111; // 5 bits
     const BASE_VALUE_MASK: usize = 0xFFFFFFFFFFFFFF00_u64 as usize; // 7 bytes
 
     pub const MAX_BASE_VALUE: usize = (Self::BASE_VALUE_MASK >> Self::BASE_VALUE_POS);
@@ -31,15 +32,16 @@ impl ResourceId {
     pub const MAX_ADAPTERS: usize = Self::MAX_ADAPTER_ID as usize + 1;
 
     fn new(adapter_id: u8, resource_type: ResourceType, base_value: usize) -> Self {
-        assert_eq!(
-            (adapter_id << Self::ADAPTER_ID_POS) & Self::ADAPTER_ID_MASK,
-            adapter_id << Self::ADAPTER_ID_POS,
-            "The adapter_id value uses bits outside of the mask"
+        assert!(
+            adapter_id <= Self::MAX_ADAPTER_ID,
+            "The adapter_id must be less than {}",
+            Self::MAX_ADAPTER_ID + 1,
         );
-        assert_eq!(
-            (base_value << Self::BASE_VALUE_POS) & Self::BASE_VALUE_MASK,
-            base_value << Self::BASE_VALUE_POS,
-            "The base_value value uses bits outside of the mask"
+
+        assert!(
+            base_value <= Self::MAX_BASE_VALUE,
+            "The base_value must be less than {}",
+            Self::MAX_BASE_VALUE + 1,
         );
 
         let resource_type = match resource_type {
@@ -47,12 +49,11 @@ impl ResourceId {
             ResourceType::Remote => 0,
         };
 
-        Self { id: base_value << Self::BASE_VALUE_POS | resource_type | adapter_id as usize }
-    }
-
-    /// Creates a [ResourceId] from an id
-    pub fn from(raw: usize) -> Self {
-        Self { id: raw }
+        Self {
+            id: (adapter_id as usize) << Self::ADAPTER_ID_POS
+                | resource_type
+                | base_value << Self::BASE_VALUE_POS,
+        }
     }
 
     /// Returns the internal representation of this id
@@ -70,7 +71,9 @@ impl ResourceId {
         }
     }
 
-    /// Returns the associated transport adapter id.
+    /// Returns the associated adapter id.
+    /// Note that this returned value is the same as the value of `crate::network::Transport::id()`
+    /// if that transport uses the same adapter.
     pub fn adapter_id(&self) -> u8 {
         ((self.id & Self::ADAPTER_ID_MASK as usize) >> Self::ADAPTER_ID_POS) as u8
     }
@@ -81,13 +84,19 @@ impl ResourceId {
     }
 }
 
+impl From<usize> for ResourceId {
+    fn from(raw: usize) -> Self {
+        Self { id: raw }
+    }
+}
+
 impl std::fmt::Display for ResourceId {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let resource_type = match self.resource_type() {
             ResourceType::Local => "L",
             ResourceType::Remote => "R",
         };
-        write!(f, "{}.{}.{}", self.adapter_id(), resource_type, self.base_value())
+        write!(f, "[{}.{}.{}]", self.adapter_id(), resource_type, self.base_value())
     }
 }
 
@@ -110,7 +119,7 @@ impl ResourceIdGenerator {
     }
 
     /// Generates a new id.
-    /// This id will contain information about the [ResourceType] and the associated adapter.
+    /// This id will contain information about the [`ResourceType`] and the associated adapter.
     pub fn generate(&self) -> ResourceId {
         let last = self.last.fetch_add(1, Ordering::SeqCst);
         ResourceId::new(self.adapter_id, self.resource_type, last)

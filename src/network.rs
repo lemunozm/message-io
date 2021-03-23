@@ -49,6 +49,7 @@ impl From<AdapterEvent<'_>> for NetEvent {
 /// Network is in charge of managing all the connections transparently.
 /// It transforms raw data from the network into message events and vice versa,
 /// and manages the different adapters for you.
+/// Also, the network instance is sharable among threads
 pub struct Network {
     engine: NetworkEngine,
 }
@@ -58,14 +59,29 @@ impl Network {
     /// The user must register an event_callback that can be called each time
     /// an internal adapter generates an event.
     /// This function is used when the user needs to perform some action over the raw data
-    /// comming from an adapter, without using a [`EventQueue`].
-    /// If you will want to use an `EventQueue` you can use [`Network::split()`],
+    /// comming from an adapter, without using a [`EventQueue`] and
+    /// avoiding the copy that implies using an event queue.
+    /// If you want to use an `EventQueue` you can use [`Network::split()`],
     /// [`Network::split_and_map()`] or [`Network::split_and_map_from_adapter()`] functions.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use message_io::network::{Network, AdapterEvent};
+    ///
+    /// let network = Network::new(|adapter_event| {
+    ///     if let AdapterEvent::Data(endpoint, data) = adapter_event {
+    ///         // Note that 'data' references directly the internal buffer of the adapter.
+    ///         // ...
+    ///     }
+    /// });
+    /// ```
     pub fn new(event_callback: impl Fn(AdapterEvent) + Send + 'static) -> Network {
         let mut launcher = AdapterLauncher::default();
         Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
-        let engine = NetworkEngine::new(launcher, event_callback);
+        let engine = NetworkEngine::new(launcher);
+        engine.run(event_callback);
 
         Network { engine }
     }

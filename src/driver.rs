@@ -1,13 +1,12 @@
 use crate::endpoint::{Endpoint};
 use crate::resource_id::{ResourceId, ResourceType};
-use crate::poll::{Poll, PollRegister};
+use crate::poll::{Poll};
+use crate::registry::{ResourceRegistry};
 use crate::remote_addr::{RemoteAddr};
-use crate::adapter::{Resource, Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
-use crate::util::{OTHER_THREAD_ERR};
+use crate::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
 
-use std::collections::{HashMap};
 use std::net::{SocketAddr};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc};
 use std::io::{self};
 
 /// Struct used to identify and event that an adapter has been produced.
@@ -26,53 +25,20 @@ pub enum AdapterEvent<'a> {
     Removed(Endpoint),
 }
 
-pub struct ResourceRegister<S> {
-    // We store the most significant addr of the resource because if the resource disconnects,
-    // it can not be retrieved.
-    // If the resource is a remote resource, the addr will be the peer addr.
-    // If the resource is a local resource, the addr will be the local addr.
-    resources: RwLock<HashMap<ResourceId, (S, SocketAddr)>>,
-    poll_register: PollRegister,
+pub trait ActionController: Send + Sync {
+    fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)>;
+    fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
+    fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
+    fn remove(&self, id: ResourceId) -> bool;
 }
 
-impl<S: Resource> ResourceRegister<S> {
-    pub fn new(poll_register: PollRegister) -> ResourceRegister<S> {
-        ResourceRegister { resources: RwLock::new(HashMap::new()), poll_register }
-    }
-
-    pub fn add(&self, mut resource: S, addr: SocketAddr) -> ResourceId {
-        let id = self.poll_register.add(resource.source());
-        self.resources.write().expect(OTHER_THREAD_ERR).insert(id, (resource, addr));
-        id
-    }
-
-    pub fn remove(&self, id: ResourceId) -> Option<(S, SocketAddr)> {
-        let poll_register = &self.poll_register;
-        self.resources.write().expect(OTHER_THREAD_ERR).remove(&id).map(|(mut resource, addr)| {
-            poll_register.remove(resource.source());
-            (resource, addr)
-        })
-    }
-
-    pub fn resources(&self) -> &RwLock<HashMap<ResourceId, (S, SocketAddr)>> {
-        &self.resources
-    }
-}
-
-pub trait ActionController {
-    fn connect(&mut self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)>;
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
-    fn remove(&mut self, id: ResourceId) -> bool;
-}
-
-pub trait EventProcessor {
-    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
+pub trait EventProcessor: Send + Sync {
+    fn process(&self, resource_id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
 }
 
 pub struct Driver<R: Remote, L: Local> {
-    remote_register: Arc<ResourceRegister<R>>,
-    local_register: Arc<ResourceRegister<L>>,
+    remote_registry: Arc<ResourceRegistry<R>>,
+    local_registry: Arc<ResourceRegistry<L>>,
 }
 
 impl<R: Remote, L: Local> Driver<R, L> {
@@ -81,12 +47,12 @@ impl<R: Remote, L: Local> Driver<R, L> {
         adapter_id: u8,
         poll: &mut Poll,
     ) -> Driver<R, L> {
-        let remote_poll_register = poll.create_register(adapter_id, ResourceType::Remote);
-        let local_poll_register = poll.create_register(adapter_id, ResourceType::Local);
+        let remote_poll_registry = poll.create_registry(adapter_id, ResourceType::Remote);
+        let local_poll_registry = poll.create_registry(adapter_id, ResourceType::Local);
 
         Driver {
-            remote_register: Arc::new(ResourceRegister::<R>::new(remote_poll_register)),
-            local_register: Arc::new(ResourceRegister::<L>::new(local_poll_register)),
+            remote_registry: Arc::new(ResourceRegistry::<R>::new(remote_poll_registry)),
+            local_registry: Arc::new(ResourceRegistry::<L>::new(local_poll_registry)),
         }
     }
 }
@@ -94,34 +60,35 @@ impl<R: Remote, L: Local> Driver<R, L> {
 impl<R: Remote, L: Local> Clone for Driver<R, L> {
     fn clone(&self) -> Driver<R, L> {
         Driver {
-            remote_register: self.remote_register.clone(),
-            local_register: self.local_register.clone(),
+            remote_registry: self.remote_registry.clone(),
+            local_registry: self.local_registry.clone(),
         }
     }
 }
 
 impl<R: Remote, L: Local> ActionController for Driver<R, L> {
-    fn connect(&mut self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
-        let remotes = &mut self.remote_register;
+    fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         R::connect(addr).map(|info| {
             (
-                Endpoint::new(remotes.add(info.remote, info.peer_addr), info.peer_addr),
+                Endpoint::new(
+                    self.remote_registry.add(info.remote, info.peer_addr),
+                    info.peer_addr,
+                ),
                 info.local_addr,
             )
         })
     }
 
-    fn listen(&mut self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        let locals = &mut self.local_register;
-        L::listen(addr).map(|info| (locals.add(info.local, info.local_addr), info.local_addr))
+    fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+        L::listen(addr)
+            .map(|info| (self.local_registry.add(info.local, info.local_addr), info.local_addr))
     }
 
-    fn send(&mut self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
+    fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         match endpoint.resource_id().resource_type() {
             ResourceType::Remote => {
-                let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
-                match remotes.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => resource.send(data),
+                match self.remote_registry.get(endpoint.resource_id()) {
+                    Some(remote) => remote.resource.send(data),
 
                     // TODO: currently there is not a safe way to know if this is
                     // reached because of a user API error (send over already resource removed)
@@ -131,76 +98,71 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
                     None => SendStatus::ResourceNotFound,
                 }
             }
-            ResourceType::Local => {
-                let locals = self.local_register.resources().read().expect(OTHER_THREAD_ERR);
-                match locals.get(&endpoint.resource_id()) {
-                    Some((resource, _)) => resource.send_to(endpoint.addr(), data),
-                    None => {
-                        panic!(
-                            "Error: You are trying to send by a local resource \
-                               that does not exists"
-                        )
-                    }
+            ResourceType::Local => match self.local_registry.get(endpoint.resource_id()) {
+                Some(remote) => remote.resource.send_to(endpoint.addr(), data),
+                None => {
+                    panic!(
+                        "Error: You are trying to send by a local resource \
+                        that does not exists"
+                    )
                 }
-            }
+            },
         }
     }
 
-    fn remove(&mut self, id: ResourceId) -> bool {
+    fn remove(&self, id: ResourceId) -> bool {
         match id.resource_type() {
-            ResourceType::Remote => self.remote_register.remove(id).map(|_| ()).is_some(),
-            ResourceType::Local => self.local_register.remove(id).map(|_| ()).is_some(),
+            ResourceType::Remote => self.remote_registry.remove(id),
+            ResourceType::Local => self.local_registry.remove(id),
         }
     }
 }
 
 impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
-    fn try_process(&mut self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+    fn process(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
         match id.resource_type() {
-            ResourceType::Remote => {
-                let remotes = self.remote_register.resources().read().expect(OTHER_THREAD_ERR);
-                let mut to_remove: Option<Endpoint> = None;
-                if let Some((remote, addr)) = remotes.get(&id) {
-                    let endpoint = Endpoint::new(id, *addr);
-                    let status = remote.receive(&|data| {
-                        log::trace!("Read {} bytes from {}", data.len(), id);
-                        event_callback(AdapterEvent::Data(endpoint, data));
-                    });
-                    log::trace!("Processed receive {}, for {}", status, endpoint);
-                    if let ReadStatus::Disconnected = status {
-                        to_remove = Some(endpoint);
-                    }
-                }
+            ResourceType::Remote => self.process_remote(id, event_callback),
+            ResourceType::Local => self.process_local(id, event_callback),
+        }
+    }
+}
 
-                drop(remotes);
+impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
+    fn process_remote(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+        if let Some(remote) = self.remote_registry.get(id) {
+            let endpoint = Endpoint::new(id, remote.addr);
+            log::trace!("Processed remote for {}", endpoint);
+            let status = remote.resource.receive(&|data| {
+                event_callback(AdapterEvent::Data(endpoint, data));
+            });
+            log::trace!("Processed remote receive status {}", status);
 
-                if let Some(endpoint) = to_remove {
-                    self.remote_register.remove(id);
+            if let ReadStatus::Disconnected = status {
+                // Checked becasue, the user in the callback could have removed the same resource.
+                if self.remote_registry.remove(id) {
                     event_callback(AdapterEvent::Removed(endpoint));
                 }
             }
-            ResourceType::Local => {
-                let locals = self.local_register.resources().read().expect(OTHER_THREAD_ERR);
+        }
+    }
 
-                let remotes = &mut self.remote_register;
-
-                if let Some((local, _)) = locals.get(&id) {
-                    local.accept(&|accepted| {
-                        log::trace!("Processed accept {} for {}", accepted, id);
-                        match accepted {
-                            AcceptedType::Remote(addr, remote) => {
-                                let remote_id = remotes.add(remote, addr);
-                                let endpoint = Endpoint::new(remote_id, addr);
-                                event_callback(AdapterEvent::Added(endpoint, id));
-                            }
-                            AcceptedType::Data(addr, data) => {
-                                let endpoint = Endpoint::new(id, addr);
-                                event_callback(AdapterEvent::Data(endpoint, data));
-                            }
-                        }
-                    });
+    fn process_local(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+        if let Some(local) = self.local_registry.get(id) {
+            log::trace!("Processed local for {}", id);
+            local.resource.accept(&|accepted| {
+                log::trace!("Processed local accepted type {}", accepted);
+                match accepted {
+                    AcceptedType::Remote(addr, remote) => {
+                        let remote_id = self.remote_registry.add(remote, addr);
+                        let endpoint = Endpoint::new(remote_id, addr);
+                        event_callback(AdapterEvent::Added(endpoint, id));
+                    }
+                    AcceptedType::Data(addr, data) => {
+                        let endpoint = Endpoint::new(id, addr);
+                        event_callback(AdapterEvent::Data(endpoint, data));
+                    }
                 }
-            }
+            });
         }
     }
 }

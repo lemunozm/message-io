@@ -32,8 +32,9 @@ pub struct RemoteResource {
     decoder: RefCell<Decoder>,
 }
 
-/// That RefCell<Decoder> can be used with Sync because it is only used in the read_event.
-/// This way, we save the cost of a Mutex.
+// SAFETY:
+// That RefCell<Decoder> can be used with Sync because the decoder is only used in the read_event.
+// This way, we save the cost of a Mutex.
 unsafe impl Sync for RemoteResource {}
 
 impl From<TcpStream> for RemoteResource {

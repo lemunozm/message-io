@@ -4,7 +4,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     let my_name = match args.get(1) {
         Some(name) => name,
-        None => return println!("Please choose a name"),
+        None => return println!("Please, choose a name"),
     };
 
     let (mut network, mut events) = Network::split();

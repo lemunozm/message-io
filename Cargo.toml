@@ -42,6 +42,7 @@ chrono = "0.4.19"
 test-case = "1.1.0"
 rand = "0.8.3"
 httparse = "1.3.5"
+doc-comment = "0.3"
 
 # Only for tests
 #![cfg_attr(test, feature(proc_macro))]

@@ -1,6 +1,10 @@
 //! See the [Github README](https://github.com/lemunozm/message-io),
 //! to see an overview of this library.
 
+// Tells rustdoc where is the README to compile and test the rust code there
+#[cfg(doctest)]
+doc_comment::doctest!("../README.md");
+
 mod resource_id;
 mod endpoint;
 mod poll;

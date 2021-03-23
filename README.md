@@ -65,13 +65,15 @@ You could change the transport of your application in literally one line.
 
 ## Getting started
 Add to your `Cargo.toml` (all the transports included by default):
-```
+```toml
+[dependencies]
 message-io = "0.11"
 ```
 If you **only** want to use a subset of the available transport battery,
 you can select them by their associated features `tcp`, `udp`, and `websocket`.
 For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
-```
+```toml
+[dependencies]
 message-io = { version = "0.11", default-features = false, features = ["tcp", "udp"] }
 ```
 
@@ -99,7 +101,7 @@ to them.
 It is capable to manage several client connections and listen from 3 differents protocols
 at the same time.
 
-```rust
+```rust,no_run
 use message_io::network::{Network, NetEvent, Transport};
 
 fn main() {
@@ -130,7 +132,7 @@ It sends a message each second to the server and listen its echo response.
 Changing the `Transport::FramedTcp` to `Udp` or `Ws` will change the underlying transport used.
 Also, you can create the number of connections you want at the same time, without any extra thread.
 
-```rust
+```rust,no_run
 use message_io::network::{Network, NetEvent, Transport};
 
 enum Event {
@@ -169,11 +171,11 @@ Clone the repository and test the *Ping Pong* example
 (similar to the *echo* example but more vitaminized).
 
 Run the server:
-```
+```sh
 cargo run --example ping-pong server tcp 3456
 ```
 Run the client:
-```
+```sh
 cargo run --example ping-pong client tcp 127.0.0.1:3456
 ```
 

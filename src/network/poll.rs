@@ -1,4 +1,4 @@
-use crate::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
+use super::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
 
 use mio::{Poll as MioPoll, Interest, Token, Events, Registry, Waker};
 use mio::event::{Source};

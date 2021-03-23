@@ -1,10 +1,11 @@
-use crate::endpoint::{Endpoint};
-use crate::resource_id::{ResourceId};
-use crate::poll::{Poll, PollEvent};
+use super::endpoint::{Endpoint};
+use super::resource_id::{ResourceId};
+use super::poll::{Poll, PollEvent};
+use super::remote_addr::{RemoteAddr};
+use super::driver::{AdapterEvent, ActionController, EventProcessor, Driver};
+use super::network_thread::{NetworkThread};
+
 use crate::adapter::{Adapter, SendStatus};
-use crate::remote_addr::{RemoteAddr};
-use crate::driver::{AdapterEvent, ActionController, EventProcessor, Driver};
-use crate::network_thread::{NetworkThread};
 
 use std::net::{SocketAddr};
 use std::io::{self};

@@ -1,6 +1,6 @@
-use crate::util::thread::{RunnableThread};
+use super::poll::{Poll, PollEvent};
 
-use crate::poll::{Poll, PollEvent};
+use crate::util::thread::{RunnableThread};
 
 use std::time::{Duration};
 

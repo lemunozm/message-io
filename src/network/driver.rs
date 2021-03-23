@@ -1,8 +1,9 @@
-use crate::endpoint::{Endpoint};
-use crate::resource_id::{ResourceId, ResourceType};
-use crate::poll::{Poll};
-use crate::registry::{ResourceRegistry};
-use crate::remote_addr::{RemoteAddr};
+use super::endpoint::{Endpoint};
+use super::resource_id::{ResourceId, ResourceType};
+use super::poll::{Poll};
+use super::registry::{ResourceRegistry};
+use super::remote_addr::{RemoteAddr};
+
 use crate::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
 
 use std::net::{SocketAddr};

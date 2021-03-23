@@ -1,5 +1,6 @@
-use crate::resource_id::{ResourceId};
-use crate::poll::{PollRegistry};
+use super::resource_id::{ResourceId};
+use super::poll::{PollRegistry};
+
 use crate::adapter::{Resource};
 use crate::util::thread::{OTHER_THREAD_ERR};
 

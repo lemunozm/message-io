@@ -1,7 +1,7 @@
 //! See the [Github README](https://github.com/lemunozm/message-io),
 //! to see an overview of this library.
 
-mod util;
+mod thread;
 mod resource_id;
 mod endpoint;
 mod poll;

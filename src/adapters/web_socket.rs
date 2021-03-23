@@ -3,7 +3,7 @@ use crate::adapter::{
     ListeningInfo,
 };
 use crate::remote_addr::{RemoteAddr};
-use crate::util::{OTHER_THREAD_ERR};
+use crate::thread::{OTHER_THREAD_ERR};
 
 use mio::event::{Source};
 use mio::net::{TcpStream, TcpListener};

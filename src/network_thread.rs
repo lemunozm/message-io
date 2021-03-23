@@ -1,4 +1,4 @@
-use crate::util::{RunnableThread};
+use crate::thread::{RunnableThread};
 
 use crate::poll::{Poll, PollEvent};
 

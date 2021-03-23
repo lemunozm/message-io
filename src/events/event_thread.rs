@@ -1,6 +1,6 @@
 use super::queue::{EventQueue};
 
-use crate::util::{RunnableThread};
+use crate::thread::{RunnableThread};
 
 use std::time::{Duration};
 

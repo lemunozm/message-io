@@ -5,7 +5,7 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 
 pub const OTHER_THREAD_ERR: &str = "This error is shown because other thread has panicked \
-                                    You can safety skip this error.";
+                                  You can safety skip this error.";
 
 pub enum ThreadState<S: Send + 'static> {
     Ready(S),

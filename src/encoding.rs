@@ -65,7 +65,8 @@ impl Decoder {
                 if let Some(x) = decode_size(&self.stored) {
                     // Now we know the size
                     (x, &data[max_remaining..])
-                } else {
+                }
+                else {
                     // We still don't know the size (data was too small)
                     return None
                 }

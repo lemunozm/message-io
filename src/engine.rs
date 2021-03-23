@@ -4,15 +4,9 @@ use crate::poll::{Poll, PollEvent};
 use crate::adapter::{Adapter, SendStatus};
 use crate::remote_addr::{RemoteAddr};
 use crate::driver::{AdapterEvent, ActionController, EventProcessor, Driver};
-use crate::util::{OTHER_THREAD_ERR};
+use crate::network_thread::{NetworkThread};
 
-use std::time::{Duration};
 use std::net::{SocketAddr};
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
-use std::thread::{self, JoinHandle};
 use std::io::{self};
 
 type ActionControllers = Vec<Box<dyn ActionController + Send>>;
@@ -58,117 +52,58 @@ impl AdapterLauncher {
     }
 }
 
-/// The core of the message-io system network.
-/// It is in change of managing the adapters, wake up from events and performs the user actions.
-enum NetworkThread {
-    Ready(Poll, EventProcessors),
-    Running(JoinHandle<(Poll, EventProcessors)>, Arc<AtomicBool>),
-}
-
-impl NetworkThread {
-    const NETWORK_SAMPLING_TIMEOUT: u64 = 50; //ms
-
-    fn log_adapter_event(adapter_event: &AdapterEvent) {
-        match adapter_event {
-            AdapterEvent::Added(endpoint, listener_id) => {
-                log::trace!("Endpoint added: {} by {}", endpoint, listener_id);
-            }
-            AdapterEvent::Data(endpoint, data) => {
-                log::trace!("Data received from {}, {} bytes", endpoint, data.len());
-            }
-            AdapterEvent::Removed(endpoint) => {
-                log::trace!("Endpoint removed: {}", endpoint);
-            }
-        }
-    }
-
-    fn run_processor(
-        running: Arc<AtomicBool>,
-        mut poll: Poll,
-        processors: EventProcessors,
-        event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static,
-    ) -> JoinHandle<(Poll, EventProcessors)> {
-        thread::Builder::new()
-            .name(format!("{}/message-io::engine", thread::current().name().unwrap_or("")))
-            .spawn(move || {
-                //stop here until run
-                let timeout = Some(Duration::from_millis(Self::NETWORK_SAMPLING_TIMEOUT));
-
-                while running.load(Ordering::Relaxed) {
-                    poll.process_event(timeout, |poll_event| match poll_event {
-                        PollEvent::Network(resource_id) => {
-                            let adapter_id = resource_id.adapter_id() as usize;
-                            processors[adapter_id].process(resource_id, &|adapter_event| {
-                                if log::log_enabled!(log::Level::Trace) {
-                                    Self::log_adapter_event(&adapter_event);
-                                }
-                                event_callback(adapter_event);
-                            });
-                        }
-                        #[allow(dead_code)] //TODO: remove it with native event support
-                        PollEvent::Waker => todo!(),
-                    });
-                }
-                (poll, processors)
-            })
-            .unwrap()
-    }
-
-    pub fn run(self, event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static) -> NetworkThread {
-        match self {
-            NetworkThread::Ready(poll, processors) => {
-                let thread_running = Arc::new(AtomicBool::new(true));
-                let running = thread_running.clone();
-                let thread = Self::run_processor(running, poll, processors, event_callback);
-                NetworkThread::Running(thread, thread_running)
-            }
-            NetworkThread::Running(..) => panic!("Network thread already running"),
-        }
-    }
-
-    pub fn stop(self) -> NetworkThread {
-        match self {
-            NetworkThread::Ready(..) => panic!("Network thread is not running"),
-            NetworkThread::Running(thread, running) => {
-                running.store(false, Ordering::Relaxed);
-                let (poll, processors) = thread.join().expect(OTHER_THREAD_ERR);
-                NetworkThread::Ready(poll, processors)
-            }
-        }
-    }
-}
-
 pub struct NetworkEngine {
     controllers: ActionControllers,
-    network_thread: Mutex<Option<NetworkThread>>,
+    network_thread: NetworkThread<EventProcessors>,
 }
 
 impl NetworkEngine {
     pub fn new(launcher: AdapterLauncher) -> Self {
         let (poll, controllers, processors) = launcher.launch();
-        let network_thread = Mutex::new(Some(NetworkThread::Ready(poll, processors)));
+        let network_thread = NetworkThread::new(poll, processors);
 
         Self { network_thread, controllers }
     }
 
     pub fn run(&self, event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static) {
-        let mut network_thread = self.network_thread.lock().unwrap();
-        *network_thread = Some(network_thread.take().unwrap().run(event_callback));
-        log::trace!("Network thread running");
+        self.network_thread.run(move |(poll_event, processors)| {
+            match poll_event {
+                PollEvent::Network(resource_id) => {
+                    let adapter_id = resource_id.adapter_id() as usize;
+                    processors[adapter_id].process(resource_id, &|adapter_event| {
+                        match adapter_event {
+                            AdapterEvent::Added(endpoint, listener_id) => {
+                                log::trace!("Endpoint added: {} by {}", endpoint, listener_id);
+                            }
+                            AdapterEvent::Data(endpoint, data) => {
+                                log::trace!("Data from {}, {} bytes", endpoint, data.len());
+                            }
+                            AdapterEvent::Removed(endpoint) => {
+                                log::trace!("Endpoint removed: {}", endpoint);
+                            }
+                        }
+                        event_callback(adapter_event);
+                    });
+                }
+                #[allow(dead_code)] //TODO: remove it with native event support
+                PollEvent::Waker => todo!(),
+            };
+        });
     }
 
-    pub fn stop(&self) {
-        let mut network_thread = self.network_thread.lock().unwrap();
-        *network_thread = Some(network_thread.take().unwrap().stop());
-        log::trace!("Network thread stopped");
-    }
-
+    #[allow(dead_code)] //TODO: remove it with node API feature
     pub fn is_running(&self) -> bool {
-        let network_thread = self.network_thread.lock().unwrap();
-        match network_thread.as_ref().unwrap() {
-            NetworkThread::Ready(..) => false,
-            NetworkThread::Running(..) => true,
-        }
+        self.network_thread.is_running()
+    }
+
+    #[allow(dead_code)] //TODO: remove it with node API feature
+    pub fn stop(&self) {
+        self.network_thread.stop()
+    }
+
+    #[allow(dead_code)] //TODO: remove it with node API feature
+    pub fn join(&self) {
+        self.network_thread.join()
     }
 
     pub fn connect(&self, adapter_id: u8, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
@@ -203,18 +138,9 @@ impl NetworkEngine {
     }
 }
 
-impl Drop for NetworkEngine {
-    fn drop(&mut self) {
-        if self.is_running() {
-            self.stop();
-        }
-    }
-}
-
 // The following unimplemented controller/processor is used to fill
 // the invalid adapter id holes in the controllers / processors.
 // It is faster and cleanest than to use an option that always must to be unwrapped.
-// (Even the user can not use bad the API in this context)
 
 const UNIMPLEMENTED_ADAPTER_ERR: &str =
     "The chosen adapter id doesn't reference an existing adapter";

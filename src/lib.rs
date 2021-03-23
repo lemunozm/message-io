@@ -11,6 +11,7 @@ mod engine;
 mod adapters;
 mod remote_addr;
 mod transport;
+mod network_thread;
 
 /// Main module of `message-io`.
 /// It contains all the resources and tools to create and manage connections.

@@ -1,2 +1,6 @@
-pub const OTHER_THREAD_ERR: &str = "This error is shown because other thread has panicked \
-                                    You can safety skip this error.";
+/// Utility for managing runnable/stoppable threads
+pub(crate) mod thread;
+
+/// Frame encoding to convert a data stream into packets.
+/// It can be used as a utility to build adapters.
+pub mod encoding;

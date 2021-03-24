@@ -1,4 +1,4 @@
-use crate::remote_addr::{RemoteAddr};
+use crate::network::{RemoteAddr};
 
 use mio::event::{Source};
 

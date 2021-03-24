@@ -2,8 +2,8 @@ use crate::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo,
 };
-use crate::remote_addr::{RemoteAddr};
-use crate::util::{OTHER_THREAD_ERR};
+use crate::network::{RemoteAddr};
+use crate::util::thread::{OTHER_THREAD_ERR};
 
 use mio::event::{Source};
 use mio::net::{TcpStream, TcpListener};

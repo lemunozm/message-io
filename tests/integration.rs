@@ -226,7 +226,7 @@ fn burst_sender_handle(
                     assert_eq!(SendStatus::Sent, status);
                     if !transport.is_connection_oriented() {
                         // We need a rate to not lose packet.
-                        std::thread::sleep(Duration::from_micros(10));
+                        std::thread::sleep(Duration::from_micros(20));
                     }
                 }
             })
@@ -256,7 +256,7 @@ fn echo(transport: Transport, clients: usize) {
 }
 
 // Tcp: Does not apply: it's stream based
-#[cfg_attr(feature = "udp", test_case(Transport::Udp, 10000))]
+#[cfg_attr(feature = "udp", test_case(Transport::Udp, 2000))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {

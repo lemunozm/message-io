@@ -1,3 +1,4 @@
+/*
 use message_io::network::{Network, NetEvent, Transport, SendStatus};
 
 use test_case::test_case;
@@ -329,3 +330,4 @@ fn message_size(transport: Transport, message_size: usize) {
         }
     }
 }
+*/

@@ -67,13 +67,13 @@ impl<E: Send> EventThread<E> {
     /// event was performed.
     /// If you want to run the thread again, call `EventThread::wait()` after this call.
     pub fn stop(&mut self) {
-        self.thread.terminate().unwrap();
+        self.thread.finalize().unwrap();
     }
 
     /// Stops and consume this thread to retrieve the [`EventQueue`].
-    pub fn consume(mut self) -> EventQueue<E> {
-        self.thread.terminate().ok();
+    pub fn take_event_queue(mut self) -> EventQueue<E> {
+        self.thread.finalize().ok();
         self.thread.join();
-        self.thread.state().unwrap()
+        self.thread.take_state().unwrap()
     }
 }

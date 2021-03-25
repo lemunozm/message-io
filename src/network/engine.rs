@@ -172,7 +172,7 @@ impl NetworkProcessor {
     /// they would be stored to read it later.
     /// If you want to run the thread again, call `EventThread::wait()` after this call.
     pub fn stop(&mut self) {
-        self.thread.terminate().unwrap();
+        self.thread.finalize().unwrap();
     }
 
     /// Wait until the processor stops.

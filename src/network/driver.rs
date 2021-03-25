@@ -10,20 +10,25 @@ use std::net::{SocketAddr};
 use std::sync::{Arc};
 use std::io::{self};
 
-/// Struct used to identify and event that an adapter has been produced.
-/// The upper layer can traduce this event into a [crate::network::NetEvent]
-/// that the user can manage easily.
+/// Enum used to describe and event that an adapter network has produced.
 #[derive(Debug)]
-pub enum AdapterEvent<'a> {
-    /// The endpoint has been added (it implies a connection).
-    /// It also contains the resource id of the listener that accepted this endpoint.
-    Added(Endpoint, ResourceId),
+pub enum NetEvent<'a> {
+    /// New endpoint has been connected to a listener.
+    /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
+    /// It also contains the resource id of the listener that accepted this connection.
+    Connected(Endpoint, ResourceId),
 
-    /// The endpoint has sent data that represents a message.
-    Data(Endpoint, &'a [u8]),
+    /// Input message received by the network.
+    Message(Endpoint, &'a [u8]),
 
-    /// The endpoint has been removed (it implies a disconnection).
-    Removed(Endpoint),
+    /// This event is only dispatched when a connection is lost.
+    /// Remove explicitely a resource will NOT generate the event.
+    /// When this event is received, the resource is considered already removed,
+    /// the user do not need to remove it after this event.
+    /// A [`NetEvent::Message`] event will never be generated after this event from this endpoint.
+    /// This event will be sent only in connection oriented protocols as *Tcp*.
+    /// *UDP*, for example, is NOT connection oriented, and the event can no be detected.
+    Disconnected(Endpoint),
 }
 
 pub trait ActionController: Send + Sync {
@@ -34,7 +39,7 @@ pub trait ActionController: Send + Sync {
 }
 
 pub trait EventProcessor: Send + Sync {
-    fn process(&self, resource_id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>));
+    fn process(&self, resource_id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>));
 }
 
 pub struct Driver<R: Remote, L: Local> {
@@ -120,7 +125,7 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
-    fn process(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+    fn process(&self, id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>)) {
         match id.resource_type() {
             ResourceType::Remote => self.process_remote(id, event_callback),
             ResourceType::Local => self.process_local(id, event_callback),
@@ -129,25 +134,25 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
-    fn process_remote(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+    fn process_remote(&self, id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>)) {
         if let Some(remote) = self.remote_registry.get(id) {
             let endpoint = Endpoint::new(id, remote.addr);
             log::trace!("Processed remote for {}", endpoint);
             let status = remote.resource.receive(&|data| {
-                event_callback(AdapterEvent::Data(endpoint, data));
+                event_callback(NetEvent::Message(endpoint, data));
             });
             log::trace!("Processed remote receive status {}", status);
 
             if let ReadStatus::Disconnected = status {
                 // Checked becasue, the user in the callback could have removed the same resource.
                 if self.remote_registry.remove(id) {
-                    event_callback(AdapterEvent::Removed(endpoint));
+                    event_callback(NetEvent::Disconnected(endpoint));
                 }
             }
         }
     }
 
-    fn process_local(&self, id: ResourceId, event_callback: &dyn Fn(AdapterEvent<'_>)) {
+    fn process_local(&self, id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>)) {
         if let Some(local) = self.local_registry.get(id) {
             log::trace!("Processed local for {}", id);
             local.resource.accept(&|accepted| {
@@ -156,11 +161,11 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
                     AcceptedType::Remote(addr, remote) => {
                         let remote_id = self.remote_registry.add(remote, addr);
                         let endpoint = Endpoint::new(remote_id, addr);
-                        event_callback(AdapterEvent::Added(endpoint, id));
+                        event_callback(NetEvent::Connected(endpoint, id));
                     }
                     AcceptedType::Data(addr, data) => {
                         let endpoint = Endpoint::new(id, addr);
-                        event_callback(AdapterEvent::Data(endpoint, data));
+                        event_callback(NetEvent::Message(endpoint, data));
                     }
                 }
             });

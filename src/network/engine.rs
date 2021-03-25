@@ -1,135 +1,102 @@
 use super::endpoint::{Endpoint};
+use super::remote_addr::{ToRemoteAddr};
+use super::transport::{Transport};
 use super::resource_id::{ResourceId};
 use super::poll::{Poll, PollEvent};
-use super::remote_addr::{RemoteAddr};
-use super::driver::{AdapterEvent, ActionController, EventProcessor, Driver};
-use super::network_thread::{NetworkThread};
+use super::launcher::{DriverLauncher, ActionControllerList, EventProcessorList};
+use super::driver::{NetEvent};
 
-use crate::adapter::{Adapter, SendStatus};
+use strum::{IntoEnumIterator};
 
-use std::net::{SocketAddr};
+use crate::adapter::{SendStatus};
+use crate::util::thread::{RunnableThread};
+
+use std::net::{SocketAddr, ToSocketAddrs};
+use std::time::{Duration};
 use std::io::{self};
 
-type ActionControllers = Vec<Box<dyn ActionController + Send>>;
-type EventProcessors = Vec<Box<dyn EventProcessor + Send>>;
+pub fn split() -> (NetworkController, NetworkProcessor) {
+    let mut launcher = DriverLauncher::default();
+    Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
 
-/// Used to configured the engine
-pub struct AdapterLauncher {
-    poll: Poll,
-    controllers: ActionControllers,
-    processors: EventProcessors,
+    let (poll, controllers, processors) = launcher.launch();
+
+    let network_controller = NetworkController::new(controllers);
+    let network_processor = NetworkProcessor::new(poll, processors);
+
+    (network_controller, network_processor)
 }
 
-impl Default for AdapterLauncher {
-    fn default() -> AdapterLauncher {
-        Self {
-            poll: Poll::default(),
-            controllers: (0..ResourceId::MAX_ADAPTERS)
-                .map(|_| {
-                    Box::new(UnimplementedActionController) as Box<dyn ActionController + Send>
-                })
-                .collect::<Vec<_>>(),
-            processors: (0..ResourceId::MAX_ADAPTERS)
-                .map(|_| Box::new(UnimplementedEventProcessor) as Box<dyn EventProcessor + Send>)
-                .collect(),
-        }
-    }
+/// Shareable instance in charge of control all the connections.
+pub struct NetworkController {
+    controllers: ActionControllerList,
 }
 
-impl AdapterLauncher {
-    /// Mount an adapter associating it with an id.
-    pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
-        let index = adapter_id as usize;
-
-        let driver = Driver::new(adapter, adapter_id, &mut self.poll);
-
-        self.controllers[index] = Box::new(driver.clone()) as Box<(dyn ActionController + Send)>;
-        self.processors[index] = Box::new(driver) as Box<(dyn EventProcessor + Send)>;
+impl NetworkController {
+    fn new(controllers: ActionControllerList) -> NetworkController {
+        Self { controllers }
     }
 
-    /// Consume this instance to obtain the adapter handles.
-    fn launch(self) -> (Poll, ActionControllers, EventProcessors) {
-        (self.poll, self.controllers, self.processors)
-    }
-}
-
-pub struct NetworkEngine {
-    controllers: ActionControllers,
-    network_thread: NetworkThread<EventProcessors>,
-}
-
-impl NetworkEngine {
-    pub fn new(launcher: AdapterLauncher) -> Self {
-        let (poll, controllers, processors) = launcher.launch();
-        let network_thread = NetworkThread::new(poll, processors);
-
-        Self { network_thread, controllers }
-    }
-
-    pub fn run(&self, event_callback: impl Fn(AdapterEvent<'_>) + Send + 'static) {
-        self.network_thread.run(move |(poll_event, processors)| {
-            match poll_event {
-                PollEvent::Network(resource_id) => {
-                    let adapter_id = resource_id.adapter_id() as usize;
-                    processors[adapter_id].process(resource_id, &|adapter_event| {
-                        match adapter_event {
-                            AdapterEvent::Added(endpoint, listener_id) => {
-                                log::trace!("Endpoint added: {} by {}", endpoint, listener_id);
-                            }
-                            AdapterEvent::Data(endpoint, data) => {
-                                log::trace!("Data from {}, {} bytes", endpoint, data.len());
-                            }
-                            AdapterEvent::Removed(endpoint) => {
-                                log::trace!("Endpoint removed: {}", endpoint);
-                            }
-                        }
-                        event_callback(adapter_event);
-                    });
-                }
-                #[allow(dead_code)] //TODO: remove it with native event support
-                PollEvent::Waker => todo!(),
-            };
-        });
-    }
-
-    #[allow(dead_code)] //TODO: remove it with node API feature
-    pub fn is_running(&self) -> bool {
-        self.network_thread.is_running()
-    }
-
-    #[allow(dead_code)] //TODO: remove it with node API feature
-    pub fn stop(&self) {
-        self.network_thread.stop()
-    }
-
-    #[allow(dead_code)] //TODO: remove it with node API feature
-    pub fn join(&self) {
-        self.network_thread.join()
-    }
-
-    pub fn connect(&self, adapter_id: u8, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
-        log::trace!("Connect to {} by adapter: {}", addr, adapter_id);
-        self.controllers[adapter_id as usize].connect(addr).map(|(endpoint, addr)| {
+    /// Creates a connection to the specific address.
+    /// The endpoint, an identifier of the new connection, will be returned.
+    /// If the connection can not be performed (e.g. the address is not reached)
+    /// the corresponding IO error is returned.
+    /// This function blocks until the resource has been connected and is ready to use.
+    pub fn connect(
+        &self,
+        transport: Transport,
+        addr: impl ToRemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)> {
+        let addr = addr.to_remote_addr().unwrap();
+        log::trace!("Connect to {} by adapter: {}", addr, transport.id());
+        self.controllers[transport.id() as usize].connect(addr).map(|(endpoint, addr)| {
             log::trace!("Connected to {}", endpoint);
             (endpoint, addr)
         })
     }
 
-    pub fn listen(&self, adapter_id: u8, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        log::trace!("Listen by {} by adapter: {}", addr, adapter_id);
-        self.controllers[adapter_id as usize].listen(addr).map(|(resource_id, addr)| {
+    /// Listen messages from specified transport.
+    /// The giver address will be used as interface and listening port.
+    /// If the port can be opened, a [ResourceId] identifying the listener is returned
+    /// along with the local address, or an error if not.
+    /// The address is returned despite you passed as parameter because
+    /// when a `0` port is specified, the OS will give choose the value.
+    pub fn listen(
+        &self,
+        transport: Transport,
+        addr: impl ToSocketAddrs,
+    ) -> io::Result<(ResourceId, SocketAddr)> {
+        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+        log::trace!("Listen by {} by adapter: {}", addr, transport.id());
+        self.controllers[transport.id() as usize].listen(addr).map(|(resource_id, addr)| {
             log::trace!("Listening by {}", resource_id);
             (resource_id, addr)
         })
     }
 
-    pub fn remove(&self, id: ResourceId) -> bool {
-        log::trace!("Remove {}", id);
-        let value = self.controllers[id.adapter_id() as usize].remove(id);
+    /// Remove a network resource.
+    /// Returns `false` if the resource id doesn't exists.
+    /// This is used to remove resources as connection or listeners.
+    /// Resources of endpoints generated by listening in connection oriented transports
+    /// can also be removed to close the connection.
+    /// Removing an already connected connection implies a disconnection.
+    /// Note that non-oriented connections as UDP use its listener resource to manage all
+    /// remote endpoints internally, the remotes have not resource for themselfs.
+    /// It means that all generated `Endpoint`s share the `ResourceId` of the listener and
+    /// if you remove this resource you are removing the listener of all of them.
+    /// For that cases there is no need to remove the resource because non-oriented connections
+    /// have not connection itself to close, 'there is no spoon'.
+    pub fn remove(&self, resource_id: ResourceId) -> bool {
+        log::trace!("Remove {}", resource_id);
+        let value = self.controllers[resource_id.adapter_id() as usize].remove(resource_id);
         log::trace!("Removed: {}", value);
         value
     }
 
+    /// Send the data message thought the connection represented by the given endpoint.
+    /// The funcion panics if the endpoint do not exists in the [`Network`].
+    /// If the endpoint disconnects during the sending, a `Disconnected` event is generated.
+    /// A [`SendStatus`] is returned with the information about the sending.
     pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         log::trace!("Send {} bytes to {}", data.len(), endpoint);
         let status =
@@ -139,35 +106,178 @@ impl NetworkEngine {
     }
 }
 
-// The following unimplemented controller/processor is used to fill
-// the invalid adapter id holes in the controllers / processors.
-// It is faster and cleanest than to use an option that always must to be unwrapped.
+#[derive(Debug)]
+enum StoredNetEvent {
+    Connected(Endpoint, ResourceId),
+    Message(Endpoint, Vec<u8>),
+    Disconnected(Endpoint),
+}
 
-const UNIMPLEMENTED_ADAPTER_ERR: &str =
-    "The chosen adapter id doesn't reference an existing adapter";
-
-struct UnimplementedActionController;
-impl ActionController for UnimplementedActionController {
-    fn connect(&self, _: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
-        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
-    }
-
-    fn listen(&self, _: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
-    }
-
-    fn send(&self, _: Endpoint, _: &[u8]) -> SendStatus {
-        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
-    }
-
-    fn remove(&self, _: ResourceId) -> bool {
-        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
+impl From<NetEvent<'_>> for StoredNetEvent {
+    fn from(net_event: NetEvent<'_>) -> Self {
+        todo!()
     }
 }
 
-struct UnimplementedEventProcessor;
-impl EventProcessor for UnimplementedEventProcessor {
-    fn process(&self, _: ResourceId, _: &dyn Fn(AdapterEvent<'_>)) {
-        panic!("{}", UNIMPLEMENTED_ADAPTER_ERR);
+impl<'a> From<StoredNetEvent> for NetEvent<'a> {
+    fn from(stored_net_event: StoredNetEvent) -> Self {
+        todo!()
     }
+}
+
+/// Instance in charge of process input network events.
+/// These events are offered to the user as a [`NetEvent`] its processing data.
+pub struct NetworkProcessor {
+    thread: RunnableThread<(Poll, EventProcessorList)>,
+}
+
+impl NetworkProcessor {
+    const SAMPLING_TIMEOUT: u64 = 50; //ms
+
+    fn new(poll: Poll, processors: EventProcessorList) -> Self {
+        Self { thread: RunnableThread::new("message_io::NetworkThread", (poll, processors)) }
+    }
+
+    /// Start to process events from the network.
+    /// When the event is processed it will call to the `event_callback` function with it.
+    /// The callback is called with the event reference direclty the data, without copies.
+    /// It means that in order to read the next message, you need to finish your
+    /// callback computation.
+    /// If your computation is expensive, it is recomended to copy the
+    /// message into a place that can be computed later.
+    /// It the processor is already running it would panic.
+    pub fn run(&mut self, event_callback: impl Fn(NetEvent<'_>) + Send + 'static) {
+        let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
+        self.thread
+            .spawn(move |state, running_indicator| {
+                let running_indicator = running_indicator.clone();
+                Self::process_event(&mut state.0, timeout, &mut state.1, &|net_event| {
+                    if running_indicator.is_running() {
+                        event_callback(net_event)
+                    }
+                    else {
+                        //Check if it is running, if not, storage in the pending data.
+                    }
+                });
+            })
+            .unwrap();
+    }
+
+    /// Stop the internal thread.
+    /// Stop over a not running `NetworkProcessor` or totally stoped
+    /// (after call to `NetworkProcessor::wait`) will panic.
+    /// Note that the thread will continuos running after this call until the current processing
+    /// event was performed.
+    /// If there are more pending events generated by the network that could be lost,
+    /// they would be stored to read it later.
+    /// If you want to run the thread again, call `EventThread::wait()` after this call.
+    pub fn stop(&mut self) {
+        self.thread.terminate().unwrap();
+    }
+
+    /// Wait until the processor stops.
+    /// It will wait until a call to `NetworkProcessor::stop()` was performed and
+    /// the thread finish its last processing.
+    pub fn wait(&mut self) {
+        self.thread.join()
+    }
+
+    /// Check if the internal thread is running.
+    pub fn is_running(&self) -> bool {
+        self.thread.is_running()
+    }
+
+    /*
+    /// Blocks until receive an internal poll network event.
+    /// For each generated [`NetEvent`], the `event_callbacl` will be called.
+    /// Note that a internal network event could imply none or several [`NetEvent`].
+    /// Use this function if you want to wait to an specific known event.
+    /// This function can be only called it the `NetworkProcessor` thread is stopped.
+    pub fn receive(&self, event_callback: impl Fn(NetEvent<'_>) + Send + 'static) {
+        let (poll, processors) = self.thread.state().unwrap();
+        Self::process_event(&mut poll, None, processors, event_callback);
+    }
+
+    /// Similar to [`NetworkProcessor::receive`] but wait until timeout.
+    /// This function can be only called it the `NetworkProcessor` thread is stopped.
+    pub fn receive_timeout(
+        &self,
+        timeout: Duration,
+        event_callback: impl Fn(NetEvent<'_>) + Send + 'static
+    ) {
+        let (poll, processors) = self.thread.state().unwrap();
+        Self::process_event(&mut poll, Some(timeout), processors, event_callback);
+    }
+    */
+
+    fn process_event(
+        poll: &mut Poll,
+        timeout: Option<Duration>,
+        processors: &mut EventProcessorList,
+        event_callback: &dyn Fn(NetEvent<'_>),
+    ) {
+        poll.process_event(timeout, |poll_event| match poll_event {
+            PollEvent::Network(resource_id) => {
+                let adapter_id = resource_id.adapter_id() as usize;
+                processors[adapter_id].process(resource_id, &|adapter_event| {
+                    match adapter_event {
+                        NetEvent::Connected(endpoint, listener_id) => {
+                            log::trace!("Endpoint added: {} by {}", endpoint, listener_id);
+                        }
+                        NetEvent::Message(endpoint, data) => {
+                            log::trace!("Data from {}, {} bytes", endpoint, data.len());
+                        }
+                        NetEvent::Disconnected(endpoint) => {
+                            log::trace!("Endpoint removed: {}", endpoint);
+                        }
+                    }
+                    event_callback(adapter_event);
+                });
+            }
+            #[allow(dead_code)] //TODO: remove it with native event support
+            PollEvent::Waker => todo!(),
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration};
+
+    lazy_static::lazy_static! {
+        static ref TIMEOUT: Duration = Duration::from_millis(1000);
+    }
+
+    /*
+    #[test]
+    fn remove_listener() {
+        let (controller, processor) = self::split();
+        let (listener_id, _) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        assert!(controller.remove(listener_id));
+        assert!(!controller.remove(listener_id));
+
+        processor.receive_timeout(*TIMEOUT)
+        processor.run(|net_event| {
+
+        });
+
+        assert!(events.receive_timeout(*TIMEOUT).is_none());
+    }
+
+    #[test]
+    fn remove_listener_with_connections() {
+        let (network, mut events) = self::split();
+        let (listener_id, addr) = network.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        network.connect(Transport::Tcp, addr).unwrap();
+        match events.receive_timeout(*TIMEOUT).unwrap() {
+            NetEvent::Connected(_, _) => {
+                assert!(network.remove(listener_id));
+                assert!(!network.remove(listener_id));
+            }
+            _ => unreachable!(),
+        }
+        assert!(events.receive_timeout(*TIMEOUT).is_none());
+    }
+    */
 }

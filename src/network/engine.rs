@@ -122,9 +122,9 @@ enum StoredNetEvent {
 impl From<NetEvent<'_>> for StoredNetEvent {
     fn from(net_event: NetEvent<'_>) -> Self {
         match net_event {
-            NetEvent::Connected(endpoint, id) => StoredNetEvent::Connected(endpoint, id),
-            NetEvent::Message(endpoint, data) => StoredNetEvent::Message(endpoint, Vec::from(data)),
-            NetEvent::Disconnected(endpoint) => StoredNetEvent::Disconnected(endpoint),
+            NetEvent::Connected(endpoint, id) => Self::Connected(endpoint, id),
+            NetEvent::Message(endpoint, data) => Self::Message(endpoint, Vec::from(data)),
+            NetEvent::Disconnected(endpoint) => Self::Disconnected(endpoint),
         }
     }
 }
@@ -132,9 +132,9 @@ impl From<NetEvent<'_>> for StoredNetEvent {
 impl StoredNetEvent {
     fn borrow(&self) -> NetEvent<'_> {
         match self {
-            StoredNetEvent::Connected(endpoint, id) => NetEvent::Connected(*endpoint, *id),
-            StoredNetEvent::Message(endpoint, data) => NetEvent::Message(*endpoint, &data),
-            StoredNetEvent::Disconnected(endpoint) => NetEvent::Disconnected(*endpoint),
+            Self::Connected(endpoint, id) => NetEvent::Connected(*endpoint, *id),
+            Self::Message(endpoint, data) => NetEvent::Message(*endpoint, &data),
+            Self::Disconnected(endpoint) => NetEvent::Disconnected(*endpoint),
         }
     }
 }
@@ -186,7 +186,10 @@ impl NetworkProcessor {
         // Dispatch the catched event first.
         while self.running.load(Ordering::Relaxed) {
             match self.cached_event_receiver.try_recv() {
-                Ok(net_event) => event_callback(net_event.borrow()),
+                Ok(net_event) => {
+                    log::trace!("Read {:?} from cache", net_event);
+                    event_callback(net_event.borrow())
+                }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => unreachable!(),
             }
@@ -205,6 +208,7 @@ impl NetworkProcessor {
                             event_callback(net_event)
                         }
                         else {
+                            log::trace!("Cached {:?}", net_event);
                             cached_event_sender.send(net_event.into()).unwrap();
                         }
                     },
@@ -268,19 +272,9 @@ impl NetworkProcessor {
         poll.process_event(timeout, |poll_event| match poll_event {
             PollEvent::Network(resource_id) => {
                 let adapter_id = resource_id.adapter_id() as usize;
-                processors[adapter_id].process(resource_id, &|adapter_event| {
-                    match adapter_event {
-                        NetEvent::Connected(endpoint, listener_id) => {
-                            log::trace!("Endpoint added: {} by {}", endpoint, listener_id);
-                        }
-                        NetEvent::Message(endpoint, data) => {
-                            log::trace!("Data from {}, {} bytes", endpoint, data.len());
-                        }
-                        NetEvent::Disconnected(endpoint) => {
-                            log::trace!("Endpoint removed: {}", endpoint);
-                        }
-                    }
-                    event_callback(adapter_event);
+                processors[adapter_id].process(resource_id, &|net_event| {
+                    log::trace!("Processed {:?}", net_event);
+                    event_callback(net_event);
                 });
             }
             #[allow(dead_code)] //TODO: remove it with native event support

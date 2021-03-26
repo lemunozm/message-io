@@ -11,7 +11,6 @@ use std::sync::{Arc};
 use std::io::{self};
 
 /// Enum used to describe and event that an adapter network has produced.
-#[derive(Debug)]
 pub enum NetEvent<'a> {
     /// New endpoint has been connected to a listener.
     /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
@@ -29,6 +28,17 @@ pub enum NetEvent<'a> {
     /// This event will be sent only in connection oriented protocols as *Tcp*.
     /// *UDP*, for example, is NOT connection oriented, and the event can no be detected.
     Disconnected(Endpoint),
+}
+
+impl std::fmt::Debug for NetEvent<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Self::Connected(endpoint, id) => format!("Connected({}, {})", endpoint, id),
+            Self::Message(endpoint, data) => format!("Message({}, {})", endpoint, data.len()),
+            Self::Disconnected(endpoint) => format!("Disconnected({})", endpoint),
+        };
+        write!(f, "NetEvent::{}", string)
+    }
 }
 
 pub trait ActionController: Send + Sync {

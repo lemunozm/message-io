@@ -45,10 +45,7 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// Creates a new thread that will continuously call to the callback.
     /// It is in charge of the user to perform a blocking operation there.
     /// If the thread is already running it will returns an `RunningErr` error.
-    pub fn spawn(
-        &mut self,
-        callback: impl Fn(&mut S) + Send + 'static,
-    ) -> Result<(), RunningErr> {
+    pub fn spawn(&mut self, callback: impl Fn(&mut S) + Send + 'static) -> Result<(), RunningErr> {
         let thread_state = self.thread_state.take().unwrap();
         let (thread_state, result) = match thread_state {
             ThreadState::Ready(state) => {
@@ -143,10 +140,8 @@ impl<S: Send + 'static> RunnableThread<S> {
 
 impl<S: Send> Drop for RunnableThread<S> {
     fn drop(&mut self) {
-        if self.thread_state.is_some() {
-            if self.finalize().is_ok() {
-                self.join();
-            }
+        if self.thread_state.is_some() && self.finalize().is_ok() {
+            self.join();
         }
     }
 }
@@ -195,14 +190,16 @@ mod tests {
         assert_eq!(Ok(&42), thread.state_ref());
         assert_eq!(Ok(&mut 42), thread.state_mut());
 
-        thread.spawn(|internal_state| {
-            assert_eq!(&mut 42, internal_state);
-            *internal_state = 123;
-            std::thread::sleep(*STEP_DURATION);
-        }).unwrap();
+        thread
+            .spawn(|internal_state| {
+                assert_eq!(&mut 42, internal_state);
+                *internal_state = 123;
+                std::thread::sleep(*STEP_DURATION);
+            })
+            .unwrap();
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_ref());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_|()));
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_| ()));
         assert!(thread.is_running());
 
         std::thread::sleep(*STEP_DURATION / 2);
@@ -211,14 +208,14 @@ mod tests {
         assert_eq!(Ok(()), thread.finalize());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_ref());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_|()));
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_| ()));
 
         std::thread::sleep(*STEP_DURATION);
         assert!(thread.is_running()); // Continuous running after end operation
         assert_eq!(Ok(()), thread.finalize());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_ref());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_|()));
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_| ()));
 
         thread.join();
         assert!(!thread.is_running());

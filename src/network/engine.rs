@@ -159,7 +159,7 @@ impl NetworkProcessor {
     fn new(poll: Poll, processors: EventProcessorList) -> Self {
         let (cached_event_sender, cached_event_receiver) = channel::unbounded();
 
-        let network_state = NetworkState { poll, processors, };
+        let network_state = NetworkState { poll, processors };
 
         Self {
             thread: RunnableThread::new("message_io::NetworkThread", network_state),
@@ -196,14 +196,19 @@ impl NetworkProcessor {
         let cached_event_sender = self.cached_event_sender.clone();
         self.thread
             .spawn(move |state| {
-                Self::process_event(timeout, &mut state.poll, &mut state.processors, &|net_event| {
-                    if running.load(Ordering::Relaxed) {
-                        event_callback(net_event)
-                    }
-                    else {
-                        cached_event_sender.send(net_event.into()).unwrap();
-                    }
-                });
+                Self::process_event(
+                    timeout,
+                    &mut state.poll,
+                    &mut state.processors,
+                    &|net_event| {
+                        if running.load(Ordering::Relaxed) {
+                            event_callback(net_event)
+                        }
+                        else {
+                            cached_event_sender.send(net_event.into()).unwrap();
+                        }
+                    },
+                );
             })
             .unwrap();
     }

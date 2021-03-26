@@ -195,7 +195,7 @@ impl NetworkProcessor {
         let running = self.running.clone();
         let cached_event_sender = self.cached_event_sender.clone();
         self.thread
-            .spawn(move |state, _| {
+            .spawn(move |state| {
                 Self::process_event(timeout, &mut state.poll, &mut state.processors, &|net_event| {
                     if running.load(Ordering::Relaxed) {
                         event_callback(net_event)

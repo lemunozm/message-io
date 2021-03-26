@@ -29,14 +29,13 @@ impl<S: Send + 'static> RunnableThread<S> {
         name: &str,
         running: Arc<AtomicBool>,
         mut state: S,
-        callback: impl Fn(&mut S, &ThreadRunningIndicator) + Send + 'static,
+        callback: impl Fn(&mut S) + Send + 'static,
     ) -> JoinHandle<S> {
         thread::Builder::new()
             .name(format!("{}/{}", thread::current().name().unwrap_or(""), name))
             .spawn(move || {
-                let indicator = &ThreadRunningIndicator { running: running.clone() };
                 while running.load(Ordering::Relaxed) {
-                    callback(&mut state, indicator);
+                    callback(&mut state);
                 }
                 state
             })
@@ -48,7 +47,7 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// If the thread is already running it will returns an `RunningErr` error.
     pub fn spawn(
         &mut self,
-        callback: impl Fn(&mut S, &ThreadRunningIndicator) + Send + 'static,
+        callback: impl Fn(&mut S) + Send + 'static,
     ) -> Result<(), RunningErr> {
         let thread_state = self.thread_state.take().unwrap();
         let (thread_state, result) = match thread_state {
@@ -152,24 +151,6 @@ impl<S: Send> Drop for RunnableThread<S> {
     }
 }
 
-/// Type used to indicate if the thread is currently running.
-/// This type is sharable adn clonable among threads.
-pub struct ThreadRunningIndicator {
-    running: Arc<AtomicBool>,
-}
-
-impl ThreadRunningIndicator {
-    pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::Relaxed)
-    }
-}
-
-impl Clone for ThreadRunningIndicator {
-    fn clone(&self) -> Self {
-        Self { running: self.running.clone() }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunningErr(String);
 
@@ -214,14 +195,14 @@ mod tests {
         assert_eq!(Ok(&42), thread.state_ref());
         assert_eq!(Ok(&mut 42), thread.state_mut());
 
-        thread.spawn(|internal_state, _| {
+        thread.spawn(|internal_state| {
             assert_eq!(&mut 42, internal_state);
             *internal_state = 123;
             std::thread::sleep(*STEP_DURATION);
         }).unwrap();
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_ref());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_, _|()));
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_|()));
         assert!(thread.is_running());
 
         std::thread::sleep(*STEP_DURATION / 2);
@@ -230,14 +211,14 @@ mod tests {
         assert_eq!(Ok(()), thread.finalize());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_ref());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_, _|()));
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_|()));
 
         std::thread::sleep(*STEP_DURATION);
         assert!(thread.is_running()); // Continuous running after end operation
         assert_eq!(Ok(()), thread.finalize());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_ref());
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_, _|()));
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_|()));
 
         thread.join();
         assert!(!thread.is_running());
@@ -252,24 +233,11 @@ mod tests {
     #[test]
     fn spawn_and_spawn_again() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        thread.spawn(|_, _| ()).unwrap();
+        thread.spawn(|_| ()).unwrap();
         thread.finalize().unwrap();
         thread.join();
-        thread.spawn(|_, _| ()).unwrap();
+        thread.spawn(|_| ()).unwrap();
         assert!(thread.is_running());
-        thread.finalize().unwrap();
-        thread.join();
-    }
-
-    #[test]
-    fn check_indicator() {
-        let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        thread.spawn(|_, indicator| {
-            assert!(indicator.is_running());
-            std::thread::sleep(*STEP_DURATION);
-            assert!(!indicator.is_running());
-        }).unwrap();
-        std::thread::sleep(*STEP_DURATION / 2);
         thread.finalize().unwrap();
         thread.join();
     }
@@ -277,14 +245,14 @@ mod tests {
     #[test]
     fn destroy_while_running() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        thread.spawn(|_, _| ()).unwrap();
+        thread.spawn(|_| ()).unwrap();
         drop(thread)
     }
 
     #[test]
     fn destroy_while_finalizing() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        thread.spawn(|_, _| ()).unwrap();
+        thread.spawn(|_| ()).unwrap();
         thread.finalize().unwrap();
         drop(thread)
     }

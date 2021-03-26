@@ -40,7 +40,7 @@ impl<E: Send> EventThread<E> {
     pub fn run(&mut self, callback: impl Fn(E) + Send + 'static) {
         let timeout = Duration::from_millis(Self::SAMPLING_TIMEOUT);
         self.thread
-            .spawn(move |event_queue, _| {
+            .spawn(move |event_queue| {
                 if let Some(event) = event_queue.receive_timeout(timeout) {
                     callback(event);
                 }

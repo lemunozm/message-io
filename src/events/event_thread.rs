@@ -1,6 +1,6 @@
 use super::queue::{EventSender, EventQueue};
 
-use crate::util::thread::{RunnableThread};
+use crate::util::thread::{RunnableThread, RunningErr};
 
 use std::time::{Duration};
 
@@ -11,7 +11,7 @@ pub struct EventThread<E: Send + 'static> {
 }
 
 impl<E: Send> From<EventQueue<E>> for EventThread<E> {
-    /// Creates the thread from an existing `EventQueue`, without run it.
+    /// Creates the thread from an existing [`EventQueue`], without run it.
     fn from(mut event_queue: EventQueue<E>) -> Self {
         Self {
             sender: event_queue.sender().clone(),
@@ -49,7 +49,7 @@ impl<E: Send> EventThread<E> {
     }
 
     /// Wait the thread until it stops.
-    /// It will wait until a call to `EventThread::stop()` was performed and
+    /// It will wait until a call to [`EventThread::stop()`] was performed and
     /// the thread finish its last processing.
     pub fn wait(&mut self) {
         self.thread.join();
@@ -60,14 +60,18 @@ impl<E: Send> EventThread<E> {
         self.thread.is_running()
     }
 
-    /// Stop the thread. A thread stopped can be run it again.
-    /// Stop over a not running `EventThread` or totally stoped
-    /// (after call to `EventThread::wait()`) will panic.
+    /// Stop the thread.
     /// Note that the thread will continuos running after this call until the current processing
     /// event was performed.
-    /// If you want to run the thread again, call `EventThread::wait()` after this call.
+    /// If you want to run the thread again, call [`EventThread::wait()`] after this call.
     pub fn stop(&mut self) {
-        self.thread.finalize().unwrap();
+        self.thread.finalize().ok();
+    }
+
+    /// Retrieves a reference to the [`EventQueue`] used.
+    /// This function is only valid over a not running thread.
+    pub fn event_queue(&self) -> Result<&EventQueue<E>, RunningErr> {
+        self.thread.state_ref()
     }
 
     /// Stops and consume this thread to retrieve the [`EventQueue`].

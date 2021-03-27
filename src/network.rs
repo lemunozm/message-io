@@ -16,4 +16,4 @@ pub use endpoint::{Endpoint};
 pub use remote_addr::{RemoteAddr, ToRemoteAddr};
 pub use transport::{Transport};
 pub use driver::{NetEvent};
-pub use engine::{NetworkController, NetworkProcessor};
+pub use engine::{split, NetworkController, NetworkProcessor};

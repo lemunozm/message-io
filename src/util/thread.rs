@@ -44,7 +44,7 @@ impl<S: Send + 'static> RunnableThread<S> {
 
     /// Creates a new thread that will continuously call to the callback.
     /// It is in charge of the user to perform a blocking operation there.
-    /// If the thread is already running it will returns an `RunningErr` error.
+    /// If the thread is already running it will returns an [`RunningErr`] error.
     pub fn spawn(&mut self, callback: impl Fn(&mut S) + Send + 'static) -> Result<(), RunningErr> {
         let thread_state = self.thread_state.take().unwrap();
         let (thread_state, result) = match thread_state {
@@ -63,10 +63,10 @@ impl<S: Send + 'static> RunnableThread<S> {
     }
 
     /// Finalizes the thread.
-    /// After this call, the current spawn's callback will be last one.
+    /// After this call, the current spawn's callback will be the last one.
     /// This call do not wait to finish that process,
     /// only notify that the current callback call is the last one.
-    /// If you want to wait to finish the job call `RunnableThread::join()`.
+    /// If you want to wait to finish the job call [`RunnableThread::join()`].
     pub fn finalize(&mut self) -> Result<(), NotRunningErr> {
         let thread_state = self.thread_state.take().unwrap();
         let (thread_state, result) = match thread_state {
@@ -97,8 +97,8 @@ impl<S: Send + 'static> RunnableThread<S> {
     }
 
     /// Check if the thread is running.
-    /// A `RunningThread` is considered running if `RunningThread::spawn()` was called but
-    /// `RunningThread::finalize()` not.
+    /// A `RunningThread` is considered running if [`RunningThread::spawn()`] was called but
+    /// [`RunningThread::finalize()`] not.
     pub fn is_running(&self) -> bool {
         match self.thread_state.as_ref().unwrap() {
             ThreadState::Ready(..) => false,
@@ -109,7 +109,7 @@ impl<S: Send + 'static> RunnableThread<S> {
 
     /// Consumes the `RunningThread` to recover the state given in its creation.
     /// You only can consume the thread it is totally stoped
-    /// (after RunnableThread::join() was called)
+    /// (after [`RunnableThread::join()`] was called)
     pub fn take_state(mut self) -> Result<S, RunningErr> {
         match self.thread_state.take().unwrap() {
             ThreadState::Ready(state) => Ok(state),
@@ -119,7 +119,7 @@ impl<S: Send + 'static> RunnableThread<S> {
 
     /// Read access to the the state given in its creation.
     /// You only can consume the thread it is totally stoped
-    /// (after RunnableThread::join() was called)
+    /// (after [`RunnableThread::join()`] was called)
     pub fn state_ref(&self) -> Result<&S, RunningErr> {
         match self.thread_state.as_ref().unwrap() {
             ThreadState::Ready(state) => Ok(state),
@@ -129,7 +129,7 @@ impl<S: Send + 'static> RunnableThread<S> {
 
     /// Mutable access to the the state given in its creation.
     /// You only can consume the thread it is totally stoped
-    /// (after RunnableThread::join() was called)
+    /// (after [`RunnableThread::join()`] was called)
     pub fn state_mut(&mut self) -> Result<&mut S, RunningErr> {
         match self.thread_state.as_mut().unwrap() {
             ThreadState::Ready(state) => Ok(state),

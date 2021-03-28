@@ -1,5 +1,5 @@
 /*
-use message_io::network::{Network, NetEvent, Transport, SendStatus};
+use message_io::network::{self, NetEvent, Transport, SendStatus};
 
 use test_case::test_case;
 
@@ -71,21 +71,21 @@ fn echo_server_handle(
         .name("test-server".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (network, mut event_queue) = Network::split();
+                let (controller, mut processor) = network::split();
 
-                let (listener_id, server_addr) = network.listen(transport, LOCAL_ADDR).unwrap();
+                let (listener_id, server_addr) = controller.listen(transport, LOCAL_ADDR).unwrap();
                 tx.send(server_addr).unwrap();
 
-                let mut messages_received = 0;
+                let mut messages_received = std::cell::RefCell::new(0);
                 let mut disconnections = 0;
                 let mut clients = HashSet::new();
 
-                loop {
-                    match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+                processor.run(move |net_event| {
+                    match net_event {
                         NetEvent::Message(endpoint, data) => {
                             assert_eq!(MIN_MESSAGE, data);
 
-                            let status = network.send(endpoint, &data);
+                            let status = controller.send(endpoint, &data);
                             assert_eq!(SendStatus::Sent, status);
 
                             messages_received += 1;
@@ -96,7 +96,7 @@ fn echo_server_handle(
                                 // The remote will be managed from the listener resource
                                 assert_eq!(listener_id, endpoint.resource_id());
                                 if messages_received == expected_clients {
-                                    break //Exit from thread.
+                                    return false; //Exit from thread.
                                 }
                             }
                         }
@@ -115,14 +115,15 @@ fn echo_server_handle(
                                     if disconnections == expected_clients {
                                         assert_eq!(expected_clients, messages_received);
                                         assert_eq!(0, clients.len());
-                                        break //Exit from thread.
+                                        return false;
                                     }
                                 }
                                 false => unreachable!(),
                             }
                         }
                     }
-                }
+                    true
+                })
             })
             .unwrap();
         })
@@ -141,37 +142,40 @@ fn echo_client_manager_handle(
         .name("test-client".into())
         .spawn(move || {
             std::panic::catch_unwind(|| {
-                let (network, mut event_queue) = Network::split();
+                let (controller, mut processor) = network::split();
 
                 let mut clients = HashSet::new();
 
                 for _ in 0..clients_number {
-                    let (server_endpoint, _) = network.connect(transport, server_addr).unwrap();
-                    let status = network.send(server_endpoint, MIN_MESSAGE);
+                    let (server_endpoint, _) = controller.connect(transport, server_addr).unwrap();
+                    let status = controller.send(server_endpoint, MIN_MESSAGE);
                     assert_eq!(SendStatus::Sent, status);
                     assert!(clients.insert(server_endpoint));
                 }
 
-                loop {
-                    match event_queue.receive_timeout(*TIMEOUT).expect(TIMEOUT_MSG_EXPECTED_ERR) {
+                processor.run(move |net_event|{
+                    match net_event {
                         NetEvent::Message(endpoint, data) => {
                             assert!(clients.remove(&endpoint));
-                            assert_eq!(MIN_MESSAGE, &data);
-                            network.remove(endpoint.resource_id());
+                            assert_eq!(MIN_MESSAGE, data);
+                            controller.remove(endpoint.resource_id());
                             if clients.len() == 0 {
-                                break //Exit from thread.
+                                return false //Exit from thread.
                             }
                         }
                         NetEvent::Connected(..) => unreachable!(),
                         NetEvent::Disconnected(_) => unreachable!(),
                     }
-                }
+                    true
+                })
             })
             .unwrap();
         })
         .unwrap()
 }
+*/
 
+/*
 fn burst_receiver_handle(
     transport: Transport,
     expected_count: usize,
@@ -235,7 +239,9 @@ fn burst_sender_handle(
         })
         .unwrap()
 }
+*/
 
+/*
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 1))]
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 100))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 1))]
@@ -255,7 +261,9 @@ fn echo(transport: Transport, clients: usize) {
     server_handle.join().unwrap();
     client_handle.join().unwrap();
 }
+*/
 
+/*
 // Tcp: Does not apply: it's stream based
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, 2000))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]

@@ -144,11 +144,11 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
-    fn process_remote(&self, id: ResourceId, event_callback: &mut dyn FnMut(NetEvent<'_>)) {
+    fn process_remote(&self, id: ResourceId, mut event_callback: impl FnMut(NetEvent<'_>)) {
         if let Some(remote) = self.remote_registry.get(id) {
             let endpoint = Endpoint::new(id, remote.addr);
             log::trace!("Processed remote for {}", endpoint);
-            let status = remote.resource.receive(&mut |data| {
+            let status = remote.resource.receive(|data| {
                 event_callback(NetEvent::Message(endpoint, data));
             });
             log::trace!("Processed remote receive status {}", status);
@@ -162,10 +162,10 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
         }
     }
 
-    fn process_local(&self, id: ResourceId, event_callback: &mut dyn FnMut(NetEvent<'_>)) {
+    fn process_local(&self, id: ResourceId, mut event_callback: impl FnMut(NetEvent<'_>)) {
         if let Some(local) = self.local_registry.get(id) {
             log::trace!("Processed local for {}", id);
-            local.resource.accept(&mut |accepted| {
+            local.resource.accept(|accepted| {
                 log::trace!("Processed local accepted type {}", accepted);
                 match accepted {
                     AcceptedType::Remote(addr, remote) => {

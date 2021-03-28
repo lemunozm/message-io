@@ -110,7 +110,7 @@ pub trait Remote: Resource + Sized {
     /// Note that `receive()` could imply more than one call to `read`.
     /// The implementator must be read all data from the resource.
     /// For most of the cases it means read until the network resource returns `WouldBlock`.
-    fn receive(&self, process_data: &mut dyn FnMut(&[u8])) -> ReadStatus;
+    fn receive(&self, process_data: impl FnMut(&[u8])) -> ReadStatus;
 
     /// Sends a raw data from a resource.
     /// The **implementator** is in charge to send the entire `data`.
@@ -157,7 +157,7 @@ pub trait Local: Resource + Sized {
     /// The **implementator** must process all these pending connections in this call.
     /// For most of the cases it means accept connections until the network
     /// resource returns `WouldBlock`.
-    fn accept(&self, accept_remote: &mut dyn FnMut(AcceptedType<'_, Self::Remote>));
+    fn accept(&self, accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>));
 
     /// Sends a raw data from a resource.
     /// Similar to [`Remote::send()`] but the resource that sends the data is a `Local`.

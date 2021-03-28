@@ -105,7 +105,7 @@ impl Remote for RemoteResource {
         Ok(ConnectionInfo { remote, local_addr, peer_addr })
     }
 
-    fn receive(&self, process_data: &mut dyn FnMut(&[u8])) -> ReadStatus {
+    fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
         loop {
             // It is preferred to lock inside the loop to avoid blocking the sender thread
             // if there is a huge amount of data to read.
@@ -206,7 +206,7 @@ impl Local for LocalResource {
         Ok(ListeningInfo { local: LocalResource { listener }, local_addr })
     }
 
-    fn accept(&self, accept_remote: &mut dyn FnMut(AcceptedType<'_, Self::Remote>)) {
+    fn accept(&self, mut accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
         loop {
             match self.listener.accept() {
                 Ok((stream, addr)) => {

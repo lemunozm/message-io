@@ -37,7 +37,7 @@ impl<E: Send> EventThread<E> {
 
     /// Run a thread giving a callback that would be called when a event be received.
     /// Run over an already running thread will panic.
-    pub fn run(&mut self, callback: impl Fn(E) + Send + 'static) {
+    pub fn run(&mut self, mut callback: impl FnMut(E) + Send + 'static) {
         let timeout = Duration::from_millis(Self::SAMPLING_TIMEOUT);
         self.thread
             .spawn(move |event_queue| {

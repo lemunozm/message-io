@@ -177,12 +177,12 @@ impl NetworkProcessor {
     /// since during that computation the internal thread will be blocked.
     ///
     /// It the processor is already running it would panic.
-    pub fn run(&mut self, event_callback: impl Fn(NetEvent<'_>) -> bool + Send + 'static) {
+    pub fn run(&mut self, mut event_callback: impl FnMut(NetEvent<'_>) -> bool + Send + 'static) {
         let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
 
         // Mapping the event_callback to one that handle the stopped.
         let running = self.running.clone();
-        let event_callback = move |event: NetEvent<'_>| {
+        let mut event_callback = move |event: NetEvent<'_>| {
             if !event_callback(event) {
                 running.store(false, Ordering::Relaxed);
             }
@@ -196,7 +196,7 @@ impl NetworkProcessor {
             if !self.running.load(Ordering::Relaxed) {
                 return // The user stop running during the cached event processing
             }
-            if !self.process_cached_event(&event_callback) {
+            if !self.process_cached_event(&mut event_callback) {
                 break // No more cached events
             }
         }
@@ -209,7 +209,7 @@ impl NetworkProcessor {
                     timeout,
                     &mut state.poll,
                     &mut state.processors,
-                    &|net_event| {
+                    &mut |net_event| {
                         if running.load(Ordering::Relaxed) {
                             event_callback(net_event);
                         }
@@ -285,31 +285,31 @@ impl NetworkProcessor {
     pub fn receive(
         &mut self,
         timeout: Option<Duration>,
-        event_callback: impl Fn(NetEvent<'_>) + Send + 'static
+        mut event_callback: impl Fn(NetEvent<'_>) + Send + 'static
     ) -> bool {
         // Dispatch the catched events first.
-        if self.process_cached_event(&event_callback) {
+        if self.process_cached_event(&mut event_callback) {
             return true // There was a cached event processed.
         }
 
         // No cached events, we dispatch an event poll to get a new one from the network.
-        let was_processed = std::cell::Cell::new(false);
+        let mut was_processed = false;
         let cached_event_sender = self.cached_event_sender.clone();
         let state = self.thread.state_mut().unwrap();
-        Self::process_poll_event(timeout, &mut state.poll, &mut state.processors, &|net_event| {
-            if !was_processed.get() {
+        Self::process_poll_event(timeout, &mut state.poll, &mut state.processors, &mut |net_event| {
+            if !was_processed {
                 event_callback(net_event);
-                was_processed.set(true);
+                was_processed = true;
             }
             else {
                 log::trace!("Cached {:?}", net_event);
                 cached_event_sender.send(net_event.into()).unwrap();
             }
         });
-        was_processed.get()
+        was_processed
     }
 
-    fn process_cached_event(&self, event_callback: &dyn Fn(NetEvent<'_>)) -> bool {
+    fn process_cached_event(&self, event_callback: &mut dyn FnMut(NetEvent<'_>)) -> bool {
         match self.cached_event_receiver.try_recv() {
             Ok(net_event) => {
                 log::trace!("Read {:?} from cache", net_event);
@@ -325,12 +325,12 @@ impl NetworkProcessor {
         timeout: Option<Duration>,
         poll: &mut Poll,
         processors: &mut EventProcessorList,
-        event_callback: &dyn Fn(NetEvent<'_>),
+        event_callback: &mut dyn FnMut(NetEvent<'_>),
     ) {
         poll.process_event(timeout, |poll_event| match poll_event {
             PollEvent::Network(resource_id) => {
                 let adapter_id = resource_id.adapter_id() as usize;
-                processors[adapter_id].process(resource_id, &|net_event| {
+                processors[adapter_id].process(resource_id, &mut |net_event| {
                     log::trace!("Processed {:?}", net_event);
                     event_callback(net_event);
                 });

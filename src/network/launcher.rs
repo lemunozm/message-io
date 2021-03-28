@@ -80,7 +80,7 @@ impl ActionController for UnimplementedActionController {
 
 struct UnimplementedEventProcessor;
 impl EventProcessor for UnimplementedEventProcessor {
-    fn process(&self, _: ResourceId, _: &dyn Fn(NetEvent<'_>)) {
+    fn process(&self, _: ResourceId, _: &mut dyn FnMut(NetEvent<'_>)) {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
     }
 }

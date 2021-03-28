@@ -49,7 +49,7 @@ pub trait ActionController: Send + Sync {
 }
 
 pub trait EventProcessor: Send + Sync {
-    fn process(&self, resource_id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>));
+    fn process(&self, resource_id: ResourceId, event_callback: &mut dyn FnMut(NetEvent<'_>));
 }
 
 pub struct Driver<R: Remote, L: Local> {
@@ -135,7 +135,7 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
-    fn process(&self, id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>)) {
+    fn process(&self, id: ResourceId, event_callback: &mut dyn FnMut(NetEvent<'_>)) {
         match id.resource_type() {
             ResourceType::Remote => self.process_remote(id, event_callback),
             ResourceType::Local => self.process_local(id, event_callback),
@@ -144,11 +144,11 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
-    fn process_remote(&self, id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>)) {
+    fn process_remote(&self, id: ResourceId, event_callback: &mut dyn FnMut(NetEvent<'_>)) {
         if let Some(remote) = self.remote_registry.get(id) {
             let endpoint = Endpoint::new(id, remote.addr);
             log::trace!("Processed remote for {}", endpoint);
-            let status = remote.resource.receive(&|data| {
+            let status = remote.resource.receive(&mut |data| {
                 event_callback(NetEvent::Message(endpoint, data));
             });
             log::trace!("Processed remote receive status {}", status);
@@ -162,10 +162,10 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
         }
     }
 
-    fn process_local(&self, id: ResourceId, event_callback: &dyn Fn(NetEvent<'_>)) {
+    fn process_local(&self, id: ResourceId, event_callback: &mut dyn FnMut(NetEvent<'_>)) {
         if let Some(local) = self.local_registry.get(id) {
             log::trace!("Processed local for {}", id);
-            local.resource.accept(&|accepted| {
+            local.resource.accept(&mut |accepted| {
                 log::trace!("Processed local accepted type {}", accepted);
                 match accepted {
                     AcceptedType::Remote(addr, remote) => {

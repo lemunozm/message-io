@@ -29,7 +29,7 @@ impl<S: Send + 'static> RunnableThread<S> {
         name: &str,
         running: Arc<AtomicBool>,
         mut state: S,
-        callback: impl Fn(&mut S) + Send + 'static,
+        mut callback: impl FnMut(&mut S) + Send + 'static,
     ) -> JoinHandle<S> {
         thread::Builder::new()
             .name(format!("{}/{}", thread::current().name().unwrap_or(""), name))
@@ -45,7 +45,7 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// Creates a new thread that will continuously call to the callback.
     /// It is in charge of the user to perform a blocking operation in the callback.
     /// If the thread is already running it will returns an [`RunningErr`] error.
-    pub fn spawn(&mut self, callback: impl Fn(&mut S) + Send + 'static) -> Result<(), RunningErr> {
+    pub fn spawn(&mut self, callback: impl FnMut(&mut S) + Send + 'static) -> Result<(), RunningErr> {
         if let Some(ThreadState::Finishing(..)) = self.thread_state {
             self.join();
         }

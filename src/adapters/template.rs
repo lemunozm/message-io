@@ -29,7 +29,7 @@ impl Remote for RemoteResource {
         todo!();
     }
 
-    fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
+    fn receive(&self, process_data: &mut dyn FnMut(&[u8])) -> ReadStatus {
         todo!();
     }
 
@@ -52,7 +52,7 @@ impl Local for LocalResource {
         todo!();
     }
 
-    fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
+    fn accept(&self, accept_remote: &mut dyn FnMut(AcceptedType<'_, Self::Remote>)) {
         todo!();
     }
 }

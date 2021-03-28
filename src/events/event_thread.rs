@@ -1,6 +1,6 @@
 use super::queue::{EventSender, EventQueue};
 
-use crate::util::thread::{RunnableThread, RunningErr};
+use crate::util::thread::{RunnableThread};
 
 use std::time::{Duration};
 
@@ -48,11 +48,11 @@ impl<E: Send> EventThread<E> {
             .unwrap();
     }
 
-    /// Wait the thread until it stops.
-    /// It will wait until a call to [`EventThread::stop()`] was performed and
-    /// the thread finish its last processing.
-    pub fn wait(&mut self) {
-        self.thread.join();
+    /// Stop the thread.
+    /// After the current processing event, no more events will be process.
+    /// If you want to run the thread again, call [`EventThread::run()`].
+    pub fn stop(&mut self) {
+        self.thread.finalize();
     }
 
     /// Check if the thread is running.
@@ -60,24 +60,16 @@ impl<E: Send> EventThread<E> {
         self.thread.is_running()
     }
 
-    /// Stop the thread.
-    /// Note that the thread will continuos running after this call until the current processing
-    /// event was performed.
-    /// If you want to run the thread again, call [`EventThread::wait()`] after this call.
-    pub fn stop(&mut self) {
-        self.thread.finalize().ok();
-    }
-
-    /// Retrieves a reference to the [`EventQueue`] used.
-    /// This function is only valid over a not running thread.
-    pub fn event_queue(&self) -> Result<&EventQueue<E>, RunningErr> {
-        self.thread.state_ref()
-    }
-
-    /// Stops and consume this thread to retrieve the [`EventQueue`].
-    pub fn take_event_queue(mut self) -> EventQueue<E> {
-        self.thread.finalize().ok();
+    /// Wait the thread until it stops.
+    /// It will wait until a call to [`EventThread::stop()`] was performed and
+    /// the thread finish its last processing.
+    pub fn wait(&mut self) {
         self.thread.join();
+    }
+
+    /// Stops and consumes this thread to retrieve the [`EventQueue`].
+    pub fn take_event_queue(mut self) -> EventQueue<E> {
+        self.thread.finalize();
         self.thread.take_state().unwrap()
     }
 }

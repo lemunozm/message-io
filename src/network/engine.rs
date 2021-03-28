@@ -177,8 +177,16 @@ impl NetworkProcessor {
     /// since during that computation the internal thread will be blocked.
     ///
     /// It the processor is already running it would panic.
-    pub fn run(&mut self, event_callback: impl Fn(NetEvent<'_>) + Send + 'static) {
+    pub fn run(&mut self, event_callback: impl Fn(NetEvent<'_>) -> bool + Send + 'static) {
         let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
+
+        // Mapping the event_callback to one that handle the stopped.
+        let running = self.running.clone();
+        let event_callback = move |event: NetEvent<'_>| {
+            if !event_callback(event) {
+                running.store(false, Ordering::Relaxed);
+            }
+        };
 
         // From the user perspective, the thread is running now (before the thread itself).
         self.running.store(true, Ordering::Relaxed);
@@ -203,7 +211,7 @@ impl NetworkProcessor {
                     &mut state.processors,
                     &|net_event| {
                         if running.load(Ordering::Relaxed) {
-                            event_callback(net_event)
+                            event_callback(net_event);
                         }
                         else {
                             log::trace!("Cached {:?}", net_event);
@@ -236,7 +244,7 @@ impl NetworkProcessor {
 
     /// Check if the internal thread is running.
     pub fn is_running(&self) -> bool {
-        self.thread.is_running()
+        self.running.load(Ordering::Relaxed)
     }
 
     /// Check if there are cached events.

@@ -1,13 +1,8 @@
-use message_io::network::{self, NetworkController, NetworkProcessor, NetEvent, Transport};
+use message_io::network::{self, Transport};
 
-use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use criterion::{criterion_group, criterion_main, Criterion, /*BenchmarkId, Throughput*/};
 
 use std::time::{Duration};
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
-use std::thread::{self};
 
 lazy_static::lazy_static! {
     pub static ref SMALL_TIMEOUT: Duration = Duration::from_millis(100);
@@ -20,12 +15,12 @@ fn latency_by(c: &mut Criterion, transport: Transport) {
     let msg = format!("latency by {}", transport);
     c.bench_function(&msg, |b| {
         let (controller, mut processor) = network::split();
-        processor.run(|_| ());
+        processor.run(|_| true);
 
         let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
         let receiver = controller.connect(transport, receiver_addr).unwrap().0;
 
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(100)); // Connection processed
         processor.stop();
         processor.wait();
 
@@ -47,35 +42,45 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
         let mut group = c.benchmark_group(format!("throughput by {}", transport));
         group.throughput(Throughput::Bytes(block_size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(block_size), &block_size, |b, &size| {
-            let (network, mut events) = Network::split();
-            let receiver_addr = network.listen(transport, "127.0.0.1:0").unwrap().1;
-            let receiver = network.connect(transport, receiver_addr).unwrap().0;
+            b.iter_custom(move |iters| {
+                let (controller, mut processor) = network::split();
+                processor.run(|_| true);
 
-            // skip the connection event for oriented connection protocols.
-            events.receive_timeout(*SMALL_TIMEOUT);
+                let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
+                let receiver = controller.connect(transport, receiver_addr).unwrap().0;
 
-            let thread_running = Arc::new(AtomicBool::new(true));
-            let running = thread_running.clone();
-            let (tx, rx) = std::sync::mpsc::channel();
-            let handle = thread::Builder::new()
-                .name("test-server".into())
-                .spawn(move || {
-                    let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
-                    tx.send(()).unwrap(); // receiving thread ready
-                    while running.load(Ordering::Relaxed) {
-                        network.send(receiver, &message);
-                    }
-                })
-                .unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(100)); // Connection processed
+                processor.stop();
+                processor.wait();
 
-            rx.recv().unwrap();
+                let current = std::cell::Cell::new(0);
 
-            b.iter(|| {
-                events.receive_timeout(*SMALL_TIMEOUT).unwrap();
+                let (tx, rx) = std::sync::mpsc::channel();
+                let handle = thread::Builder::new()
+                    .name("test-server".into())
+                    .spawn(move || {
+                        let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
+                        tx.send(()).unwrap(); // receiving thread ready
+                        for _ in 0..iters {
+                            controller.send(receiver, &message);
+                        }
+                    })
+                    .unwrap();
+
+                rx.recv().unwrap();
+
+                let delay = Instant::now();
+                processor.run(move |_| {
+                    current.set(current.get() + 1);
+                    current.get() < iters
+                });
+                processor.wait();
+                let a = delay.elapsed();
+
+                handle.join().unwrap();
+
+                a
             });
-
-            thread_running.store(false, Ordering::Relaxed);
-            handle.join().unwrap();
         });
     }
 }
@@ -96,18 +101,19 @@ fn latency(c: &mut Criterion) {
     latency_by(c, Transport::Ws);
 }
 
-fn throughput(c: &mut Criterion) {
 /*
-    #[cfg(feature = "udp")]
-    throughput_by(c, Transport::Udp);
+fn throughput(c: &mut Criterion) {
+    //#[cfg(feature = "udp")]
+    //throughput_by(c, Transport::Udp);
     //TODO: Fix this test: How to read inside of criterion iter()? an stream protocol?
-    //#[cfg(feature = "tcp")] throughput_by(c, Transport::Tcp);
+    // #[cfg(feature = "tcp")]
+    // throughput_by(c, Transport::Tcp);
     #[cfg(feature = "tcp")]
     throughput_by(c, Transport::FramedTcp);
     #[cfg(feature = "websocket")]
     throughput_by(c, Transport::Ws);
-*/
 }
+*/
 
-criterion_group!(benches, latency, throughput);
+criterion_group!(benches, latency, /*throughput*/);
 criterion_main!(benches);

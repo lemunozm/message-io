@@ -11,12 +11,8 @@ use strum::{IntoEnumIterator};
 use crossbeam::channel::{self, Sender, Receiver, TryRecvError};
 
 use crate::adapter::{SendStatus};
-use crate::util::thread::{RunnableThread};
+use crate::util::thread::{RunnableThread, ThreadHandler};
 
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::{Duration};
 use std::io::{self};
@@ -148,7 +144,6 @@ struct NetworkState {
 /// These events are offered to the user as a [`NetEvent`] its processing data.
 pub struct NetworkProcessor {
     thread: RunnableThread<NetworkState>,
-    running: Arc<AtomicBool>,
     cached_event_receiver: Receiver<StoredNetEvent>,
     cached_event_sender: Sender<StoredNetEvent>,
 }
@@ -163,59 +158,131 @@ impl NetworkProcessor {
 
         Self {
             thread: RunnableThread::new("message_io::NetworkThread", network_state),
-            running: Arc::new(AtomicBool::new(false)),
             cached_event_sender,
             cached_event_receiver,
         }
     }
 
+    fn read_cached_event(&self) -> Option<StoredNetEvent> {
+        match self.cached_event_receiver.try_recv() {
+            Ok(net_event) => {
+                log::trace!("Read {:?} from cache", net_event);
+                Some(net_event)
+            }
+            Err(TryRecvError::Empty) => None,
+            Err(TryRecvError::Disconnected) => unreachable!(),
+        }
+    }
+
+    fn cache_event(cache_sender: &Sender<StoredNetEvent>, net_event: NetEvent<'_>) {
+        log::trace!("Cached {:?}", net_event);
+        cache_sender.send(net_event.into()).unwrap();
+    }
+
+    fn process_poll_event(
+        timeout: Option<Duration>,
+        poll: &mut Poll,
+        processors: &mut EventProcessorList,
+        event_callback: &mut dyn FnMut(NetEvent<'_>),
+    ) {
+        poll.process_event(timeout, |poll_event| match poll_event {
+            PollEvent::Network(resource_id) => {
+                let adapter_id = resource_id.adapter_id() as usize;
+                processors[adapter_id].process(resource_id, &mut |net_event| {
+                    log::trace!("Processed {:?}", net_event);
+                    event_callback(net_event);
+                });
+            }
+            #[allow(dead_code)] //TODO: remove it with native event support
+            PollEvent::Waker => todo!(),
+        });
+    }
+
+    /// Receives only one `NetEvent` without running the internal thread.
+    /// If `None` timeout is specified it would block until receive the [`NetEvent`].
+    /// If timeout is specified it would block only during the specified [`Duration`].
+    /// The funcion would return a boolean indication if the `event_callback` was called with
+    /// a `NetEvent`.
+    /// Note that this function could *cache events*, see docs about
+    /// `NetworkThread::has_cached_events()` to a deeper explanation about it.
+    /// If you want to receive [`NetEvent`], use [`NetworkThread::run()`] that
+    /// offers better performance.
+    pub fn receive(
+        &mut self,
+        timeout: Option<Duration>,
+        event_callback: impl Fn(NetEvent<'_>) + Send + 'static
+    ) -> bool {
+        // Dispatch the catched events first.
+        if let Some(event) = self.read_cached_event() {
+            event_callback(event.borrow());
+            return true // There was a cached event processed.
+        }
+
+        // No cached events, we dispatch an event poll to get a new one from the network.
+        let mut was_processed = false;
+        let cached_event_sender = self.cached_event_sender.clone();
+        let state = self.thread.state_mut().unwrap();
+        Self::process_poll_event(timeout, &mut state.poll, &mut state.processors, &mut |net_event| {
+            if !was_processed {
+                event_callback(net_event);
+                was_processed = true;
+            }
+            else {
+                Self::cache_event(&cached_event_sender, net_event);
+            }
+        });
+        was_processed
+    }
+
     /// Start to read events from the network.
-    /// When the event is read, the `event_callback` is called from the internal network thread
-    /// in order to offer a `NetEvent` referenced directly to the socket data, without copies.
+    /// If the processor is already running it would panic.
+    ///
+    /// When an event is read, the `event_callback` is called from the internal network thread
+    /// in order to offer a `NetEvent` referenced to the socket data, without copies.
     /// For that reason, if your computation is expensive, it is recomended to copy the
     /// message into a place that can be computed from other thread,
     /// since during that computation the internal thread will be blocked.
     ///
-    /// It the processor is already running it would panic.
-    pub fn run(&mut self, mut event_callback: impl FnMut(NetEvent<'_>) -> bool + Send + 'static) {
+    /// If you want to stop processing, you can run [`NetworkProcessor::stop()`]
+    /// or using the `handler` of the event_callback to finalize its processing
+    /// ([`ThreadHandler::finalize()`])
+    ///
+    /// Note that this function is asynchronous, it will execute the event_callback in its own
+    /// thread, without take the user thread.
+    /// If you want wait for the end of this job, you can call [`NetworkProcessor::wait()`].
+    pub fn run(
+        &mut self,
+        mut event_callback: impl FnMut(NetEvent<'_>, &ThreadHandler) + Send + 'static
+    ) {
         let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
 
-        // Mapping the event_callback to one that handle the stopped.
-        let running = self.running.clone();
-        let mut event_callback = move |event: NetEvent<'_>| {
-            if !event_callback(event) {
-                running.store(false, Ordering::Relaxed);
-            }
-        };
-
-        // From the user perspective, the thread is running now (before the thread itself).
-        self.running.store(true, Ordering::Relaxed);
-
         // Dispatch the catched events first.
+        let fake_handler = ThreadHandler::new("fake network thread processor".into(), true);
         loop {
-            if !self.running.load(Ordering::Relaxed) {
-                return // The user stop running during the cached event processing
-            }
-            if !self.process_cached_event(&mut event_callback) {
-                break // No more cached events
+            match self.read_cached_event() {
+                Some(event) =>  {
+                    event_callback(event.borrow(), &fake_handler);
+                    if !fake_handler.is_running() {
+                        return // The user stop running during the cached event processing
+                    }
+                }
+                None => break, // No more cached events
             }
         }
 
-        let running = self.running.clone();
         let cached_event_sender = self.cached_event_sender.clone();
         self.thread
-            .spawn(move |state| {
+            .spawn(move |state, handler| {
                 Self::process_poll_event(
                     timeout,
                     &mut state.poll,
                     &mut state.processors,
                     &mut |net_event| {
-                        if running.load(Ordering::Relaxed) {
-                            event_callback(net_event);
+                        if handler.is_running() {
+                            event_callback(net_event, handler);
                         }
                         else {
-                            log::trace!("Cached {:?}", net_event);
-                            cached_event_sender.send(net_event.into()).unwrap();
+                            Self::cache_event(&cached_event_sender, net_event);
                         }
                     },
                 );
@@ -230,9 +297,8 @@ impl NetworkProcessor {
     /// they would be cached to read it later.
     /// See docs of [`NetworkThread::has_cached_events()`] for a deeper explanation.
     /// If you want to run the thread again, call [`NetworkProcessor::run()`].
-    pub fn stop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
-        self.thread.finalize();
+    pub fn stop(&self) {
+        self.thread.handler().finalize();
     }
 
     /// Wait until the processor stops.
@@ -244,7 +310,7 @@ impl NetworkProcessor {
 
     /// Check if the internal thread is running.
     pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::Relaxed)
+        self.thread.handler().is_running()
     }
 
     /// Check if there are cached events.
@@ -271,73 +337,6 @@ impl NetworkProcessor {
     /// this caching after each `receive()` call in the worst situation.
     pub fn has_cached_events(&self) -> bool {
         !self.cached_event_receiver.is_empty()
-    }
-
-    /// Receives only one `NetEvent` without running the internal thread.
-    /// If `None` timeout is specified it would block until receive the [`NetEvent`].
-    /// If timeout is specified it would block only during the specified [`Duration`].
-    /// The funcion would return a boolean indication if the `event_callback` was called with
-    /// a `NetEvent`.
-    /// Note that this function could *cache events*, see docs about
-    /// `NetworkThread::has_cached_events()` to a deeper explanation about it.
-    /// If you want to receive [`NetEvent`], use [`NetworkThread::run()`] that
-    /// offers better performance.
-    pub fn receive(
-        &mut self,
-        timeout: Option<Duration>,
-        mut event_callback: impl Fn(NetEvent<'_>) + Send + 'static
-    ) -> bool {
-        // Dispatch the catched events first.
-        if self.process_cached_event(&mut event_callback) {
-            return true // There was a cached event processed.
-        }
-
-        // No cached events, we dispatch an event poll to get a new one from the network.
-        let mut was_processed = false;
-        let cached_event_sender = self.cached_event_sender.clone();
-        let state = self.thread.state_mut().unwrap();
-        Self::process_poll_event(timeout, &mut state.poll, &mut state.processors, &mut |net_event| {
-            if !was_processed {
-                event_callback(net_event);
-                was_processed = true;
-            }
-            else {
-                log::trace!("Cached {:?}", net_event);
-                cached_event_sender.send(net_event.into()).unwrap();
-            }
-        });
-        was_processed
-    }
-
-    fn process_cached_event(&self, event_callback: &mut dyn FnMut(NetEvent<'_>)) -> bool {
-        match self.cached_event_receiver.try_recv() {
-            Ok(net_event) => {
-                log::trace!("Read {:?} from cache", net_event);
-                event_callback(net_event.borrow());
-                true
-            }
-            Err(TryRecvError::Empty) => false,
-            Err(TryRecvError::Disconnected) => unreachable!(),
-        }
-    }
-
-    fn process_poll_event(
-        timeout: Option<Duration>,
-        poll: &mut Poll,
-        processors: &mut EventProcessorList,
-        event_callback: &mut dyn FnMut(NetEvent<'_>),
-    ) {
-        poll.process_event(timeout, |poll_event| match poll_event {
-            PollEvent::Network(resource_id) => {
-                let adapter_id = resource_id.adapter_id() as usize;
-                processors[adapter_id].process(resource_id, &mut |net_event| {
-                    log::trace!("Processed {:?}", net_event);
-                    event_callback(net_event);
-                });
-            }
-            #[allow(dead_code)] //TODO: remove it with native event support
-            PollEvent::Waker => todo!(),
-        });
     }
 }
 
@@ -380,13 +379,13 @@ mod tests {
     fn processor_thread() {
         let mut processor = NetworkProcessor::new(Poll::default(), Vec::new());
         assert!(!processor.is_running());
-        processor.run(|_| unreachable!());
+        processor.run(|_, _| unreachable!());
         assert!(processor.is_running());
         processor.stop();
         assert!(!processor.is_running());
         processor.stop(); // Already stopped, nothing happens
         assert!(!processor.is_running());
-        processor.run(|_| unreachable!());
+        processor.run(|_, _| unreachable!());
         assert!(processor.is_running());
         // drops while running
     }
@@ -395,7 +394,7 @@ mod tests {
     #[should_panic]
     fn run_twice_without_stop() {
         let mut processor = NetworkProcessor::new(Poll::default(), Vec::new());
-        processor.run(|_| unreachable!());
-        processor.run(|_| unreachable!()); // panic: already running
+        processor.run(|_, _| unreachable!());
+        processor.run(|_, _| unreachable!()); // panic: already running
     }
 }

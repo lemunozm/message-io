@@ -9,33 +9,85 @@ pub(crate) const OTHER_THREAD_ERR: &str = "This error is shown because other thr
 
 enum ThreadState<S: Send + 'static> {
     Ready(S),
-    Running(JoinHandle<S>, Arc<AtomicBool>),
-    Finishing(JoinHandle<S>),
+    Running(JoinHandle<S>),
 }
+
+/// Shareable handler of the thread.
+/// It contains the safer shareable methods of a [`RunnableThread`]
+pub struct ThreadHandler {
+    name: String,
+    running: Arc<AtomicBool>,
+}
+
+impl ThreadHandler {
+    pub fn new(name: String, initialized: bool) -> Self {
+        let handler = Self {name, running: Arc::new(AtomicBool::new(false))};
+        if initialized {
+            handler.spawned();
+        }
+        handler
+    }
+
+    /// Assumes that the thread is initialized.
+    fn spawned(&self) {
+        self.running.store(true, Ordering::Relaxed);
+        log::trace!("Thread [{}] spawned", self.name);
+    }
+
+    /// Check if the thread is running.
+    /// A `RunningThread` is considered running if [`RunningThread::spawn()`] was called
+    /// but [`RunningThread::finalize()`] not.
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::Relaxed)
+    }
+
+    /// Finalizes the thread.
+    /// After this call, the thread is considered not running although the last
+    /// callback job could be processing.
+    /// This call do not wait to finish that job.
+    /// If you want to wait to finish it, call [`RunnableThread::join()`].
+    pub fn finalize(&self) {
+        self.running.store(false, Ordering::Relaxed);
+        log::trace!("Thread [{}] finalized", self.name);
+    }
+}
+
+impl Clone for ThreadHandler {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            running: self.running.clone(),
+        }
+    }
+}
+
 
 /// Thread utility to spawn/finalize/join threads without lossing the state.
 pub struct RunnableThread<S: Send + 'static> {
-    name: String,
     thread_state: Option<ThreadState<S>>,
+    handler: ThreadHandler,
 }
 
 impl<S: Send + 'static> RunnableThread<S> {
     /// Initialize a thread with a name and a state
     pub fn new(name: &str, state: S) -> Self {
-        Self { name: name.into(), thread_state: Some(ThreadState::Ready(state)) }
+        Self {
+            thread_state: Some(ThreadState::Ready(state)),
+            handler: ThreadHandler::new(name.into(), false),
+        }
     }
 
     fn start_thread(
-        name: &str,
-        running: Arc<AtomicBool>,
+        handler: ThreadHandler,
         mut state: S,
-        mut callback: impl FnMut(&mut S) + Send + 'static,
+        mut callback: impl FnMut(&mut S, &ThreadHandler) + Send + 'static,
     ) -> JoinHandle<S> {
+        handler.spawned();
         thread::Builder::new()
-            .name(format!("{}/{}", thread::current().name().unwrap_or(""), name))
+            .name(format!("{}/{}", thread::current().name().unwrap_or(""), handler.name))
             .spawn(move || {
-                while running.load(Ordering::Relaxed) {
-                    callback(&mut state);
+                while handler.is_running() {
+                    callback(&mut state, &handler);
                 }
                 state
             })
@@ -45,78 +97,48 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// Creates a new thread that will continuously call to the callback.
     /// It is in charge of the user to perform a blocking operation in the callback.
     /// If the thread is already running it will returns an [`RunningErr`] error.
-    pub fn spawn(&mut self, callback: impl FnMut(&mut S) + Send + 'static) -> Result<(), RunningErr> {
-        if let Some(ThreadState::Finishing(..)) = self.thread_state {
-            self.join();
+    pub fn spawn(
+        &mut self,
+        callback: impl FnMut(&mut S, &ThreadHandler) + Send + 'static
+    ) -> Result<(), RunningErr> {
+        if !self.handler.is_running() {
+            self.join(); // Ensure the processing is finished.
         }
 
         let thread_state = self.thread_state.take().unwrap();
         match thread_state {
             ThreadState::Ready(state) => {
-                let thread_running = Arc::new(AtomicBool::new(true));
-                let running = thread_running.clone();
-                let thread = Self::start_thread(&self.name, running, state, callback);
-
-                log::trace!("Thread [{}] spawned", self.name);
-                self.thread_state = Some(ThreadState::Running(thread, thread_running));
+                let thread = Self::start_thread(self.handler.clone(), state, callback);
+                self.thread_state = Some(ThreadState::Running(thread));
                 Ok(())
             }
             ThreadState::Running(..) => {
                 self.thread_state = Some(thread_state);
-                Err(RunningErr(self.name.clone()))
+                Err(RunningErr(self.handler.name.clone()))
             }
-            ThreadState::Finishing(..) => unreachable!(),
         }
-    }
-
-    /// Finalizes the thread.
-    /// After this call, the thread is considered not running although the last
-    /// callback job could be processing. This call do not wait to finish that job.
-    /// If you want to wait to finish it, call [`RunnableThread::join()`].
-    pub fn finalize(&mut self) {
-        let thread_state = self.thread_state.take().unwrap();
-        let thread_state = match thread_state {
-            ThreadState::Ready(..) => thread_state,
-            ThreadState::Running(thread, running) => {
-                log::trace!("Thread [{}] finalized", self.name);
-                running.store(false, Ordering::Relaxed);
-                ThreadState::Finishing(thread)
-            }
-            ThreadState::Finishing(..) => thread_state,
-        };
-        self.thread_state = Some(thread_state);
     }
 
     /// Waits to the thread to finalize.
     /// This call will block until a `RunningThread::finalize()` was called.
     /// Join a thread not spawned will not wait.
     pub fn join(&mut self) {
-        log::trace!("Waiting to finish thread: [{}]", self.name);
+        log::trace!("Waiting to finish thread: [{}]", self.handler.name);
         let thread_state = match self.thread_state.take().unwrap() {
-            ThreadState::Ready(state) => state,
-            ThreadState::Running(thread, _) => thread.join().expect(OTHER_THREAD_ERR),
-            ThreadState::Finishing(thread) => thread.join().expect(OTHER_THREAD_ERR),
+            ThreadState::Ready(state) => ThreadState::Ready(state),
+            ThreadState::Running(thread) => {
+                ThreadState::Ready(thread.join().expect(OTHER_THREAD_ERR))
+            },
         };
-        self.thread_state = Some(ThreadState::Ready(thread_state));
-        log::trace!("Finished to waiting thread: [{}]", self.name);
-    }
-
-    /// Check if the thread is running.
-    /// A `RunningThread` is considered running if [`RunningThread::spawn()`] was called
-    /// but [`RunningThread::finalize()`] not.
-    pub fn is_running(&self) -> bool {
-        match self.thread_state.as_ref().unwrap() {
-            ThreadState::Ready(..) => false,
-            ThreadState::Running(..) => true,
-            ThreadState::Finishing(..) => false,
-        }
+        self.thread_state = Some(thread_state);
+        log::trace!("Finished to waiting thread: [{}]", self.handler.name);
     }
 
     /// Consumes the `RunningThread` to recover the state given in its creation.
     /// You only can consume finalized or not spawned threads.
     pub fn take_state(mut self) -> Result<S, RunningErr> {
-        if let Some(ThreadState::Finishing(..)) = self.thread_state {
-            self.join();
+        if !self.handler.is_running() {
+            self.join(); // Ensure the processing is finished.
         }
 
         let thread_state = self.thread_state.take().unwrap();
@@ -124,31 +146,33 @@ impl<S: Send + 'static> RunnableThread<S> {
             ThreadState::Ready(state) => Ok(state),
             ThreadState::Running(..) => {
                 self.thread_state = Some(thread_state);
-                Err(RunningErr(self.name.clone()))
+                Err(RunningErr(self.handler.name.clone()))
             }
-            ThreadState::Finishing(..) => unreachable!(),
         }
     }
 
     /// Mutable access to the state given in its creation.
     /// You only can request the state if the thread is not running.
     pub fn state_mut(&mut self) -> Result<&mut S, RunningErr> {
-        if let Some(ThreadState::Finishing(..)) = self.thread_state {
-            self.join();
+        if !self.handler.is_running() {
+            self.join(); // Ensure the processing is finished.
         }
 
         match self.thread_state.as_mut().unwrap() {
             ThreadState::Ready(state) => Ok(state),
-            ThreadState::Running(..) => Err(RunningErr(self.name.clone())),
-            ThreadState::Finishing(..) => unreachable!(),
+            ThreadState::Running(..) => Err(RunningErr(self.handler.name.clone())),
         }
+    }
+
+    pub fn handler(&self) -> &ThreadHandler {
+        &self.handler
     }
 }
 
 impl<S: Send> Drop for RunnableThread<S> {
     fn drop(&mut self) {
         if self.thread_state.is_some() {
-            self.finalize();
+            self.handler.finalize();
             self.join();
         }
     }
@@ -187,21 +211,22 @@ mod tests {
         assert_eq!(Ok(&mut 42), thread.state_mut());
 
         thread
-            .spawn(|internal_state| {
+            .spawn(|internal_state, _| {
                 assert_eq!(&mut 42, internal_state);
                 *internal_state = 123;
                 std::thread::sleep(*STEP_DURATION);
             })
             .unwrap();
+
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_| ()));
-        assert!(thread.is_running());
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_, _| ()));
+        assert!(thread.handler().is_running());
 
         std::thread::sleep(*STEP_DURATION / 2);
-        thread.finalize();
-        assert!(!thread.is_running());
+        thread.handler().finalize();
+        assert!(!thread.handler().is_running());
         assert_eq!(Ok(&mut 123), thread.state_mut());
-        thread.finalize(); // Nothing happens
+        thread.handler().finalize(); // Nothing happens
 
         thread.join();
 
@@ -209,26 +234,41 @@ mod tests {
     }
 
     #[test]
+    fn stopped_from_callback() {
+        let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
+        assert_eq!(Ok(()), thread.spawn(|_, handler| {
+            std::thread::sleep(*STEP_DURATION);
+            handler.finalize() // stopped
+        }));
+        assert!(thread.handler().is_running());
+        thread.join();
+        assert!(!thread.handler().is_running());
+    }
+
+    #[test]
     fn spawn_and_spawn_again() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        assert_eq!(Ok(()), thread.spawn(|_| ()));
-        thread.finalize();
-        assert_eq!(Ok(()), thread.spawn(|_| ()));
-        assert!(thread.is_running());
-        thread.finalize();
+        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
+        thread.handler().finalize();
+        assert!(!thread.handler().is_running());
+
+        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
+        assert!(thread.handler().is_running());
+        thread.handler().finalize();
+        assert!(!thread.handler().is_running());
         thread.join();
     }
 
     #[test]
     fn destroy_while_finalizing() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        assert_eq!(Ok(()), thread.spawn(|_| ()));
-        thread.finalize();
+        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
+        thread.handler().finalize();
     }
 
     #[test]
     fn destroy_while_running() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        assert_eq!(Ok(()), thread.spawn(|_| ()));
+        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
     }
 }

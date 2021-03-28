@@ -1,4 +1,3 @@
-/*
 use message_io::network::{self, NetEvent, Transport, SendStatus};
 
 use test_case::test_case;
@@ -76,11 +75,11 @@ fn echo_server_handle(
                 let (listener_id, server_addr) = controller.listen(transport, LOCAL_ADDR).unwrap();
                 tx.send(server_addr).unwrap();
 
-                let mut messages_received = std::cell::RefCell::new(0);
+                let mut messages_received = 0;
                 let mut disconnections = 0;
                 let mut clients = HashSet::new();
 
-                processor.run(move |net_event| {
+                processor.run(move |net_event, handler| {
                     match net_event {
                         NetEvent::Message(endpoint, data) => {
                             assert_eq!(MIN_MESSAGE, data);
@@ -96,7 +95,7 @@ fn echo_server_handle(
                                 // The remote will be managed from the listener resource
                                 assert_eq!(listener_id, endpoint.resource_id());
                                 if messages_received == expected_clients {
-                                    return false; //Exit from thread.
+                                    handler.finalize() //Exit from thread.
                                 }
                             }
                         }
@@ -115,15 +114,15 @@ fn echo_server_handle(
                                     if disconnections == expected_clients {
                                         assert_eq!(expected_clients, messages_received);
                                         assert_eq!(0, clients.len());
-                                        return false;
+                                        handler.finalize() //Exit from thread.
                                     }
                                 }
                                 false => unreachable!(),
                             }
                         }
                     }
-                    true
-                })
+                });
+                processor.wait();
             })
             .unwrap();
         })
@@ -153,27 +152,26 @@ fn echo_client_manager_handle(
                     assert!(clients.insert(server_endpoint));
                 }
 
-                processor.run(move |net_event|{
+                processor.run(move |net_event, handler|{
                     match net_event {
                         NetEvent::Message(endpoint, data) => {
                             assert!(clients.remove(&endpoint));
                             assert_eq!(MIN_MESSAGE, data);
                             controller.remove(endpoint.resource_id());
                             if clients.len() == 0 {
-                                return false //Exit from thread.
+                                handler.finalize() //Exit from thread.
                             }
                         }
                         NetEvent::Connected(..) => unreachable!(),
                         NetEvent::Disconnected(_) => unreachable!(),
                     }
-                    true
-                })
+                });
+                processor.wait();
             })
             .unwrap();
         })
         .unwrap()
 }
-*/
 
 /*
 fn burst_receiver_handle(
@@ -241,7 +239,6 @@ fn burst_sender_handle(
 }
 */
 
-/*
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 1))]
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 100))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 1))]
@@ -261,7 +258,6 @@ fn echo(transport: Transport, clients: usize) {
     server_handle.join().unwrap();
     client_handle.join().unwrap();
 }
-*/
 
 /*
 // Tcp: Does not apply: it's stream based

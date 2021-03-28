@@ -107,15 +107,18 @@ impl Remote for RemoteResource {
 
     fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
         loop {
-            // It is preferred to lock inside the loop to avoid blocking the sender thread
-            // if there is a huge amount of data to read.
-            // This way we "emulates" full duplex for the websocket case.
+            // "emulates" full duplex for the websocket case locking here and not outside the loop.
             let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
             match state.deref_mut() {
                 RemoteState::WebSocket(web_socket) => {
                     match web_socket.read_message() {
                         Ok(message) => match message {
-                            Message::Binary(data) => process_data(&data),
+                            Message::Binary(data) => {
+                                // We can not call process_data while the socket is blocked.
+                                // The user could lock it again if sends from the callback.
+                                drop(state);
+                                process_data(&data);
+                            }
                             Message::Close(_) => break ReadStatus::Disconnected,
                             _ => continue,
                         },

@@ -15,14 +15,14 @@ fn latency_by(c: &mut Criterion, transport: Transport) {
     let msg = format!("latency by {}", transport);
     c.bench_function(&msg, |b| {
         let (controller, mut processor) = network::split();
-        processor.run(|_| true);
+        processor.run(|_, _| ()); // We need the processor running to process the connection
 
         let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
         let receiver = controller.connect(transport, receiver_addr).unwrap().0;
 
         std::thread::sleep(std::time::Duration::from_millis(100)); // Connection processed
         processor.stop();
-        processor.wait();
+        processor.wait(); // Wait the thread to be totally sopped before counting time
 
         b.iter(|| {
             controller.send(receiver, &[0xFF]);

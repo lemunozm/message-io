@@ -1,6 +1,6 @@
 use crate::network::{self, NetworkController, NetworkProcessor, NetEvent};
 use crate::events::{self, EventSender, EventThread};
-use crate::util::thread::{OTHER_THREAD_ERR};
+use crate::util::thread::{OTHER_THREAD_ERR, ThreadHandler};
 
 use std::sync::{
     Arc, Mutex,
@@ -23,12 +23,25 @@ pub enum NodeEvent<'a, S> {
 pub struct NodeHandler<S> {
     network: Arc<NetworkController>,
     signal: EventSender<S>,
-    running: Arc<AtomicBool>,
+    running: Arc<AtomicBool>, // Used as a cached value of thread handlers running.
+    network_thread_handler: ThreadHandler,
+    event_thread_handler: ThreadHandler,
 }
 
 impl<S> NodeHandler<S> {
-    fn new(network: NetworkController, signal: EventSender<S>) -> Self {
-        Self { network: Arc::new(network), signal, running: Arc::new(AtomicBool::new(true)) }
+    fn new(
+        network: NetworkController,
+        signal: EventSender<S>,
+        network_thread_handler: ThreadHandler,
+        event_thread_handler: ThreadHandler,
+        ) -> Self {
+        Self {
+            network: Arc::new(network),
+            signal,
+            running: Arc::new(AtomicBool::new(true)),
+            network_thread_handler,
+            event_thread_handler,
+        }
     }
 
     /// Returns a reference to the NetworkController to deal with the network.
@@ -47,7 +60,9 @@ impl<S> NodeHandler<S> {
     /// No more events would be processing after this call.
     /// After this call, if you have waiting by `Node::wait()` it would be unblocked.
     pub fn stop(&self) {
-        self.running.store(false, Ordering::Relaxed)
+        self.running.store(false, Ordering::Relaxed);
+        self.network_thread_handler.finalize();
+        self.event_thread_handler.finalize();
     }
 
     /// Check if the node is running.
@@ -62,6 +77,8 @@ impl<S: Send + 'static> Clone for NodeHandler<S> {
             network: self.network.clone(),
             signal: self.signal.clone(),
             running: self.running.clone(),
+            network_thread_handler: self.network_thread_handler.clone(),
+            event_thread_handler: self.event_thread_handler.clone(),
         }
     }
 }
@@ -78,14 +95,20 @@ impl<S: Send + 'static> Node<S> {
     /// Creates a new node that works asynchronously and dispatching events into the `event_callback`.
     ///
     /// After this call and make your initial configuration,
-    /// you could want to call [`Node::wait()`] to stop the main thread.
+    /// you could want to call [`Node::wait()`] to block the main thread.
     pub fn new(
         event_callback: impl FnMut(NodeEvent<S>, &NodeHandler<S>) + Send + 'static,
     ) -> Node<S> {
         let (network_controller, network_processor) = network::split();
         let (signal_sender, signal_receiver) = events::split();
 
-        let node_handler = NodeHandler::new(network_controller, signal_sender);
+        let node_handler = NodeHandler::new(
+            network_controller,
+            signal_sender,
+            network_processor.handler().clone(),
+            signal_receiver.handler().clone(),
+        );
+
         let mut node = Node { handler: node_handler.clone(), network_processor, signal_receiver };
 
         let event_callback = Arc::new(Mutex::new(event_callback));
@@ -93,23 +116,17 @@ impl<S: Send + 'static> Node<S> {
         let net_event_callback = event_callback.clone();
         let net_node_handler = node_handler.clone();
 
-        node.network_processor.run(move |net_event, network_thread_handler| {
-            net_event_callback.lock().expect(OTHER_THREAD_ERR)(
-                NodeEvent::Network(net_event),
-                &net_node_handler,
-            );
+        node.network_processor.run(move |net_event| {
+            let mut event_callback = net_event_callback.lock().expect(OTHER_THREAD_ERR);
             if net_node_handler.is_running() {
-                network_thread_handler.finalize();
+                event_callback(NodeEvent::Network(net_event), &net_node_handler);
             }
         });
 
-        node.signal_receiver.run(move |signal, event_thread_handler| {
-            event_callback.lock().expect(OTHER_THREAD_ERR)(
-                NodeEvent::Signal(signal),
-                &node_handler,
-            );
+        node.signal_receiver.run(move |signal| {
+            let mut event_callback = event_callback.lock().expect(OTHER_THREAD_ERR);
             if node_handler.is_running() {
-                event_thread_handler.finalize();
+                event_callback(NodeEvent::Signal(signal), &node_handler);
             }
         });
 
@@ -131,5 +148,46 @@ impl<S: Send + 'static> Node<S> {
     pub fn wait(&mut self) {
         self.network_processor.wait();
         self.signal_receiver.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration};
+
+    lazy_static::lazy_static! {
+        static ref STEP_DURATION: Duration = Duration::from_millis(1000);
+    }
+
+    #[test]
+    fn stop_from_inside() {
+        let mut node = Node::<()>::new(|_, handler| {
+            std::thread::sleep(*STEP_DURATION);
+            handler.stop();
+            handler.stop(); // nothing happens
+        });
+        node.handler().signal().send(()); // Send a signal to processing the callback.
+        assert!(node.handler().is_running());
+        node.wait();
+        assert!(!node.handler().is_running());
+    }
+
+    #[test]
+    fn stop_from_outside() {
+        let mut node = Node::<()>::new(|_, _| {
+            std::thread::sleep(*STEP_DURATION);
+        });
+        assert!(node.handler().is_running());
+        node.handler().stop();
+        node.handler().stop(); // nothing happens
+        assert!(!node.handler().is_running());
+        node.wait();
+        assert!(!node.handler().is_running());
+    }
+
+    #[test]
+    fn drop_while_running() {
+        let _node = Node::<()>::new(|_, _| ());
     }
 }

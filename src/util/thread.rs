@@ -5,7 +5,8 @@ use std::sync::{
 use std::thread::{self, JoinHandle};
 
 /// A comprensive error message to notify that the error shown is from other thread.
-pub(crate) const OTHER_THREAD_ERR: &str = "This error is shown because other thread has panicked \
+pub(crate) const OTHER_THREAD_ERR: &str = "Avoid this 'panicked_at' error. \
+                                   This error is shown because other thread has panicked \
                                    You can safety skip this error.";
 
 enum ThreadState<S: Send + 'static> {
@@ -21,18 +22,21 @@ pub struct ThreadHandler {
 }
 
 impl ThreadHandler {
-    pub fn new(name: String, initialized: bool) -> Self {
-        let handler = Self { name, running: Arc::new(AtomicBool::new(false)) };
-        if initialized {
-            handler.spawned();
-        }
-        handler
+    fn new(name: String) -> Self {
+        Self { name, running: Arc::new(AtomicBool::new(false)) }
+    }
+
+    /// Name of the thread
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Assumes that the thread is initialized.
-    fn spawned(&self) {
-        self.running.store(true, Ordering::Relaxed);
-        log::trace!("Thread [{}] spawned", self.name);
+    fn mark_as_running(&self) {
+        let previously = self.running.swap(true, Ordering::Relaxed);
+        if !previously {
+            log::trace!("Thread [{}] spawned", self.name);
+        }
     }
 
     /// Check if the thread is running.
@@ -70,25 +74,41 @@ impl<S: Send + 'static> RunnableThread<S> {
     pub fn new(name: &str, state: S) -> Self {
         Self {
             thread_state: Some(ThreadState::Ready(state)),
-            handler: ThreadHandler::new(name.into(), false),
+            handler: ThreadHandler::new(name.into()),
         }
     }
 
     fn start_thread(
         handler: ThreadHandler,
         mut state: S,
-        mut callback: impl FnMut(&mut S, &ThreadHandler) + Send + 'static,
+        mut callback: impl FnMut(&mut S) + Send + 'static,
     ) -> JoinHandle<S> {
-        handler.spawned();
+        handler.mark_as_running();
         thread::Builder::new()
             .name(format!("{}/{}", thread::current().name().unwrap_or(""), handler.name))
             .spawn(move || {
                 while handler.is_running() {
-                    callback(&mut state, &handler);
+                    callback(&mut state);
                 }
                 state
             })
             .unwrap()
+    }
+
+    fn join_if_possible(&mut self) -> Result<(), RunningErr> {
+        match self.thread_state.as_ref().unwrap() {
+            ThreadState::Ready(..) => Ok(()),
+            ThreadState::Running(..) => match self.handler.is_running() {
+                true => Err(RunningErr(self.handler.name.clone())),
+                false => Ok(self.join()) // finalize() has been called
+            }
+        }
+    }
+
+    pub fn mark_as_running(&mut self) -> Result<(), RunningErr> {
+        self.join_if_possible()?;
+        self.handler.mark_as_running();
+        Ok(())
     }
 
     /// Creates a new thread that will continuously call to the callback.
@@ -96,23 +116,17 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// If the thread is already running it will returns an [`RunningErr`] error.
     pub fn spawn(
         &mut self,
-        callback: impl FnMut(&mut S, &ThreadHandler) + Send + 'static,
+        callback: impl FnMut(&mut S) + Send + 'static,
     ) -> Result<(), RunningErr> {
-        if !self.handler.is_running() {
-            self.join(); // Ensure the processing is finished.
-        }
+        self.join_if_possible()?;
 
-        let thread_state = self.thread_state.take().unwrap();
-        match thread_state {
+        match self.thread_state.take().unwrap() {
             ThreadState::Ready(state) => {
                 let thread = Self::start_thread(self.handler.clone(), state, callback);
                 self.thread_state = Some(ThreadState::Running(thread));
                 Ok(())
             }
-            ThreadState::Running(..) => {
-                self.thread_state = Some(thread_state);
-                Err(RunningErr(self.handler.name.clone()))
-            }
+            _ => unreachable!(),
         }
     }
 
@@ -134,30 +148,22 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// Consumes the `RunningThread` to recover the state given in its creation.
     /// You only can consume finalized or not spawned threads.
     pub fn take_state(mut self) -> Result<S, RunningErr> {
-        if !self.handler.is_running() {
-            self.join(); // Ensure the processing is finished.
-        }
+        self.join_if_possible()?;
 
-        let thread_state = self.thread_state.take().unwrap();
-        match thread_state {
+        match self.thread_state.take().unwrap() {
             ThreadState::Ready(state) => Ok(state),
-            ThreadState::Running(..) => {
-                self.thread_state = Some(thread_state);
-                Err(RunningErr(self.handler.name.clone()))
-            }
+            _ => unreachable!(),
         }
     }
 
     /// Mutable access to the state given in its creation.
     /// You only can request the state if the thread is not running.
     pub fn state_mut(&mut self) -> Result<&mut S, RunningErr> {
-        if !self.handler.is_running() {
-            self.join(); // Ensure the processing is finished.
-        }
+        self.join_if_possible()?;
 
         match self.thread_state.as_mut().unwrap() {
             ThreadState::Ready(state) => Ok(state),
-            ThreadState::Running(..) => Err(RunningErr(self.handler.name.clone())),
+            _ => unreachable!(),
         }
     }
 
@@ -208,7 +214,7 @@ mod tests {
         assert_eq!(Ok(&mut 42), thread.state_mut());
 
         thread
-            .spawn(|internal_state, _| {
+            .spawn(|internal_state| {
                 assert_eq!(&mut 42, internal_state);
                 *internal_state = 123;
                 std::thread::sleep(*STEP_DURATION);
@@ -216,7 +222,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.state_mut());
-        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_, _| ()));
+        assert_eq!(Err(RunningErr(UT_THREAD_NAME.into())), thread.spawn(|_| ()));
         assert!(thread.handler().is_running());
 
         std::thread::sleep(*STEP_DURATION / 2);
@@ -233,9 +239,10 @@ mod tests {
     #[test]
     fn stopped_from_callback() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
+        let handler = thread.handler().clone();
         assert_eq!(
             Ok(()),
-            thread.spawn(|_, handler| {
+            thread.spawn(move |_| {
                 std::thread::sleep(*STEP_DURATION);
                 handler.finalize() // stopped
             })
@@ -248,11 +255,11 @@ mod tests {
     #[test]
     fn spawn_and_spawn_again() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
+        assert_eq!(Ok(()), thread.spawn(|_| ()));
         thread.handler().finalize();
         assert!(!thread.handler().is_running());
 
-        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
+        assert_eq!(Ok(()), thread.spawn(|_| ()));
         assert!(thread.handler().is_running());
         thread.handler().finalize();
         assert!(!thread.handler().is_running());
@@ -262,13 +269,13 @@ mod tests {
     #[test]
     fn destroy_while_finalizing() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
+        assert_eq!(Ok(()), thread.spawn(|_| ()));
         thread.handler().finalize();
     }
 
     #[test]
-    fn destroy_while_running() {
+    fn drop_while_running() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        assert_eq!(Ok(()), thread.spawn(|_, _| ()));
+        assert_eq!(Ok(()), thread.spawn(|_| ()));
     }
 }

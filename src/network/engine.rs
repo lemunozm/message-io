@@ -163,8 +163,8 @@ impl NetworkProcessor {
         }
     }
 
-    fn read_cached_event(&self) -> Option<StoredNetEvent> {
-        match self.cached_event_receiver.try_recv() {
+    fn read_cached_event(cached_receiver: &Receiver<StoredNetEvent>) -> Option<StoredNetEvent> {
+        match cached_receiver.try_recv() {
             Ok(net_event) => {
                 log::trace!("Read {:?} from cache", net_event);
                 Some(net_event)
@@ -186,16 +186,18 @@ impl NetworkProcessor {
         processors: &mut EventProcessorList,
         event_callback: &mut dyn FnMut(NetEvent<'_>),
     ) {
-        poll.process_event(timeout, |poll_event| match poll_event {
-            PollEvent::Network(resource_id) => {
-                let adapter_id = resource_id.adapter_id() as usize;
-                processors[adapter_id].process(resource_id, &mut |net_event| {
-                    log::trace!("Processed {:?}", net_event);
-                    event_callback(net_event);
-                });
+        poll.process_event(timeout, |poll_event| {
+            match poll_event {
+                PollEvent::Network(resource_id) => {
+                    let adapter_id = resource_id.adapter_id() as usize;
+                    processors[adapter_id].process(resource_id, &mut |net_event| {
+                        log::trace!("Processed {:?}", net_event);
+                        event_callback(net_event);
+                    });
+                }
+                #[allow(dead_code)] //TODO: remove it with native event support
+                PollEvent::Waker => todo!(),
             }
-            #[allow(dead_code)] //TODO: remove it with native event support
-            PollEvent::Waker => todo!(),
         });
     }
 
@@ -214,7 +216,7 @@ impl NetworkProcessor {
         event_callback: impl Fn(NetEvent<'_>) + Send + 'static,
     ) -> bool {
         // Dispatch the catched events first.
-        if let Some(event) = self.read_cached_event() {
+        if let Some(event) = Self::read_cached_event(&self.cached_event_receiver) {
             event_callback(event.borrow());
             return true // There was a cached event processed.
         }
@@ -249,38 +251,37 @@ impl NetworkProcessor {
     /// message into a place that can be computed from other thread,
     /// since during that computation the internal thread will be blocked.
     ///
-    /// If you want to stop processing, you can run [`NetworkProcessor::stop()`]
-    /// or using the `handler` of the event_callback to finalize its processing
-    /// ([`ThreadHandler::finalize()`])
+    /// If you want to stop processing, you can run [`ThreadHandler::finalize()`]
     ///
     /// Note that this function is asynchronous, it will execute the event_callback in its own
     /// thread, without take the user thread.
     /// If you want wait for the end of this job, you can call [`NetworkProcessor::wait()`].
     pub fn run(
         &mut self,
-        mut event_callback: impl FnMut(NetEvent<'_>, &ThreadHandler) + Send + 'static,
+        mut event_callback: impl FnMut(NetEvent<'_>) + Send + 'static,
     ) {
         let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
 
-        // Dispatch the catched events first.
-        let fake_handler = ThreadHandler::new("fake network thread processor".into(), true);
-        while let Some(event) = self.read_cached_event() {
-            event_callback(event.borrow(), &fake_handler);
-            if !fake_handler.is_running() {
-                return // The user stop running during the cached event processing
+        self.thread.mark_as_running().unwrap();
+        let handler = self.thread.handler().clone();
+
+        while let Some(event) = Self::read_cached_event(&self.cached_event_receiver) {
+            event_callback(event.borrow());
+            if !handler.is_running() {
+                return
             }
         }
 
         let cached_event_sender = self.cached_event_sender.clone();
         self.thread
-            .spawn(move |state, handler| {
+            .spawn(move |state| {
                 Self::process_poll_event(
                     timeout,
                     &mut state.poll,
                     &mut state.processors,
                     &mut |net_event| {
                         if handler.is_running() {
-                            event_callback(net_event, handler);
+                            event_callback(net_event);
                         }
                         else {
                             Self::cache_event(&cached_event_sender, net_event);
@@ -291,27 +292,25 @@ impl NetworkProcessor {
             .unwrap();
     }
 
-    /// Stop the internal thread.
-    /// After this call, the processor is considered not running, although the internal thread
-    /// will continue to execute until the current internal network event processing was performed.
+    /// Returns a sharable & clonable handler of this thread to check its state or finalize it
+    ///
+    /// Note that after using `ThreadHandler::finalize()` the processor is considered not running,
+    /// although the internal thread will continue to execute until the current internal network
+    /// event processing finishes.
     /// If there are more pending events generated by the network that could be lost,
     /// they would be cached to read it later.
-    /// See docs of [`NetworkThread::has_cached_events()`] for a deeper explanation.
+    /// See docs of [`NetworkThread::has_cached_events()`] for a deeper explanation
+    /// about cached events.
     /// If you want to run the thread again, call [`NetworkProcessor::run()`].
-    pub fn stop(&self) {
-        self.thread.handler().finalize();
+    pub fn handler(&self) -> &ThreadHandler {
+        &self.thread.handler()
     }
 
     /// Wait until the processor stops.
-    /// It will wait until a call to [`NetworkProcessor::stop()`] was performed and
+    /// It will wait until a call to [`ThreadHandler::finalize()`] was performed and
     /// the thread ends its last processing.
     pub fn wait(&mut self) {
         self.thread.join()
-    }
-
-    /// Check if the internal thread is running.
-    pub fn is_running(&self) -> bool {
-        self.thread.handler().is_running()
     }
 
     /// Check if there are cached events.
@@ -379,23 +378,25 @@ mod tests {
     #[test]
     fn processor_thread() {
         let mut processor = NetworkProcessor::new(Poll::default(), Vec::new());
-        assert!(!processor.is_running());
-        processor.run(|_, _| unreachable!());
-        assert!(processor.is_running());
-        processor.stop();
-        assert!(!processor.is_running());
-        processor.stop(); // Already stopped, nothing happens
-        assert!(!processor.is_running());
-        processor.run(|_, _| unreachable!());
-        assert!(processor.is_running());
+        assert!(!processor.handler().is_running());
+        processor.run(|_| unreachable!());
+        assert!(processor.handler().is_running());
+
+        processor.handler().finalize();
+        assert!(!processor.handler().is_running());
+        processor.handler().finalize(); // Already finalized, nothing happens
+        assert!(!processor.handler().is_running());
+
+        processor.run(|_| unreachable!());
+        assert!(processor.handler().is_running());
         // drops while running
     }
 
     #[test]
     #[should_panic]
-    fn run_twice_without_stop() {
+    fn run_twice_without_finalize() {
         let mut processor = NetworkProcessor::new(Poll::default(), Vec::new());
-        processor.run(|_, _| unreachable!());
-        processor.run(|_, _| unreachable!()); // panic: already running
+        processor.run(|_| unreachable!());
+        processor.run(|_| unreachable!()); // panic: already running
     }
 }

@@ -78,8 +78,9 @@ fn echo_server_handle(
                 let mut messages_received = 0;
                 let mut disconnections = 0;
                 let mut clients = HashSet::new();
+                let handler = processor.handler().clone();
 
-                processor.run(move |net_event, handler| {
+                processor.run(move |net_event| {
                     match net_event {
                         NetEvent::Message(endpoint, data) => {
                             assert_eq!(MIN_MESSAGE, data);
@@ -152,7 +153,8 @@ fn echo_client_manager_handle(
                     assert!(clients.insert(server_endpoint));
                 }
 
-                processor.run(move |net_event, handler| {
+                let handler = processor.handler().clone();
+                processor.run(move |net_event| {
                     match net_event {
                         NetEvent::Message(endpoint, data) => {
                             assert!(clients.remove(&endpoint));

@@ -37,31 +37,24 @@ impl<E: Send> EventThread<E> {
 
     /// Run a thread giving a callback that would be called when a event be received.
     /// Run over an already running thread will panic.
-    pub fn run(&mut self, mut callback: impl FnMut(E, &ThreadHandler) + Send + 'static) {
+    pub fn run(&mut self, mut callback: impl FnMut(E) + Send + 'static) {
         let timeout = Duration::from_millis(Self::SAMPLING_TIMEOUT);
         self.thread
-            .spawn(move |event_queue, handler| {
+            .spawn(move |event_queue| {
                 if let Some(event) = event_queue.receive_timeout(timeout) {
-                    callback(event, handler);
+                    callback(event);
                 }
             })
             .unwrap();
     }
 
-    /// Stop the thread.
-    /// After the current processing event, no more events will be process.
-    /// If you want to run the thread again, call [`EventThread::run()`].
-    pub fn stop(&self) {
-        self.thread.handler().finalize();
+    /// Returns a sharable & clonable handler of this thread to check its state or finalize it
+    pub fn handler(&self) -> &ThreadHandler {
+        &self.thread.handler()
     }
 
-    /// Check if the thread is running.
-    pub fn is_running(&self) -> bool {
-        self.thread.handler().is_running()
-    }
-
-    /// Wait the thread until it stops.
-    /// It will wait until a call to [`EventThread::stop()`] was performed and
+    /// Wait the thread until it finalizes.
+    /// It will wait until a call to [`ThreadHandler::finalize()`] was performed and
     /// the thread finish its last processing.
     pub fn wait(&mut self) {
         self.thread.join();

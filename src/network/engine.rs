@@ -179,6 +179,7 @@ impl NetworkProcessor {
         cache_sender.send(net_event.into()).unwrap();
     }
 
+    /// Note: The callback could be called more than once.
     fn process_poll_event(
         timeout: Option<Duration>,
         poll: &mut Poll,

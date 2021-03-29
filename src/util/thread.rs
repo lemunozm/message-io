@@ -4,6 +4,7 @@ use std::sync::{
 };
 use std::thread::{self, JoinHandle};
 
+/// A comprensive error message to notify that the error shown is from other thread.
 pub(crate) const OTHER_THREAD_ERR: &str = "This error is shown because other thread has panicked \
                                    You can safety skip this error.";
 

@@ -22,7 +22,7 @@ pub struct ThreadHandler {
 
 impl ThreadHandler {
     pub fn new(name: String, initialized: bool) -> Self {
-        let handler = Self {name, running: Arc::new(AtomicBool::new(false))};
+        let handler = Self { name, running: Arc::new(AtomicBool::new(false)) };
         if initialized {
             handler.spawned();
         }
@@ -55,13 +55,9 @@ impl ThreadHandler {
 
 impl Clone for ThreadHandler {
     fn clone(&self) -> Self {
-        Self {
-            name: self.name.clone(),
-            running: self.running.clone(),
-        }
+        Self { name: self.name.clone(), running: self.running.clone() }
     }
 }
-
 
 /// Thread utility to spawn/finalize/join threads without lossing the state.
 pub struct RunnableThread<S: Send + 'static> {
@@ -100,7 +96,7 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// If the thread is already running it will returns an [`RunningErr`] error.
     pub fn spawn(
         &mut self,
-        callback: impl FnMut(&mut S, &ThreadHandler) + Send + 'static
+        callback: impl FnMut(&mut S, &ThreadHandler) + Send + 'static,
     ) -> Result<(), RunningErr> {
         if !self.handler.is_running() {
             self.join(); // Ensure the processing is finished.
@@ -129,7 +125,7 @@ impl<S: Send + 'static> RunnableThread<S> {
             ThreadState::Ready(state) => ThreadState::Ready(state),
             ThreadState::Running(thread) => {
                 ThreadState::Ready(thread.join().expect(OTHER_THREAD_ERR))
-            },
+            }
         };
         self.thread_state = Some(thread_state);
         log::trace!("Finished to waiting thread: [{}]", self.handler.name);
@@ -237,10 +233,13 @@ mod tests {
     #[test]
     fn stopped_from_callback() {
         let mut thread = RunnableThread::new(UT_THREAD_NAME, ());
-        assert_eq!(Ok(()), thread.spawn(|_, handler| {
-            std::thread::sleep(*STEP_DURATION);
-            handler.finalize() // stopped
-        }));
+        assert_eq!(
+            Ok(()),
+            thread.spawn(|_, handler| {
+                std::thread::sleep(*STEP_DURATION);
+                handler.finalize() // stopped
+            })
+        );
         assert!(thread.handler().is_running());
         thread.join();
         assert!(!thread.handler().is_running());

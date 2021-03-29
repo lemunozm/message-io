@@ -211,7 +211,7 @@ impl NetworkProcessor {
     pub fn receive(
         &mut self,
         timeout: Option<Duration>,
-        event_callback: impl Fn(NetEvent<'_>) + Send + 'static
+        event_callback: impl Fn(NetEvent<'_>) + Send + 'static,
     ) -> bool {
         // Dispatch the catched events first.
         if let Some(event) = self.read_cached_event() {
@@ -223,15 +223,20 @@ impl NetworkProcessor {
         let mut was_processed = false;
         let cached_event_sender = self.cached_event_sender.clone();
         let state = self.thread.state_mut().unwrap();
-        Self::process_poll_event(timeout, &mut state.poll, &mut state.processors, &mut |net_event| {
-            if !was_processed {
-                event_callback(net_event);
-                was_processed = true;
-            }
-            else {
-                Self::cache_event(&cached_event_sender, net_event);
-            }
-        });
+        Self::process_poll_event(
+            timeout,
+            &mut state.poll,
+            &mut state.processors,
+            &mut |net_event| {
+                if !was_processed {
+                    event_callback(net_event);
+                    was_processed = true;
+                }
+                else {
+                    Self::cache_event(&cached_event_sender, net_event);
+                }
+            },
+        );
         was_processed
     }
 
@@ -253,21 +258,16 @@ impl NetworkProcessor {
     /// If you want wait for the end of this job, you can call [`NetworkProcessor::wait()`].
     pub fn run(
         &mut self,
-        mut event_callback: impl FnMut(NetEvent<'_>, &ThreadHandler) + Send + 'static
+        mut event_callback: impl FnMut(NetEvent<'_>, &ThreadHandler) + Send + 'static,
     ) {
         let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
 
         // Dispatch the catched events first.
         let fake_handler = ThreadHandler::new("fake network thread processor".into(), true);
-        loop {
-            match self.read_cached_event() {
-                Some(event) =>  {
-                    event_callback(event.borrow(), &fake_handler);
-                    if !fake_handler.is_running() {
-                        return // The user stop running during the cached event processing
-                    }
-                }
-                None => break, // No more cached events
+        while let Some(event) = self.read_cached_event() {
+            event_callback(event.borrow(), &fake_handler);
+            if !fake_handler.is_running() {
+                return // The user stop running during the cached event processing
             }
         }
 

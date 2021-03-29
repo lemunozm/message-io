@@ -2,7 +2,10 @@ use crate::network::{self, NetworkController, NetworkProcessor, NetEvent};
 use crate::events::{self, EventSender, EventThread};
 use crate::util::thread::{OTHER_THREAD_ERR};
 
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 /// Event returned by the node when some network or signal is received.
 pub enum NodeEvent<'a, S> {
@@ -20,12 +23,12 @@ pub enum NodeEvent<'a, S> {
 pub struct NodeHandler<S> {
     network: Arc<NetworkController>,
     signal: EventSender<S>,
-    running: Arc<AtomicBool>
+    running: Arc<AtomicBool>,
 }
 
 impl<S> NodeHandler<S> {
     fn new(network: NetworkController, signal: EventSender<S>) -> Self {
-        Self { network: Arc::new(network), signal, running: Arc::new(AtomicBool::new(true)), }
+        Self { network: Arc::new(network), signal, running: Arc::new(AtomicBool::new(true)) }
     }
 
     /// Returns a reference to the NetworkController to deal with the network.
@@ -55,7 +58,11 @@ impl<S> NodeHandler<S> {
 
 impl<S: Send + 'static> Clone for NodeHandler<S> {
     fn clone(&self) -> Self {
-        Self { network: self.network.clone(), signal: self.signal.clone(), running: self.running.clone() }
+        Self {
+            network: self.network.clone(),
+            signal: self.signal.clone(),
+            running: self.running.clone(),
+        }
     }
 }
 
@@ -72,16 +79,14 @@ impl<S: Send + 'static> Node<S> {
     ///
     /// After this call and make your initial configuration,
     /// you could want to call [`Node::wait()`] to stop the main thread.
-    pub fn new(event_callback: impl FnMut(NodeEvent<S>, &NodeHandler<S>) + Send + 'static) -> Node<S> {
+    pub fn new(
+        event_callback: impl FnMut(NodeEvent<S>, &NodeHandler<S>) + Send + 'static,
+    ) -> Node<S> {
         let (network_controller, network_processor) = network::split();
         let (signal_sender, signal_receiver) = events::split();
 
         let node_handler = NodeHandler::new(network_controller, signal_sender);
-        let mut node = Node {
-            handler: node_handler.clone(),
-            network_processor,
-            signal_receiver,
-        };
+        let mut node = Node { handler: node_handler.clone(), network_processor, signal_receiver };
 
         let event_callback = Arc::new(Mutex::new(event_callback));
 
@@ -89,14 +94,20 @@ impl<S: Send + 'static> Node<S> {
         let net_node_handler = node_handler.clone();
 
         node.network_processor.run(move |net_event, network_thread_handler| {
-            net_event_callback.lock().expect(OTHER_THREAD_ERR)(NodeEvent::Network(net_event), &net_node_handler);
+            net_event_callback.lock().expect(OTHER_THREAD_ERR)(
+                NodeEvent::Network(net_event),
+                &net_node_handler,
+            );
             if net_node_handler.is_running() {
                 network_thread_handler.finalize();
             }
         });
 
         node.signal_receiver.run(move |signal, event_thread_handler| {
-            event_callback.lock().expect(OTHER_THREAD_ERR)(NodeEvent::Signal(signal), &node_handler);
+            event_callback.lock().expect(OTHER_THREAD_ERR)(
+                NodeEvent::Signal(signal),
+                &node_handler,
+            );
             if node_handler.is_running() {
                 event_thread_handler.finalize();
             }
@@ -122,4 +133,3 @@ impl<S: Send + 'static> Node<S> {
         self.signal_receiver.wait();
     }
 }
-

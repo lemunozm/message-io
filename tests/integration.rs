@@ -152,7 +152,7 @@ fn echo_client_manager_handle(
                     assert!(clients.insert(server_endpoint));
                 }
 
-                processor.run(move |net_event, handler|{
+                processor.run(move |net_event, handler| {
                     match net_event {
                         NetEvent::Message(endpoint, data) => {
                             assert!(clients.remove(&endpoint));

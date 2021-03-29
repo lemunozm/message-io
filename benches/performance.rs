@@ -1,6 +1,6 @@
 use message_io::network::{self, Transport};
 
-use criterion::{criterion_group, criterion_main, Criterion, /*BenchmarkId, Throughput*/};
+use criterion::{criterion_group, criterion_main, Criterion /*BenchmarkId, Throughput*/};
 
 use std::time::{Duration};
 
@@ -115,5 +115,5 @@ fn throughput(c: &mut Criterion) {
 }
 */
 
-criterion_group!(benches, latency, /*throughput*/);
+criterion_group!(benches, latency /*throughput*/,);
 criterion_main!(benches);

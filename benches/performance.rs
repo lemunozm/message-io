@@ -1,8 +1,10 @@
 use message_io::network::{self, Transport};
 
-use criterion::{criterion_group, criterion_main, Criterion /*BenchmarkId, Throughput*/};
+use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
 
 use std::time::{Duration};
+use std::thread::{self};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 
 lazy_static::lazy_static! {
     pub static ref SMALL_TIMEOUT: Duration = Duration::from_millis(100);
@@ -15,14 +17,14 @@ fn latency_by(c: &mut Criterion, transport: Transport) {
     let msg = format!("latency by {}", transport);
     c.bench_function(&msg, |b| {
         let (controller, mut processor) = network::split();
-        processor.run(|_, _| ()); // We need the processor running to process the connection
+        processor.run(|_| ()); // We need the processor running to process the connection
 
         let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
         let receiver = controller.connect(transport, receiver_addr).unwrap().0;
 
         std::thread::sleep(std::time::Duration::from_millis(100)); // Connection processed
-        processor.stop();
-        processor.wait(); // Wait the thread to be totally sopped before counting time
+        processor.handler().finalize();
+        processor.wait(); // Wait the thread to be totally stopped before counting time
 
         b.iter(|| {
             controller.send(receiver, &[0xFF]);
@@ -31,7 +33,6 @@ fn latency_by(c: &mut Criterion, transport: Transport) {
     });
 }
 
-/*
 fn throughput_by(c: &mut Criterion, transport: Transport) {
     let sizes = [1, 2, 4, 8, 16, 32, 64, 128]
         .iter()
@@ -42,54 +43,50 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
         let mut group = c.benchmark_group(format!("throughput by {}", transport));
         group.throughput(Throughput::Bytes(block_size as u64));
         group.bench_with_input(BenchmarkId::from_parameter(block_size), &block_size, |b, &size| {
-            b.iter_custom(move |iters| {
-                let (controller, mut processor) = network::split();
-                processor.run(|_| true);
+            let (controller, mut processor) = network::split();
+            processor.run(|_| ());
 
-                let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
-                let receiver = controller.connect(transport, receiver_addr).unwrap().0;
+            let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
+            let receiver = controller.connect(transport, receiver_addr).unwrap().0;
 
-                std::thread::sleep(std::time::Duration::from_millis(100)); // Connection processed
-                processor.stop();
-                processor.wait();
+            std::thread::sleep(std::time::Duration::from_millis(100)); // Connection processed
+            processor.handler().finalize();
+            processor.wait();
 
-                let current = std::cell::Cell::new(0);
+            let thread_running = Arc::new(AtomicBool::new(true));
+            let running = thread_running.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let handle = thread::Builder::new()
+                .name("test-server".into())
+                .spawn(move || {
+                    let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
+                    tx.send(()).unwrap(); // receiving thread ready
+                    while running.load(Ordering::Relaxed) {
+                        controller.send(receiver, &message);
+                    }
+                })
+                .unwrap();
 
-                let (tx, rx) = std::sync::mpsc::channel();
-                let handle = thread::Builder::new()
-                    .name("test-server".into())
-                    .spawn(move || {
-                        let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
-                        tx.send(()).unwrap(); // receiving thread ready
-                        for _ in 0..iters {
-                            controller.send(receiver, &message);
-                        }
-                    })
-                    .unwrap();
+            rx.recv().unwrap();
 
-                rx.recv().unwrap();
-
-                let delay = Instant::now();
-                processor.run(move |_| {
-                    current.set(current.get() + 1);
-                    current.get() < iters
-                });
-                processor.wait();
-                let a = delay.elapsed();
-
-                handle.join().unwrap();
-
-                a
+            b.iter(move || {
+                // FIX_IT!
+                // There is two ways to receive an event: NetworkProcessor::run()
+                // and NetworkProcessor::receive().
+                // The first one can no mix it with criterion.
+                // The second one hangs because receive, after receives the first event,
+                // it will try to cache any other events generated by the same PollEvent.
+                // Since the sender do not stop sends, the internal socket is wake up by the poll
+                // to read "infinite" data. 1 PollEvent => inf. NetEvent::Message.
+                processor.receive(Some(*SMALL_TIMEOUT), move |_| ());
             });
+
+            thread_running.store(false, Ordering::Relaxed);
+            handle.join().unwrap();
         });
     }
 }
-*/
 
-/// Latency test considerations:
-/// The latency is adding the time to send&receive from the event queue, and maybe is a time that
-/// is out of scope of this tests. So, we could be adding an extra latency.
-/// How to avoid this time adition inside of Criterion framework?
 fn latency(c: &mut Criterion) {
     #[cfg(feature = "udp")]
     latency_by(c, Transport::Udp);
@@ -101,11 +98,11 @@ fn latency(c: &mut Criterion) {
     latency_by(c, Transport::Ws);
 }
 
-/*
+#[allow(dead_code)] //TODO: remove when the throughput test works fine
 fn throughput(c: &mut Criterion) {
-    //#[cfg(feature = "udp")]
-    //throughput_by(c, Transport::Udp);
-    //TODO: Fix this test: How to read inside of criterion iter()? an stream protocol?
+    #[cfg(feature = "udp")]
+    throughput_by(c, Transport::Udp);
+    // TODO: Fix this test: How to read inside of criterion iter()? an stream protocol?
     // #[cfg(feature = "tcp")]
     // throughput_by(c, Transport::Tcp);
     #[cfg(feature = "tcp")]
@@ -113,7 +110,6 @@ fn throughput(c: &mut Criterion) {
     #[cfg(feature = "websocket")]
     throughput_by(c, Transport::Ws);
 }
-*/
 
-criterion_group!(benches, latency /*throughput*/,);
+criterion_group!(benches, latency, /*throughput*/);
 criterion_main!(benches);

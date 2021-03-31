@@ -50,7 +50,7 @@ impl<S> NodeHandler<S> {
         signals: EventSender<S>,
         network_thread_handler: ThreadHandler,
         event_thread_handler: ThreadHandler,
-        ) -> Self {
+    ) -> Self {
         Self {
             network: Arc::new(network),
             signals,
@@ -123,20 +123,23 @@ impl<S: Send + 'static> Default for Node<S> {
             signal_receiver.handler().clone(),
         );
 
-        Node { handler: node_handler.clone(), network_processor, signal_receiver }
+        Node { handler: node_handler, network_processor, signal_receiver }
     }
 }
 
 impl<S: Send + 'static> Node<S> {
+    /// As a shortcut, returns the `Node` along with its `NodeHandler`.
+    pub fn split() -> (NodeHandler<S>, Node<S>) {
+        let node = Node::default();
+        (node.handler().clone(), node)
+    }
+
     /// Run asynchronously in order to events into the `event_callback`.
     /// After this call you could want to call [`Node::wait()`] to block the main thread.
     ///
     /// If other `Node::run()` is performed after this run() action,
     /// the previous will be stopped before.
-    pub fn run(
-        mut self,
-        event_callback: impl FnMut(NodeEvent<S>) + Send + 'static,
-    ) -> Node<S> {
+    pub fn run(mut self, event_callback: impl FnMut(NodeEvent<S>) + Send + 'static) -> Node<S> {
         self.handler.stop();
         self.handler.running.store(true, Ordering::Relaxed);
 

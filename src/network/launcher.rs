@@ -24,9 +24,7 @@ impl Default for DriverLauncher {
         Self {
             poll: Poll::default(),
             controllers: (0..ResourceId::MAX_ADAPTERS)
-                .map(|_| {
-                    Box::new(UnimplementedDriver) as Box<dyn ActionController + Send>
-                })
+                .map(|_| Box::new(UnimplementedDriver) as Box<dyn ActionController + Send>)
                 .collect::<Vec<_>>(),
             processors: (0..ResourceId::MAX_ADAPTERS)
                 .map(|_| Box::new(UnimplementedDriver) as Box<dyn EventProcessor + Send>)

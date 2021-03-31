@@ -256,10 +256,7 @@ impl NetworkProcessor {
     /// Note that this function is asynchronous, it will execute the event_callback in its own
     /// thread, without take the user thread.
     /// If you want wait for the end of this job, you can call [`NetworkProcessor::wait()`].
-    pub fn run(
-        &mut self,
-        mut event_callback: impl FnMut(NetEvent<'_>) + Send + 'static,
-    ) {
+    pub fn run(&mut self, mut event_callback: impl FnMut(NetEvent<'_>) + Send + 'static) {
         let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
 
         let cached_event_sender = self.cached_event_sender.clone();

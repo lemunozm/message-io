@@ -76,7 +76,8 @@ fn echo_server_handle(
                 let mut clients = HashSet::new();
 
                 let node = Node::<()>::default();
-                let (listener_id, server_addr) = node.handler().network().listen(transport, LOCAL_ADDR).unwrap();
+                let (listener_id, server_addr) =
+                    node.handler().network().listen(transport, LOCAL_ADDR).unwrap();
                 tx.send(server_addr).unwrap();
 
                 let handler = node.handler().clone();
@@ -122,7 +123,8 @@ fn echo_server_handle(
                             }
                         }
                     }
-                }).wait();
+                })
+                .wait();
             })
             .unwrap();
         })
@@ -146,7 +148,8 @@ fn echo_client_manager_handle(
                 let mut clients = HashSet::new();
 
                 for _ in 0..clients_number {
-                    let (server_endpoint, _) = node.handler().network().connect(transport, server_addr).unwrap();
+                    let (server_endpoint, _) =
+                        node.handler().network().connect(transport, server_addr).unwrap();
                     let status = node.handler().network().send(server_endpoint, MIN_MESSAGE);
                     assert_eq!(SendStatus::Sent, status);
                     assert!(clients.insert(server_endpoint));
@@ -166,7 +169,8 @@ fn echo_client_manager_handle(
                         NetEvent::Connected(..) => unreachable!(),
                         NetEvent::Disconnected(_) => unreachable!(),
                     }
-                }).wait();
+                })
+                .wait();
             })
             .unwrap();
         })

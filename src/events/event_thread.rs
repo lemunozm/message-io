@@ -115,4 +115,3 @@ mod tests {
         thread.run(|_| ());
     }
 }
-

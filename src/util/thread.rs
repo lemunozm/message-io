@@ -75,10 +75,7 @@ impl<S: Send + 'static> RunnableThread<S> {
     /// Initialize a thread with a name and a state
     pub fn new(name: &str, state: S) -> Self {
         let name = format!("{}/{}", thread::current().name().unwrap_or(""), name);
-        Self {
-            thread_state: Some(ThreadState::Ready(state)),
-            handler: ThreadHandler::new(name),
-        }
+        Self { thread_state: Some(ThreadState::Ready(state)), handler: ThreadHandler::new(name) }
     }
 
     fn start_thread(
@@ -103,8 +100,12 @@ impl<S: Send + 'static> RunnableThread<S> {
             ThreadState::Ready(..) => Ok(()),
             ThreadState::Running(..) => match self.handler.is_running() {
                 true => Err(RunningErr(self.handler.name.clone())),
-                false => Ok(self.join()) // finalize() has been called
-            }
+                false => {
+                    // finalize() has been called
+                    self.join();
+                    Ok(())
+                },
+            },
         }
     }
 

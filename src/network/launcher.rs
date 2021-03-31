@@ -25,11 +25,11 @@ impl Default for DriverLauncher {
             poll: Poll::default(),
             controllers: (0..ResourceId::MAX_ADAPTERS)
                 .map(|_| {
-                    Box::new(UnimplementedActionController) as Box<dyn ActionController + Send>
+                    Box::new(UnimplementedDriver) as Box<dyn ActionController + Send>
                 })
                 .collect::<Vec<_>>(),
             processors: (0..ResourceId::MAX_ADAPTERS)
-                .map(|_| Box::new(UnimplementedEventProcessor) as Box<dyn EventProcessor + Send>)
+                .map(|_| Box::new(UnimplementedDriver) as Box<dyn EventProcessor + Send>)
                 .collect(),
         }
     }
@@ -52,15 +52,15 @@ impl DriverLauncher {
     }
 }
 
-// The following unimplemented controller/processor is used to fill
+// The following unimplemented driver is used to fill
 // the invalid adapter id holes in the controllers / processors.
 // It is faster and cleanest than to use an option that always must to be unwrapped.
 
 const UNIMPLEMENTED_DRIVER_ERR: &str =
     "The chosen adapter id doesn't reference an existing adapter";
 
-struct UnimplementedActionController;
-impl ActionController for UnimplementedActionController {
+struct UnimplementedDriver;
+impl ActionController for UnimplementedDriver {
     fn connect(&self, _: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
     }
@@ -78,8 +78,7 @@ impl ActionController for UnimplementedActionController {
     }
 }
 
-struct UnimplementedEventProcessor;
-impl EventProcessor for UnimplementedEventProcessor {
+impl EventProcessor for UnimplementedDriver {
     fn process(&self, _: ResourceId, _: &mut dyn FnMut(NetEvent<'_>)) {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
     }

@@ -33,7 +33,6 @@ where E: Send + 'static
     }
 }
 
-
 impl<E> EventQueue<E>
 where E: Send + 'static
 {

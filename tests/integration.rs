@@ -151,7 +151,8 @@ fn echo_client_manager_handle(
                 let mut clients = HashSet::new();
 
                 for _ in 0..clients_number {
-                    let (server_endpoint, _) = handler.network().connect(transport, server_addr).unwrap();
+                    let (server_endpoint, _) =
+                        handler.network().connect(transport, server_addr).unwrap();
                     let status = node.handler().network().send(server_endpoint, MIN_MESSAGE);
                     assert_eq!(SendStatus::Sent, status);
                     assert!(clients.insert(server_endpoint));
@@ -208,8 +209,9 @@ fn burst_receiver_handle(
                         }
                         NetEvent::Connected(..) => (),
                         NetEvent::Disconnected(_) => (),
-                    }
-                }).wait();
+                    },
+                })
+                .wait();
             })
             .unwrap();
         })
@@ -333,12 +335,13 @@ fn message_size(transport: Transport, message_size: usize) {
                 else {
                     unreachable!();
                 }
-            },
+            }
             NetEvent::Disconnected(_) => {
                 assert_eq!(sent_message.len(), received_message.len());
                 assert_eq!(sent_message, received_message);
                 handler.stop();
             }
-        }
-    }).wait();
+        },
+    })
+    .wait();
 }

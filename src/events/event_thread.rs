@@ -12,7 +12,7 @@ pub struct EventThread<E: Send + 'static> {
 
 impl<E: Send> From<EventQueue<E>> for EventThread<E> {
     /// Creates the thread from an existing [`EventQueue`], without run it.
-    fn from(mut event_queue: EventQueue<E>) -> Self {
+    fn from(event_queue: EventQueue<E>) -> Self {
         Self {
             sender: event_queue.sender().clone(),
             thread: RunnableThread::new("message_io::event-thread", event_queue),
@@ -23,7 +23,7 @@ impl<E: Send> From<EventQueue<E>> for EventThread<E> {
 impl<E: Send> Default for EventThread<E> {
     /// Creates the thread, without run it.
     fn default() -> Self {
-        EventThread::from(EventQueue::new())
+        EventThread::from(EventQueue::default())
     }
 }
 
@@ -32,7 +32,7 @@ impl<E: Send> EventThread<E> {
 
     /// As a shortcut, it returns the thread along with its associateded sender.
     pub fn split() -> (EventSender<E>, EventThread<E>) {
-        let mut event_queue = EventQueue::default();
+        let event_queue = EventQueue::default();
         let event_sender = event_queue.sender().clone();
         let event_thread = EventThread::from(event_queue);
 

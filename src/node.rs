@@ -11,7 +11,7 @@ use std::sync::{
 pub enum NodeEvent<'a, S> {
     /// The event comes from the network.
     /// See [`NetEvent`] to know about the different network events.
-    Net(NetEvent<'a>),
+    Network(NetEvent<'a>),
 
     /// The event comes from an user signal.
     /// See [`EventSender`] to know about how to send signals.
@@ -19,16 +19,18 @@ pub enum NodeEvent<'a, S> {
 }
 
 impl<'a, S> NodeEvent<'a, S> {
-    pub fn net(self) -> NetEvent<'a> {
+    /// Assume the event is a `NodeEvent::Network`, panics if not.
+    pub fn network(self) -> NetEvent<'a> {
         match self {
-            NodeEvent::Net(net_event) => net_event,
+            NodeEvent::Network(net_event) => net_event,
             NodeEvent::Signal(..) => panic!("NodeEvent must be a NetEvent"),
         }
     }
 
+    /// Assume the event is a `NodeEvent::Signal`, panics if not.
     pub fn signal(self) -> S {
         match self {
-            NodeEvent::Net(..) => panic!("NodeEvent must be a NetEvent"),
+            NodeEvent::Network(..) => panic!("NodeEvent must be a Signal"),
             NodeEvent::Signal(signal) => signal,
         }
     }
@@ -100,7 +102,7 @@ impl<S: Send + 'static> Clone for NodeHandler<S> {
 }
 
 /// The main entity to manipulates the network and signal events easily.
-/// The node run asynchornously
+/// The node run asynchronously.
 pub struct Node<S: Send + 'static> {
     handler: NodeHandler<S>,
     network_processor: NetworkProcessor,
@@ -154,7 +156,7 @@ impl<S: Send + 'static> Node<S> {
         self.network_processor.run(move |net_event| {
             let mut event_callback = network_event_callback.lock().expect(OTHER_THREAD_ERR);
             if node_handler.is_running() {
-                event_callback(NodeEvent::Net(net_event));
+                event_callback(NodeEvent::Network(net_event));
             }
         });
 

@@ -104,7 +104,7 @@ impl<S: Send + 'static> RunnableThread<S> {
                     // finalize() has been called
                     self.join();
                     Ok(())
-                },
+                }
             },
         }
     }

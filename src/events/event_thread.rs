@@ -15,7 +15,7 @@ impl<E: Send> From<EventQueue<E>> for EventThread<E> {
     fn from(mut event_queue: EventQueue<E>) -> Self {
         Self {
             sender: event_queue.sender().clone(),
-            thread: RunnableThread::new("message_io::EventThread", event_queue),
+            thread: RunnableThread::new("message_io::event-thread", event_queue),
         }
     }
 }
@@ -29,6 +29,15 @@ impl<E: Send> Default for EventThread<E> {
 
 impl<E: Send> EventThread<E> {
     const SAMPLING_TIMEOUT: u64 = 50; //ms
+
+    /// As a shortcut, it returns the thread along with its associateded sender.
+    pub fn split() -> (EventSender<E>, EventThread<E>) {
+        let mut event_queue = EventQueue::default();
+        let event_sender = event_queue.sender().clone();
+        let event_thread = EventThread::from(event_queue);
+
+        (event_sender, event_thread)
+    }
 
     /// Return a sharable and clonable sender instance associated to the internal [`EventQueue`]
     pub fn sender(&self) -> &EventSender<E> {
@@ -56,7 +65,7 @@ impl<E: Send> EventThread<E> {
     /// Wait the thread until it finalizes.
     /// It will wait until a call to [`ThreadHandler::finalize()`] was performed and
     /// the thread finish its last processing.
-    pub fn wait(&mut self) {
+    pub fn join(&mut self) {
         self.thread.join();
     }
 
@@ -66,3 +75,44 @@ impl<E: Send> EventThread<E> {
         self.thread.take_state().unwrap()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn basic_pipeline() {
+        let mut thread = EventThread::<usize>::default();
+        let sender = thread.sender().clone();
+
+        let times = Arc::new(Mutex::new(0));
+        let times_inside = times.clone();
+        thread.run(move |event| {
+            assert_eq!(42, event);
+            *times_inside.lock().unwrap() += 1;
+        });
+
+        sender.send(42);
+        sender.send(42);
+
+        std::thread::sleep(Duration::from_millis(100));
+        thread.handler().finalize();
+        thread.join();
+        assert_eq!(2, *times.lock().unwrap());
+    }
+
+    #[test]
+    fn drop_while_finalizing() {
+        let mut thread = EventThread::<usize>::default();
+        thread.run(|_| ());
+        thread.handler().finalize();
+    }
+
+    #[test]
+    fn drop_while_running() {
+        let mut thread = EventThread::<usize>::default();
+        thread.run(|_| ());
+    }
+}
+

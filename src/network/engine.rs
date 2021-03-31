@@ -157,7 +157,7 @@ impl NetworkProcessor {
         let network_state = NetworkState { poll, processors };
 
         Self {
-            thread: RunnableThread::new("message_io::NetworkThread", network_state),
+            thread: RunnableThread::new("message_io::network-thread", network_state),
             cached_event_sender,
             cached_event_receiver,
         }
@@ -166,7 +166,7 @@ impl NetworkProcessor {
     fn read_cached_event(cached_receiver: &Receiver<StoredNetEvent>) -> Option<StoredNetEvent> {
         match cached_receiver.try_recv() {
             Ok(net_event) => {
-                log::trace!("Read {:?} from cache", net_event);
+                log::trace!("Read from cache {:?}", net_event);
                 Some(net_event)
             }
             Err(TryRecvError::Empty) => None,
@@ -262,19 +262,19 @@ impl NetworkProcessor {
     ) {
         let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
 
-        self.thread.mark_as_running().unwrap();
-        let handler = self.thread.handler().clone();
-
-        while let Some(event) = Self::read_cached_event(&self.cached_event_receiver) {
-            event_callback(event.borrow());
-            if !handler.is_running() {
-                return
-            }
-        }
-
         let cached_event_sender = self.cached_event_sender.clone();
+        let cached_event_receiver = self.cached_event_receiver.clone();
+
+        let handler = self.thread.handler().clone();
         self.thread
             .spawn(move |state| {
+                while let Some(event) = Self::read_cached_event(&cached_event_receiver) {
+                    event_callback(event.borrow());
+                    if !handler.is_running() {
+                        return
+                    }
+                }
+
                 Self::process_poll_event(
                     timeout,
                     &mut state.poll,
@@ -286,6 +286,26 @@ impl NetworkProcessor {
                         else {
                             Self::cache_event(&cached_event_sender, net_event);
                         }
+                    },
+                );
+            })
+            .unwrap();
+    }
+
+    /// Similar to [`NetworkProcessor::run()`], but instead to deliver the event to the user
+    /// in a callback, they are cached to read it later by [`NetworkProcessor::receive()`]
+    /// or [`NetworkProcessor::run()`].
+    pub fn run_to_cache(&mut self) {
+        let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
+        let cached_event_sender = self.cached_event_sender.clone();
+        self.thread
+            .spawn(move |state| {
+                Self::process_poll_event(
+                    timeout,
+                    &mut state.poll,
+                    &mut state.processors,
+                    &mut |net_event| {
+                        Self::cache_event(&cached_event_sender, net_event);
                     },
                 );
             })
@@ -310,7 +330,7 @@ impl NetworkProcessor {
     /// It will wait until a call to [`ThreadHandler::finalize()`] was performed and
     /// the thread ends its last processing.
     pub fn wait(&mut self) {
-        self.thread.join()
+        self.thread.join();
     }
 
     /// Check if there are cached events.

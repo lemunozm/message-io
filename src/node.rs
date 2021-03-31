@@ -1,5 +1,5 @@
 use crate::network::{self, NetworkController, NetworkProcessor, NetEvent};
-use crate::events::{self, EventSender, EventThread};
+use crate::events::{EventSender, EventThread};
 use crate::util::thread::{OTHER_THREAD_ERR, ThreadHandler};
 
 use std::sync::{
@@ -11,18 +11,34 @@ use std::sync::{
 pub enum NodeEvent<'a, S> {
     /// The event comes from the network.
     /// See [`NetEvent`] to know about the different network events.
-    Network(NetEvent<'a>),
+    Net(NetEvent<'a>),
 
     /// The event comes from an user signal.
     /// See [`EventSender`] to know about how to send signals.
     Signal(S),
 }
 
+impl<'a, S> NodeEvent<'a, S> {
+    pub fn net(self) -> NetEvent<'a> {
+        match self {
+            NodeEvent::Net(net_event) => net_event,
+            NodeEvent::Signal(..) => panic!("NodeEvent must be a NetEvent"),
+        }
+    }
+
+    pub fn signal(self) -> S {
+        match self {
+            NodeEvent::Net(..) => panic!("NodeEvent must be a NetEvent"),
+            NodeEvent::Signal(signal) => signal,
+        }
+    }
+}
+
 /// A shareable and clonable entity that allows to deal with
 /// the network, send signals and stop the node.
 pub struct NodeHandler<S> {
     network: Arc<NetworkController>,
-    signal: EventSender<S>,
+    signals: EventSender<S>,
     running: Arc<AtomicBool>, // Used as a cached value of thread handlers running.
     network_thread_handler: ThreadHandler,
     event_thread_handler: ThreadHandler,
@@ -31,14 +47,14 @@ pub struct NodeHandler<S> {
 impl<S> NodeHandler<S> {
     fn new(
         network: NetworkController,
-        signal: EventSender<S>,
+        signals: EventSender<S>,
         network_thread_handler: ThreadHandler,
         event_thread_handler: ThreadHandler,
         ) -> Self {
         Self {
             network: Arc::new(network),
-            signal,
-            running: Arc::new(AtomicBool::new(true)),
+            signals,
+            running: Arc::new(AtomicBool::new(false)),
             network_thread_handler,
             event_thread_handler,
         }
@@ -52,8 +68,8 @@ impl<S> NodeHandler<S> {
 
     /// Returns a reference to the EventSender to send signals to the node.
     /// See [`EventSender`].
-    pub fn signal(&self) -> &EventSender<S> {
-        &self.signal
+    pub fn signals(&self) -> &EventSender<S> {
+        &self.signals
     }
 
     /// Finalizes the node processing.
@@ -75,7 +91,7 @@ impl<S: Send + 'static> Clone for NodeHandler<S> {
     fn clone(&self) -> Self {
         Self {
             network: self.network.clone(),
-            signal: self.signal.clone(),
+            signals: self.signals.clone(),
             running: self.running.clone(),
             network_thread_handler: self.network_thread_handler.clone(),
             event_thread_handler: self.event_thread_handler.clone(),
@@ -91,16 +107,14 @@ pub struct Node<S: Send + 'static> {
     signal_receiver: EventThread<S>,
 }
 
-impl<S: Send + 'static> Node<S> {
-    /// Creates a new node that works asynchronously and dispatching events into the `event_callback`.
-    ///
-    /// After this call and make your initial configuration,
-    /// you could want to call [`Node::wait()`] to block the main thread.
-    pub fn new(
-        event_callback: impl FnMut(NodeEvent<S>, &NodeHandler<S>) + Send + 'static,
-    ) -> Node<S> {
-        let (network_controller, network_processor) = network::split();
-        let (signal_sender, signal_receiver) = events::split();
+impl<S: Send + 'static> Default for Node<S> {
+    fn default() -> Node<S> {
+        let (network_controller, mut network_processor) = network::split();
+        let (signal_sender, signal_receiver) = EventThread::split();
+
+        // In this way, the network methods used during node configuration
+        // (before calling run()) will works since its internal poll events are processing.
+        network_processor.run_to_cache();
 
         let node_handler = NodeHandler::new(
             network_controller,
@@ -109,28 +123,48 @@ impl<S: Send + 'static> Node<S> {
             signal_receiver.handler().clone(),
         );
 
-        let mut node = Node { handler: node_handler.clone(), network_processor, signal_receiver };
+        Node { handler: node_handler.clone(), network_processor, signal_receiver }
+    }
+}
+
+impl<S: Send + 'static> Node<S> {
+    /// Run asynchronously in order to events into the `event_callback`.
+    /// After this call you could want to call [`Node::wait()`] to block the main thread.
+    ///
+    /// If other `Node::run()` is performed after this run() action,
+    /// the previous will be stopped before.
+    pub fn run(
+        mut self,
+        event_callback: impl FnMut(NodeEvent<S>) + Send + 'static,
+    ) -> Node<S> {
+        self.handler.stop();
+        self.handler.running.store(true, Ordering::Relaxed);
 
         let event_callback = Arc::new(Mutex::new(event_callback));
 
-        let net_event_callback = event_callback.clone();
-        let net_node_handler = node_handler.clone();
+        // User callback locked until the function ends, to avoid processing stops while
+        // the node is configuring.
+        let _locked = event_callback.lock().expect(OTHER_THREAD_ERR);
 
-        node.network_processor.run(move |net_event| {
-            let mut event_callback = net_event_callback.lock().expect(OTHER_THREAD_ERR);
-            if net_node_handler.is_running() {
-                event_callback(NodeEvent::Network(net_event), &net_node_handler);
-            }
-        });
-
-        node.signal_receiver.run(move |signal| {
-            let mut event_callback = event_callback.lock().expect(OTHER_THREAD_ERR);
+        let network_event_callback = event_callback.clone();
+        let node_handler = self.handler().clone();
+        self.network_processor.run(move |net_event| {
+            let mut event_callback = network_event_callback.lock().expect(OTHER_THREAD_ERR);
             if node_handler.is_running() {
-                event_callback(NodeEvent::Signal(signal), &node_handler);
+                event_callback(NodeEvent::Net(net_event));
             }
         });
 
-        node
+        let signal_event_callback = event_callback.clone();
+        let node_handler = self.handler().clone();
+        self.signal_receiver.run(move |signal| {
+            let mut event_callback = signal_event_callback.lock().expect(OTHER_THREAD_ERR);
+            if node_handler.is_running() {
+                event_callback(NodeEvent::Signal(signal));
+            }
+        });
+
+        self
     }
 
     /// Return the handler of the node.
@@ -147,7 +181,7 @@ impl<S: Send + 'static> Node<S> {
     /// and the last event processing finalizes.
     pub fn wait(&mut self) {
         self.network_processor.wait();
-        self.signal_receiver.wait();
+        self.signal_receiver.join();
     }
 }
 
@@ -162,12 +196,15 @@ mod tests {
 
     #[test]
     fn stop_from_inside() {
-        let mut node = Node::<()>::new(|_, handler| {
+        let mut node = Node::<()>::default();
+        let handler = node.handler().clone();
+        assert!(!handler.is_running());
+        node = node.run(move |_| {
             std::thread::sleep(*STEP_DURATION);
             handler.stop();
             handler.stop(); // nothing happens
         });
-        node.handler().signal().send(()); // Send a signal to processing the callback.
+        node.handler().signals().send(()); // Send a signal to processing the callback.
         assert!(node.handler().is_running());
         node.wait();
         assert!(!node.handler().is_running());
@@ -175,7 +212,10 @@ mod tests {
 
     #[test]
     fn stop_from_outside() {
-        let mut node = Node::<()>::new(|_, _| {
+        let mut node = Node::<()>::default();
+        assert!(!node.handler().is_running());
+
+        node = node.run(|_| {
             std::thread::sleep(*STEP_DURATION);
         });
         assert!(node.handler().is_running());
@@ -188,6 +228,6 @@ mod tests {
 
     #[test]
     fn drop_while_running() {
-        let _node = Node::<()>::new(|_, _| ());
+        let _node = Node::<()>::default().run(|_| ());
     }
 }

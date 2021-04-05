@@ -48,6 +48,6 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
             }
             NetEvent::Connected(_, _) => unreachable!(), // Only generated when a listener accepts
             NetEvent::Disconnected(_) => return println!("Server is disconnected"),
-        }
+        },
     });
 }

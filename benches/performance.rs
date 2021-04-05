@@ -4,7 +4,10 @@ use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Through
 
 use std::time::{Duration};
 use std::thread::{self};
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 lazy_static::lazy_static! {
     pub static ref SMALL_TIMEOUT: Duration = Duration::from_millis(100);
@@ -111,5 +114,5 @@ fn throughput(c: &mut Criterion) {
     throughput_by(c, Transport::Ws);
 }
 
-criterion_group!(benches, latency, /*throughput*/);
+criterion_group!(benches, latency /*throughput*/,);
 criterion_main!(benches);

@@ -55,7 +55,6 @@ pub fn split<S: Send>() -> (NodeHandler<S>, NodeListener<S>) {
     (node_handler, node_listener)
 }
 
-
 /// A shareable and clonable entity that allows to deal with
 /// the network, send signals and stop the node.
 pub struct NodeHandler<S> {
@@ -65,16 +64,8 @@ pub struct NodeHandler<S> {
 }
 
 impl<S> NodeHandler<S> {
-    fn new(
-        network: NetworkController,
-        signals: EventSender<S>,
-        running: Arc<AtomicBool>,
-    ) -> Self {
-        Self {
-            network: Arc::new(network),
-            signals,
-            running
-        }
+    fn new(network: NetworkController, signals: EventSender<S>, running: Arc<AtomicBool>) -> Self {
+        Self { network: Arc::new(network), signals, running }
     }
 
     /// Returns a reference to the NetworkController to deal with the network.
@@ -174,7 +165,7 @@ impl<S: Send + 'static> NodeListener<S> {
             })
         };
 
-        NodeListener { network_cache_thread, signal_receiver, running, cache_running }
+        NodeListener { network_cache_thread, cache_running, signal_receiver, running }
     }
 
     /// Run the receiver asynchronously in order to dispatch events into the `event_callback`.
@@ -228,7 +219,7 @@ impl<S: Send + 'static> NodeListener<S> {
     /// ```
     pub fn for_each(
         mut self,
-        event_callback: impl FnMut(NodeEvent<S>) + Send + 'static
+        event_callback: impl FnMut(NodeEvent<S>) + Send + 'static,
     ) -> NodeTask {
         // Stop cache events
         self.cache_running.store(false, Ordering::Relaxed);
@@ -286,10 +277,7 @@ impl<S: Send + 'static> NodeListener<S> {
             })
         };
 
-        NodeTask {
-            _network_thread: network_thread,
-            _signal_thread: signal_thread,
-        }
+        NodeTask { _network_thread: network_thread, _signal_thread: signal_thread }
     }
 }
 
@@ -341,12 +329,10 @@ mod tests {
         let checked = Arc::new(AtomicBool::new(false));
         let inner_checked = checked.clone();
         let inner_node = node.clone();
-        let _node_task = listener.for_each(move |event| {
-            match event.signal() {
-               "Stop" => inner_node.stop(),
-               "Check" => inner_checked.store(true, Ordering::Relaxed),
-               _ => unreachable!(),
-            }
+        let _node_task = listener.for_each(move |event| match event.signal() {
+            "Stop" => inner_node.stop(),
+            "Check" => inner_checked.store(true, Ordering::Relaxed),
+            _ => unreachable!(),
         });
 
         // Since here `NodeTask` is living, the node is considered running.

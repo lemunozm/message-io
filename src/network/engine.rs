@@ -114,7 +114,7 @@ pub struct NetworkProcessor {
 
 impl NetworkProcessor {
     fn new(poll: Poll, processors: EventProcessorList) -> Self {
-        Self { poll, processors, }
+        Self { poll, processors }
     }
 
     /// Process the next poll event.
@@ -173,15 +173,13 @@ mod tests {
         controller.connect(Transport::Tcp, addr).unwrap();
 
         let mut was_event = false;
-        processor.process_poll_event(Some(*TIMEOUT), &mut |net_event| {
-            match net_event {
-                NetEvent::Connected(_, _) => {
-                    assert!(controller.remove(listener_id));
-                    assert!(!controller.remove(listener_id));
-                    was_event = true;
-                }
-                _ => unreachable!(),
+        processor.process_poll_event(Some(*TIMEOUT), &mut |net_event| match net_event {
+            NetEvent::Connected(_, _) => {
+                assert!(controller.remove(listener_id));
+                assert!(!controller.remove(listener_id));
+                was_event = true;
             }
+            _ => unreachable!(),
         });
         assert!(was_event);
 

@@ -19,13 +19,15 @@ impl<T: Send + 'static> NamespacedThread<T> {
         let namespace = format!("{}/{}", thread::current().name().unwrap_or(""), name);
         Self {
             namespace: namespace.clone(),
-            join_handle: Some(thread::Builder::new()
-                .name(namespace.clone())
-                .spawn(move || {
-                    log::trace!("Thread [{}] spawned", namespace);
-                    f()
-                })
-                .unwrap())
+            join_handle: Some(
+                thread::Builder::new()
+                    .name(namespace.clone())
+                    .spawn(move || {
+                        log::trace!("Thread [{}] spawned", namespace);
+                        f()
+                    })
+                    .unwrap(),
+            ),
         }
     }
 
@@ -99,4 +101,3 @@ mod tests {
         assert!(called.load(Ordering::Relaxed));
     }
 }
-

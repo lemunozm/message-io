@@ -38,12 +38,29 @@ impl<'a, S> NodeEvent<'a, S> {
     }
 }
 
-/// Creates a node.
+/// Creates a node already working.
 /// This function offers two instances: a [`NodeHandler`] to perform network and signals actions
 /// and a [`NodeListener`] to receive the events the node receives.
 ///
 /// Note that [`NodeListener`] is already listen for events from its creation.
 /// In order to get the listened events you can call [`NodeListener::for_each()`]
+/// Any event happened before `for_each()` call will be also dispatched.
+///
+/// # Examples
+/// ```rust
+/// enum MySignals {
+///     Tick,
+///     //Other signals here.
+/// }
+///
+/// let (node, _) = node::split();
+/// node.network.signals().send_with_timer(Tick, Duration::from_millis(500));
+/// ```
+///
+/// In case you don't use signals:
+/// ```
+/// let (node, _) = node::split::<()>();
+/// ```
 pub fn split<S: Send>() -> (NodeHandler<S>, NodeListener<S>) {
     let (network_controller, network_processor) = network::split();
     let (signal_sender, signal_receiver) = events::split();
@@ -168,54 +185,53 @@ impl<S: Send + 'static> NodeListener<S> {
         NodeListener { network_cache_thread, cache_running, signal_receiver, running }
     }
 
-    /// Run the receiver asynchronously in order to dispatch events into the `event_callback`.
-    /// A `NodeTask` representing this job will be returned.
-    /// Destroying this object will result in blocking the current thread while
-    /// [`NodeHandler::stop`] not be performed.
+    /// Iterate indefinitely over all generated `NetEvent`.
+    /// This function will work until [`NodeHandler::stop`] was called.
+    /// A `NodeTask` representing the asynchronous job is returned.
+    /// Destroying this object will result in blocking the current thread until
+    /// [`NodeHandler::stop`] was called.
     ///
-    /// In order to allow the node working asynchronously, you can save the `NodeTask` in
+    /// In order to allow the node working asynchronously, you can move the `NodeTask` to a
     /// an object with a longer lifetime.
     ///
     /// # Examples
-    /// Synchronous node:
+    /// **Synchronous** usage:
     /// ```
-    /// fn main() {
-    ///     let (node, listener) = split();
-    ///     node.signals().send_with_timer((), Duration::from_secs(1));
-    ///     node.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    /// let (node, listener) = split();
+    /// node.signals().send_with_timer((), Duration::from_secs(1));
+    /// node.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
     ///
-    ///     listener.for_each(move |event| {
-    ///         match event {
-    ///              NodeEvent::Network(net_event) => { /* Your logic here */ },
-    ///              NodeEvent::Signal(_) => node.stop());
-    ///         }
-    ///     });
-    ///     //Blocked here until signal is received (1 sec).
-    ///     println!("Node is stopped");
-    /// }
+    /// listener.for_each(move |event| {
+    ///     match event {
+    ///          NodeEvent::Network(net_event) => { /* Your logic here */ },
+    ///          NodeEvent::Signal(_) => node.stop());
+    ///     }
+    /// });
+    /// // Blocked here until node.stop() was called (1 sec) because the returned value
+    /// // of for_each() is not handle (it is dropped just after called the method).
+    /// println!("Node is stopped");
     /// ```
     ///
-    /// Asynchronous node:
+    /// **Asynchronous** usage:
     /// ```
-    /// fn main() {
-    ///     let (node, listener) = split();
-    ///     node.signals().send_with_timer((), Duration::from_secs(1));
-    ///     node.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    /// let (node, listener) = split();
+    /// node.signals().send_with_timer((), Duration::from_secs(1));
+    /// node.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
     ///
-    ///     let task = listener.for_each(move |event| {
-    ///         match event {
-    ///              NodeEvent::Network(net_event) => { /* Your logic here */ },
-    ///              NodeEvent::Signal(_) => node.stop());
-    ///         }
-    ///     });
+    /// let task = listener.for_each(move |event| {
+    ///     match event {
+    ///          NodeEvent::Network(net_event) => { /* Your logic here */ },
+    ///          NodeEvent::Signal(_) => node.stop());
+    ///     }
+    /// });
+    /// // for_each() will act asynchronous during 'task' lifetime.
     ///
-    ///     // ...
-    ///     println!("Node is running");
-    ///     // ...
+    /// // ...
+    /// println!("Node is running");
+    /// // ...
     ///
-    ///     drop(task); //Blocked here until signal is received (1 sec).
-    ///     println!("Node is stopped");
-    /// }
+    /// drop(task); // Blocked here until node.stop() was called (1 sec).
+    /// println!("Node is stopped");
     /// ```
     pub fn for_each(
         mut self,
@@ -324,14 +340,14 @@ mod tests {
     fn async_node() {
         let (node, listener) = split();
         assert!(node.is_running());
-        node.signals().send_with_timer("Check", Duration::from_millis(250));
+        node.signals().send_with_timer("check", Duration::from_millis(250));
 
         let checked = Arc::new(AtomicBool::new(false));
         let inner_checked = checked.clone();
         let inner_node = node.clone();
         let _node_task = listener.for_each(move |event| match event.signal() {
-            "Stop" => inner_node.stop(),
-            "Check" => inner_checked.store(true, Ordering::Relaxed),
+            "stop" => inner_node.stop(),
+            "check" => inner_checked.store(true, Ordering::Relaxed),
             _ => unreachable!(),
         });
 
@@ -340,6 +356,6 @@ mod tests {
         std::thread::sleep(Duration::from_millis(500));
         assert!(checked.load(Ordering::Relaxed));
         assert!(node.is_running());
-        node.signals().send("Stop");
+        node.signals().send("stop");
     }
 }

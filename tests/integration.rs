@@ -67,7 +67,7 @@ fn start_echo_server(
     expected_clients: usize,
 ) -> (NamespacedThread<()>, SocketAddr) {
     let (tx, rx) = crossbeam::channel::bounded(1);
-    let thread = NamespacedThread::new("test-client", move || {
+    let thread = NamespacedThread::new("test-server", move || {
         std::panic::catch_unwind(|| {
             let mut messages_received = 0;
             let mut disconnections = 0;
@@ -304,7 +304,7 @@ fn message_size(transport: Transport, message_size: usize) {
                 if transport.is_connection_oriented() {
                     let node = node.clone();
                     let sent_message = sent_message.clone();
-                    _async_sender = Some(NamespacedThread::new("test-client", move || {
+                    _async_sender = Some(NamespacedThread::new("test-sender", move || {
                         let status = node.network().send(receiver, &sent_message);
                         assert_eq!(status, SendStatus::Sent);
                         assert!(node.network().remove(receiver.resource_id()));

@@ -9,7 +9,11 @@ use std::sync::{
 use std::time::{Duration};
 use std::collections::{VecDeque};
 
-/// Event returned by the node when some network or signal is received.
+lazy_static::lazy_static! {
+    static ref SAMPLING_TIMEOUT: Duration = Duration::from_millis(50);
+}
+
+/// Event returned by [`NodeListener::for_each()`] when some network or signal is received.
 pub enum NodeEvent<'a, S> {
     /// The event comes from the network.
     /// See [`NetEvent`] to know about the different network events.
@@ -21,7 +25,7 @@ pub enum NodeEvent<'a, S> {
 }
 
 impl<'a, S> NodeEvent<'a, S> {
-    /// Assume the event is a `NodeEvent::Network`, panics if not.
+    /// Assume the event is a [`NodeEvent::Network`], panics if not.
     pub fn network(self) -> NetEvent<'a> {
         match self {
             NodeEvent::Network(net_event) => net_event,
@@ -29,7 +33,7 @@ impl<'a, S> NodeEvent<'a, S> {
         }
     }
 
-    /// Assume the event is a `NodeEvent::Signal`, panics if not.
+    /// Assume the event is a [`NodeEvent::Signal`], panics if not.
     pub fn signal(self) -> S {
         match self {
             NodeEvent::Network(..) => panic!("NodeEvent must be a Signal"),
@@ -156,8 +160,6 @@ pub struct NodeListener<S: Send + 'static> {
 }
 
 impl<S: Send + 'static> NodeListener<S> {
-    const SAMPLING_TIMEOUT: u64 = 50; //ms
-
     fn new(
         mut network_processor: NetworkProcessor,
         signal_receiver: EventReceiver<S>,
@@ -171,9 +173,8 @@ impl<S: Send + 'static> NodeListener<S> {
             let cache_running = cache_running.clone();
             let mut cache = VecDeque::new();
             NamespacedThread::new("node-network-cache-thread", move || {
-                let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
                 while cache_running.load(Ordering::Relaxed) {
-                    network_processor.process_poll_event(timeout, &mut |net_event| {
+                    network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), &mut |net_event| {
                         log::trace!("Cached {:?}", net_event);
                         cache.push_back(net_event.into());
                     });
@@ -263,9 +264,8 @@ impl<S: Send + 'static> NodeListener<S> {
                     }
                 }
 
-                let timeout = Some(Duration::from_millis(Self::SAMPLING_TIMEOUT));
                 while running.load(Ordering::Relaxed) {
-                    network_processor.process_poll_event(timeout, &mut |net_event| {
+                    network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), &mut |net_event| {
                         let mut event_callback = callback.lock().expect(OTHER_THREAD_ERR);
                         if running.load(Ordering::Relaxed) {
                             event_callback(NodeEvent::Network(net_event));
@@ -281,9 +281,8 @@ impl<S: Send + 'static> NodeListener<S> {
             let running = self.running.clone();
 
             NamespacedThread::new("node-signal-thread", move || {
-                let timeout = Duration::from_millis(Self::SAMPLING_TIMEOUT);
                 while running.load(Ordering::Relaxed) {
-                    if let Some(signal) = signal_receiver.receive_timeout(timeout) {
+                    if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT) {
                         let mut event_callback = callback.lock().expect(OTHER_THREAD_ERR);
                         if running.load(Ordering::Relaxed) {
                             event_callback(NodeEvent::Signal(signal));

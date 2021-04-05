@@ -1,7 +1,7 @@
 use super::common::{FromServerMessage, FromClientMessage};
 
 use message_io::network::{NetEvent, Transport, RemoteAddr};
-use message_io::node::{Node, NodeEvent};
+use message_io::node::{self, NodeEvent};
 
 use std::time::{Duration};
 
@@ -12,7 +12,7 @@ enum Signal {
 }
 
 pub fn run(transport: Transport, remote_addr: RemoteAddr) {
-    let (node, receiver) = node::split();
+    let (node, listener) = node::split();
 
     let server_id = match node.network().connect(transport, remote_addr.clone()) {
         Ok((server_id, local_addr)) => {
@@ -27,7 +27,7 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
 
     node.signals().send(Signal::Greet);
 
-    receiver.for_each(move |event| match event {
+    listener.for_each(move |event| match event {
         NodeEvent::Signal(signal) => match signal {
             Signal::Greet => {
                 let message = FromClientMessage::Ping;
@@ -47,7 +47,10 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
                 }
             }
             NetEvent::Connected(_, _) => unreachable!(), // Only generated when a listener accepts
-            NetEvent::Disconnected(_) => return println!("Server is disconnected"),
+            NetEvent::Disconnected(_) => {
+                println!("Server is disconnected");
+                node.stop();
+            }
         },
     });
 }

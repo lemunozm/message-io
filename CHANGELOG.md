@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.12.0
+- Now UDP never generates disconnection events.
+
 ## Release 0.11.1
 - Reduce the bandwidth of `FramedTcp` transport using variadic encoding instead of constant padding.
 

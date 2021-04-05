@@ -60,11 +60,11 @@ impl Remote for RemoteResource {
                 }
                 Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
                     // Avoid ICMP generated error to be logged
-                    break ReadStatus::Disconnected
+                    break ReadStatus::WaitNextEvent
                 }
                 Err(err) => {
                     log::error!("UDP receive error: {}", err);
-                    break ReadStatus::Disconnected // Should not happen
+                    break ReadStatus::WaitNextEvent // Should not happen
                 }
             }
         }

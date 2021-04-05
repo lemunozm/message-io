@@ -1,6 +1,7 @@
 use super::common::{SenderMsg, ReceiverMsg};
 
-use message_io::network::{Network, NetEvent, Endpoint, Transport};
+use message_io::network::{NetEvent, Transport, Endpoint};
+use message_io::node::{self};
 
 use std::collections::{HashMap};
 use std::fs::{File};
@@ -14,65 +15,63 @@ pub struct Transfer {
 }
 
 pub fn run() {
-    let (network, mut event_queue) = Network::split();
+    let (node, listener) = node::split::<()>();
 
     let listen_addr = "127.0.0.1:3005";
-    match network.listen(Transport::FramedTcp, listen_addr) {
+    match node.network().listen(Transport::FramedTcp, listen_addr) {
         Ok(_) => println!("Receiver running by TCP at {}", listen_addr),
         Err(_) => return println!("Can not listening by TCP at {}", listen_addr),
     }
 
     let mut transfers: HashMap<Endpoint, Transfer> = HashMap::new();
 
-    loop {
-        match event_queue.receive() {
-            NetEvent::Message(endpoint, input_data) => {
-                let message: SenderMsg = bincode::deserialize(&input_data).unwrap();
-                match message {
-                    SenderMsg::FileRequest(name, size) => {
-                        let able = match File::create(format!("{}.recv", name)) {
-                            Ok(file) => {
-                                println!("Accept file: '{}' with {} bytes", name, size);
-                                let transfer =
-                                    Transfer { file, name, current_size: 0, expected_size: size };
-                                transfers.insert(endpoint, transfer);
-                                true
-                            }
-                            Err(_) => {
-                                println!("Can not open the file to write");
-                                false
-                            }
-                        };
-
-                        let output_data =
-                            bincode::serialize(&ReceiverMsg::CanReceive(able)).unwrap();
-                        network.send(endpoint, &output_data);
-                    }
-                    SenderMsg::Chunk(data) => {
-                        let transfer = transfers.get_mut(&endpoint).unwrap();
-                        transfer.file.write(&data).unwrap();
-                        transfer.current_size += data.len();
-
-                        let current = transfer.current_size as f32;
-                        let expected = transfer.expected_size as f32;
-                        let percentage = ((current / expected) * 100.0) as usize;
-                        print!("\rReceiving '{}': {}%", transfer.name, percentage);
-
-                        if transfer.expected_size == transfer.current_size {
-                            println!("\nFile '{}' received!", transfer.name);
-                            transfers.remove(&endpoint).unwrap();
+    listener.for_each(move |event| match event.network() {
+        NetEvent::Message(endpoint, input_data) => {
+            let message: SenderMsg = bincode::deserialize(&input_data).unwrap();
+            match message {
+                SenderMsg::FileRequest(name, size) => {
+                    let able = match File::create(format!("{}.recv", name)) {
+                        Ok(file) => {
+                            println!("Accept file: '{}' with {} bytes", name, size);
+                            let transfer =
+                                Transfer { file, name, current_size: 0, expected_size: size };
+                            transfers.insert(endpoint, transfer);
+                            true
                         }
-                    }
+                        Err(_) => {
+                            println!("Can not open the file to write");
+                            false
+                        }
+                    };
+
+                    let output_data =
+                        bincode::serialize(&ReceiverMsg::CanReceive(able)).unwrap();
+                    node.network().send(endpoint, &output_data);
                 }
-            }
-            NetEvent::Connected(_, _) => {}
-            NetEvent::Disconnected(endpoint) => {
-                // Unexpected sender disconnection. Cleaninig.
-                if transfers.contains_key(&endpoint) {
-                    println!("\nUnexpected Sender disconnected");
-                    transfers.remove(&endpoint);
+                SenderMsg::Chunk(data) => {
+                    let transfer = transfers.get_mut(&endpoint).unwrap();
+                    transfer.file.write(&data).unwrap();
+                    transfer.current_size += data.len();
+
+                    let current = transfer.current_size as f32;
+                    let expected = transfer.expected_size as f32;
+                    let percentage = ((current / expected) * 100.0) as usize;
+                    print!("\rReceiving '{}': {}%", transfer.name, percentage);
+
+                    if transfer.expected_size == transfer.current_size {
+                        println!("\nFile '{}' received!", transfer.name);
+                        transfers.remove(&endpoint).unwrap();
+                    }
                 }
             }
         }
-    }
+        NetEvent::Connected(_, _) => {}
+        NetEvent::Disconnected(endpoint) => {
+            // Unexpected sender disconnection. Cleaninig.
+            if transfers.contains_key(&endpoint) {
+                println!("\nUnexpected Sender disconnected");
+                transfers.remove(&endpoint);
+            }
+        }
+    });
 }

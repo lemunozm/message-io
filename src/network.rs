@@ -108,9 +108,12 @@ impl NetworkController {
     }
 
     /// Send the data message thought the connection represented by the given endpoint.
-    /// The funcion panics if the endpoint do not exists in the [`Network`].
-    /// If the endpoint disconnects during the sending, a `Disconnected` event is generated.
-    /// A [`SendStatus`] is returned with the information about the sending.
+    /// This function returns a [`SendStatus`] indicating the status of this send.
+    /// There is no guarantee that send over a correct connection generates a [`SendStatus::Sent`]
+    /// because any time a connection can be disconnected (even while you are sending).
+    /// Except cases where you need to be sure that the message has been sent,
+    /// you will want to process a [`NetEvent::Disconnected`] to determine if the connection +
+    /// is *alive* instead of check if `send()` returned [`SendStatus::ResourceNotFound`].
     pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         log::trace!("Send {} bytes to {}", data.len(), endpoint);
         let status =

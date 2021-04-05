@@ -9,10 +9,13 @@ use std::net::{SocketAddr};
 use std::sync::{Arc};
 use std::io::{self};
 
+#[cfg(doctest)]
+use super::transport::{Transport};
+
 /// Enum used to describe and event that an adapter network has produced.
 pub enum NetEvent<'a> {
     /// New endpoint has been connected to a listener.
-    /// This event will be sent only in connection oriented protocols as [`Transport::Tcp`].
+    /// This event will be sent only in connection oriented protocols as *TCP*.
     /// It also contains the resource id of the listener that accepted this connection.
     Connected(Endpoint, ResourceId),
 
@@ -101,26 +104,13 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
 
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         match endpoint.resource_id().resource_type() {
-            ResourceType::Remote => {
-                match self.remote_registry.get(endpoint.resource_id()) {
-                    Some(remote) => remote.resource.send(data),
-
-                    // TODO: currently there is not a safe way to know if this is
-                    // reached because of a user API error (send over already resource removed)
-                    // or because of a disconnection happened but not processed yet.
-                    // It could be better to panics in the first case to distinguish
-                    // the programming error from the second case.
-                    None => SendStatus::ResourceNotFound,
-                }
-            }
+            ResourceType::Remote => match self.remote_registry.get(endpoint.resource_id()) {
+                Some(remote) => remote.resource.send(data),
+                None => SendStatus::ResourceNotFound,
+            },
             ResourceType::Local => match self.local_registry.get(endpoint.resource_id()) {
                 Some(remote) => remote.resource.send_to(endpoint.addr(), data),
-                None => {
-                    panic!(
-                        "Error: You are trying to send by a local resource \
-                        that does not exists"
-                    )
-                }
+                None => SendStatus::ResourceNotFound,
             },
         }
     }

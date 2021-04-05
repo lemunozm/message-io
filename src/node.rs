@@ -205,7 +205,7 @@ impl<S: Send + 'static> NodeListener<S> {
     /// listener.for_each(move |event| {
     ///     match event {
     ///          NodeEvent::Network(net_event) => { /* Your logic here */ },
-    ///          NodeEvent::Signal(_) => node.stop());
+    ///          NodeEvent::Signal(_) => node.stop(),
     ///     }
     /// });
     /// // Blocked here until node.stop() was called (1 sec) because the returned value
@@ -222,7 +222,7 @@ impl<S: Send + 'static> NodeListener<S> {
     /// let task = listener.for_each(move |event| {
     ///     match event {
     ///          NodeEvent::Network(net_event) => { /* Your logic here */ },
-    ///          NodeEvent::Signal(_) => node.stop());
+    ///          NodeEvent::Signal(_) => node.stop(),
     ///     }
     /// });
     /// // for_each() will act asynchronous during 'task' lifetime.

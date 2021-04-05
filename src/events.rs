@@ -175,7 +175,7 @@ where E: Send + 'static
     }
 
     /// Send instantly an event that would be process before any other event sent
-    /// by the [`crate::network::Network::send()] method.
+    /// by the [`EventSender::send()`] method.
     /// Successive calls to send_with_priority will maintain the order of arrival.
     pub fn send_with_priority(&self, event: E) {
         self.priority_sender.send(event).ok();

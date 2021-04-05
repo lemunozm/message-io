@@ -6,7 +6,8 @@ use std::io::{self};
 /// An struct that contains a remote address.
 /// It can be Either, a [`SocketAddr`] as usual or a `String` used for protocols
 /// that needs more than a `SocketAddr` to get connected (e.g. WebSocket)
-/// It is usually used in [`crate::network::Network::connect()`] to specify the remote address.
+/// It is usually used in [`crate::network::NetworkController::connect()`]
+/// to specify the remote address.
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum RemoteAddr {
     Socket(SocketAddr),

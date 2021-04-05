@@ -1,19 +1,19 @@
 use message_io::network::{NetEvent, Transport, SendStatus};
 use message_io::node::{self, NodeEvent};
+use message_io::util::thread::{NamespacedThread};
 
 use test_case::test_case;
 
 use rand::{SeedableRng, Rng};
 
 use std::collections::{HashSet};
-use std::thread::{self, JoinHandle};
 use std::net::{SocketAddr};
 use std::time::{Duration};
 
 const LOCAL_ADDR: &'static str = "127.0.0.1:0";
 const MIN_MESSAGE: &'static [u8] = &[42];
 const SMALL_MESSAGE: &'static str = "Integration test message";
-const BIG_MESSAGE_SIZE: usize = 1024 * 1024; // 1MB
+const BIG_MESSAGE_SIZE: usize = 1024 * 1024 * 8; // 1MB
 
 lazy_static::lazy_static! {
     pub static ref TIMEOUT: Duration = Duration::from_millis(5000);
@@ -62,185 +62,173 @@ mod util {
 #[allow(unused_imports)]
 use util::{LogThread};
 
-fn echo_server_handle(
+fn start_echo_server(
     transport: Transport,
     expected_clients: usize,
-) -> (JoinHandle<()>, SocketAddr) {
+) -> (NamespacedThread<()>, SocketAddr) {
     let (tx, rx) = crossbeam::channel::bounded(1);
-    let handle = thread::Builder::new()
-        .name("test-server".into())
-        .spawn(move || {
-            std::panic::catch_unwind(|| {
-                let mut messages_received = 0;
-                let mut disconnections = 0;
-                let mut clients = HashSet::new();
+    let thread = NamespacedThread::new("test-client", move || {
+        std::panic::catch_unwind(|| {
+            let mut messages_received = 0;
+            let mut disconnections = 0;
+            let mut clients = HashSet::new();
 
-                let (node, listener) = node::split();
-                node.signals().send_with_timer((), *TIMEOUT);
+            let (node, listener) = node::split();
+            node.signals().send_with_timer((), *TIMEOUT);
 
-                let (listener_id, server_addr) =
-                    node.network().listen(transport, LOCAL_ADDR).unwrap();
-                tx.send(server_addr).unwrap();
+            let (listener_id, server_addr) =
+                node.network().listen(transport, LOCAL_ADDR).unwrap();
+            tx.send(server_addr).unwrap();
 
-                listener.for_each(move |event| match event {
-                    NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
-                    NodeEvent::Network(net_event) => match net_event {
-                        NetEvent::Message(endpoint, data) => {
-                            assert_eq!(MIN_MESSAGE, data);
+            listener.for_each(move |event| match event {
+                NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
+                NodeEvent::Network(net_event) => match net_event {
+                    NetEvent::Message(endpoint, data) => {
+                        assert_eq!(MIN_MESSAGE, data);
 
-                            let status = node.network().send(endpoint, &data);
-                            assert_eq!(SendStatus::Sent, status);
+                        let status = node.network().send(endpoint, &data);
+                        assert_eq!(SendStatus::Sent, status);
 
-                            messages_received += 1;
+                        messages_received += 1;
 
-                            if !transport.is_connection_oriented() {
-                                // We assume here that if the protocol is not
-                                // connection-oriented it will no create a resource.
-                                // The remote will be managed from the listener resource
-                                assert_eq!(listener_id, endpoint.resource_id());
-                                if messages_received == expected_clients {
+                        if !transport.is_connection_oriented() {
+                            // We assume here that if the protocol is not
+                            // connection-oriented it will no create a resource.
+                            // The remote will be managed from the listener resource
+                            assert_eq!(listener_id, endpoint.resource_id());
+                            if messages_received == expected_clients {
+                                node.stop() //Exit from thread.
+                            }
+                        }
+                    }
+                    NetEvent::Connected(endpoint, id) => {
+                        assert_eq!(listener_id, id);
+                        match transport.is_connection_oriented() {
+                            true => assert!(clients.insert(endpoint)),
+                            false => unreachable!(),
+                        }
+                    }
+                    NetEvent::Disconnected(endpoint) => {
+                        match transport.is_connection_oriented() {
+                            true => {
+                                disconnections += 1;
+                                assert!(clients.remove(&endpoint));
+                                if disconnections == expected_clients {
+                                    assert_eq!(expected_clients, messages_received);
+                                    assert_eq!(0, clients.len());
                                     node.stop() //Exit from thread.
                                 }
                             }
+                            false => unreachable!(),
                         }
-                        NetEvent::Connected(endpoint, id) => {
-                            assert_eq!(listener_id, id);
-                            match transport.is_connection_oriented() {
-                                true => assert!(clients.insert(endpoint)),
-                                false => unreachable!(),
-                            }
-                        }
-                        NetEvent::Disconnected(endpoint) => {
-                            match transport.is_connection_oriented() {
-                                true => {
-                                    disconnections += 1;
-                                    assert!(clients.remove(&endpoint));
-                                    if disconnections == expected_clients {
-                                        assert_eq!(expected_clients, messages_received);
-                                        assert_eq!(0, clients.len());
-                                        node.stop() //Exit from thread.
-                                    }
-                                }
-                                false => unreachable!(),
-                            }
-                        }
-                    },
-                });
-            })
-            .unwrap();
+                    }
+                },
+            });
         })
         .unwrap();
+    });
 
     let server_addr = rx.recv_timeout(*TIMEOUT).expect(TIMEOUT_EVENT_RECV_ERR);
-    (handle, server_addr)
+    (thread, server_addr)
 }
 
-fn echo_client_manager_handle(
+fn start_echo_client_manager(
     transport: Transport,
     server_addr: SocketAddr,
     clients_number: usize,
-) -> JoinHandle<()> {
-    thread::Builder::new()
-        .name("test-client".into())
-        .spawn(move || {
-            std::panic::catch_unwind(|| {
-                let (node, listener) = node::split();
-                node.signals().send_with_timer((), *TIMEOUT);
+) -> NamespacedThread<()> {
+    NamespacedThread::new("test-client", move || {
+        std::panic::catch_unwind(|| {
+            let (node, listener) = node::split();
+            node.signals().send_with_timer((), *TIMEOUT);
 
-                let mut clients = HashSet::new();
+            let mut clients = HashSet::new();
 
-                for _ in 0..clients_number {
-                    let (server, _) = node.network().connect(transport, server_addr).unwrap();
-                    let status = node.network().send(server, MIN_MESSAGE);
-                    assert_eq!(SendStatus::Sent, status);
-                    assert!(clients.insert(server));
-                }
+            for _ in 0..clients_number {
+                let (server, _) = node.network().connect(transport, server_addr).unwrap();
+                let status = node.network().send(server, MIN_MESSAGE);
+                assert_eq!(SendStatus::Sent, status);
+                assert!(clients.insert(server));
+            }
 
-                listener.for_each(move |event| match event {
-                    NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
-                    NodeEvent::Network(net_event) => match net_event {
-                        NetEvent::Message(endpoint, data) => {
-                            assert!(clients.remove(&endpoint));
-                            assert_eq!(MIN_MESSAGE, data);
-                            node.network().remove(endpoint.resource_id());
-                            if clients.len() == 0 {
-                                node.stop(); //Exit from thread.
-                            }
+            listener.for_each(move |event| match event {
+                NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
+                NodeEvent::Network(net_event) => match net_event {
+                    NetEvent::Message(endpoint, data) => {
+                        assert!(clients.remove(&endpoint));
+                        assert_eq!(MIN_MESSAGE, data);
+                        node.network().remove(endpoint.resource_id());
+                        if clients.len() == 0 {
+                            node.stop(); //Exit from thread.
                         }
-                        NetEvent::Connected(..) => unreachable!(),
-                        NetEvent::Disconnected(_) => unreachable!(),
-                    },
-                });
-            })
-            .unwrap();
-        })
-        .unwrap()
-}
-
-fn burst_receiver_handle(
-    transport: Transport,
-    expected_count: usize,
-) -> (JoinHandle<()>, SocketAddr) {
-    let (tx, rx) = crossbeam::channel::bounded(1);
-    let handle = thread::Builder::new()
-        .name("test-client".into())
-        .spawn(move || {
-            std::panic::catch_unwind(|| {
-                let (node, listener) = node::split();
-                node.signals().send_with_timer((), *TIMEOUT);
-
-                let (_, receiver_addr) = node.network().listen(transport, LOCAL_ADDR).unwrap();
-                tx.send(receiver_addr).unwrap();
-
-                let mut count = 0;
-                listener.for_each(move |event| match event {
-                    NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
-                    NodeEvent::Network(net_event) => match net_event {
-                        NetEvent::Message(_, data) => {
-                            let expected_message = format!("{}: {}", SMALL_MESSAGE, count);
-                            assert_eq!(expected_message, String::from_utf8_lossy(&data));
-                            count += 1;
-                            if count == expected_count {
-                                node.stop();
-                            }
-                        }
-                        NetEvent::Connected(..) => (),
-                        NetEvent::Disconnected(_) => (),
-                    },
-                });
-            })
-            .unwrap();
+                    }
+                    NetEvent::Connected(..) => unreachable!(),
+                    NetEvent::Disconnected(_) => unreachable!(),
+                },
+            });
         })
         .unwrap();
-    (handle, rx.recv().unwrap())
+    })
 }
 
-fn burst_sender_handle(
+fn start_burst_receiver(
+    transport: Transport,
+    expected_count: usize,
+) -> (NamespacedThread<()>, SocketAddr) {
+    let (tx, rx) = crossbeam::channel::bounded(1);
+    let thread = NamespacedThread::new("test-receiver", move || {
+        std::panic::catch_unwind(|| {
+            let (node, listener) = node::split();
+            node.signals().send_with_timer((), *TIMEOUT);
+
+            let (_, receiver_addr) = node.network().listen(transport, LOCAL_ADDR).unwrap();
+            tx.send(receiver_addr).unwrap();
+
+            let mut count = 0;
+            listener.for_each(move |event| match event {
+                NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
+                NodeEvent::Network(net_event) => match net_event {
+                    NetEvent::Message(_, data) => {
+                        let expected_message = format!("{}: {}", SMALL_MESSAGE, count);
+                        assert_eq!(expected_message, String::from_utf8_lossy(&data));
+                        count += 1;
+                        if count == expected_count {
+                            node.stop();
+                        }
+                    }
+                    NetEvent::Connected(..) => (),
+                    NetEvent::Disconnected(_) => (),
+                },
+            });
+        })
+        .unwrap();
+    });
+    (thread, rx.recv().unwrap())
+}
+
+fn start_burst_sender(
     transport: Transport,
     receiver_addr: SocketAddr,
     expected_count: usize,
-) -> JoinHandle<()> {
-    thread::Builder::new()
-        .name("test-client".into())
-        .spawn(move || {
-            std::panic::catch_unwind(|| {
-                let (node, _) = node::split::<()>();
+) -> NamespacedThread<()> {
+    NamespacedThread::new("test-sender", move || {
+        std::panic::catch_unwind(|| {
+            let (node, _) = node::split::<()>();
 
-                let (receiver, _) = node.network().connect(transport, receiver_addr).unwrap();
+            let (receiver, _) = node.network().connect(transport, receiver_addr).unwrap();
 
-                for count in 0..expected_count {
-                    let message = format!("{}: {}", SMALL_MESSAGE, count);
-                    let status = node.network().send(receiver, message.as_bytes());
-                    assert_eq!(SendStatus::Sent, status);
-                    if !transport.is_connection_oriented() {
-                        // We need a rate to not lose packet.
-                        std::thread::sleep(Duration::from_micros(20));
-                    }
+            for count in 0..expected_count {
+                let message = format!("{}: {}", SMALL_MESSAGE, count);
+                let status = node.network().send(receiver, message.as_bytes());
+                assert_eq!(SendStatus::Sent, status);
+                if !transport.is_connection_oriented() {
+                    // We need a rate to not lose packet.
+                    std::thread::sleep(Duration::from_micros(20));
                 }
-            })
-            .unwrap();
+            }
         })
-        .unwrap()
+        .unwrap();
+    })
 }
 
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, 1))]
@@ -256,11 +244,8 @@ fn burst_sender_handle(
 fn echo(transport: Transport, clients: usize) {
     // util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
-    let (server_handle, server_addr) = echo_server_handle(transport, clients);
-    let client_handle = echo_client_manager_handle(transport, server_addr, clients);
-
-    server_handle.join().unwrap();
-    client_handle.join().unwrap();
+    let (_server_thread, server_addr) = start_echo_server(transport, clients);
+    let _client_thread = start_echo_client_manager(transport, server_addr, clients);
 }
 
 // Tcp: Does not apply: it's stream based
@@ -270,11 +255,8 @@ fn echo(transport: Transport, clients: usize) {
 fn burst(transport: Transport, messages_count: usize) {
     //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
-    let (receiver_handle, server_addr) = burst_receiver_handle(transport, messages_count);
-    let sender_handle = burst_sender_handle(transport, server_addr, messages_count);
-
-    receiver_handle.join().unwrap();
-    sender_handle.join().unwrap();
+    let (_receiver_thread, server_addr) = start_burst_receiver(transport, messages_count);
+    let _sender_thread = start_burst_sender(transport, server_addr, messages_count);
 }
 
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, BIG_MESSAGE_SIZE))]
@@ -301,6 +283,9 @@ fn message_size(transport: Transport, message_size: usize) {
         assert_eq!(status, SendStatus::Sent);
     }
 
+    // Protocols as TCP blocks the sender if the receiver is not reading data and its buffer is fill.
+    let mut _async_sender: Option<NamespacedThread<()>> = None;
+
     let mut received_message = Vec::new();
     listener.for_each(move |event| match event {
         NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
@@ -319,14 +304,11 @@ fn message_size(transport: Transport, message_size: usize) {
                 if transport.is_connection_oriented() {
                     let node = node.clone();
                     let sent_message = sent_message.clone();
-                    thread::Builder::new()
-                        .name("test-client".into())
-                        .spawn(move || {
-                            let status = node.network().send(receiver, &sent_message);
-                            assert_eq!(status, SendStatus::Sent);
-                            assert!(node.network().remove(receiver.resource_id()));
-                        })
-                        .unwrap();
+                    _async_sender = Some(NamespacedThread::new("test-client", move || {
+                        let status = node.network().send(receiver, &sent_message);
+                        assert_eq!(status, SendStatus::Sent);
+                        assert!(node.network().remove(receiver.resource_id()));
+                    }));
                 }
                 else {
                     unreachable!();

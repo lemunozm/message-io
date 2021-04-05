@@ -126,7 +126,7 @@ impl NetworkProcessor {
     pub fn process_poll_event(
         &mut self,
         timeout: Option<Duration>,
-        event_callback: &mut dyn FnMut(NetEvent<'_>),
+        mut event_callback: impl FnMut(NetEvent<'_>),
     ) {
         let processors = &mut self.processors;
         self.poll.process_event(timeout, |poll_event| {
@@ -162,7 +162,7 @@ mod tests {
         assert!(!controller.remove(listener_id));
 
         let mut was_event = false;
-        processor.process_poll_event(Some(*TIMEOUT), &mut |_| was_event = true);
+        processor.process_poll_event(Some(*TIMEOUT), |_| was_event = true);
         assert!(!was_event);
     }
 
@@ -173,7 +173,7 @@ mod tests {
         controller.connect(Transport::Tcp, addr).unwrap();
 
         let mut was_event = false;
-        processor.process_poll_event(Some(*TIMEOUT), &mut |net_event| match net_event {
+        processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
             NetEvent::Connected(_, _) => {
                 assert!(controller.remove(listener_id));
                 assert!(!controller.remove(listener_id));
@@ -184,7 +184,7 @@ mod tests {
         assert!(was_event);
 
         let mut was_event = false;
-        processor.process_poll_event(Some(*TIMEOUT), &mut |_| was_event = true);
+        processor.process_poll_event(Some(*TIMEOUT), |_| was_event = true);
         assert!(!was_event);
     }
 }

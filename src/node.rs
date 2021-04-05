@@ -174,7 +174,7 @@ impl<S: Send + 'static> NodeListener<S> {
             let mut cache = VecDeque::new();
             NamespacedThread::new("node-network-cache-thread", move || {
                 while cache_running.load(Ordering::Relaxed) {
-                    network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), &mut |net_event| {
+                    network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), |net_event| {
                         log::trace!("Cached {:?}", net_event);
                         cache.push_back(net_event.into());
                     });
@@ -242,20 +242,20 @@ impl<S: Send + 'static> NodeListener<S> {
         self.cache_running.store(false, Ordering::Relaxed);
         let (mut network_processor, mut cache) = self.network_cache_thread.join();
 
-        let multiplexed_callback = Arc::new(Mutex::new(event_callback));
+        let multiplexed = Arc::new(Mutex::new(event_callback));
 
         // To avoid processing stops while the node is configuring,
         // the user callback locked until the function ends.
-        let _locked = multiplexed_callback.lock().expect(OTHER_THREAD_ERR);
+        let _locked = multiplexed.lock().expect(OTHER_THREAD_ERR);
 
         let network_thread = {
-            let callback = multiplexed_callback.clone();
+            let multiplexed = multiplexed.clone();
             let running = self.running.clone();
 
             NamespacedThread::new("node-network-thread", move || {
                 // Dispatch the catched events first.
                 while let Some(event) = cache.pop_front() {
-                    let mut event_callback = callback.lock().expect(OTHER_THREAD_ERR);
+                    let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                     let net_event = event.borrow();
                     log::trace!("Read from cache {:?}", net_event);
                     event_callback(NodeEvent::Network(net_event));
@@ -265,8 +265,8 @@ impl<S: Send + 'static> NodeListener<S> {
                 }
 
                 while running.load(Ordering::Relaxed) {
-                    network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), &mut |net_event| {
-                        let mut event_callback = callback.lock().expect(OTHER_THREAD_ERR);
+                    network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), |net_event| {
+                        let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                         if running.load(Ordering::Relaxed) {
                             event_callback(NodeEvent::Network(net_event));
                         }
@@ -276,14 +276,14 @@ impl<S: Send + 'static> NodeListener<S> {
         };
 
         let signal_thread = {
-            let callback = multiplexed_callback.clone();
+            let multiplexed = multiplexed.clone();
             let mut signal_receiver = std::mem::take(&mut self.signal_receiver);
             let running = self.running.clone();
 
             NamespacedThread::new("node-signal-thread", move || {
                 while running.load(Ordering::Relaxed) {
                     if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT) {
-                        let mut event_callback = callback.lock().expect(OTHER_THREAD_ERR);
+                        let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                         if running.load(Ordering::Relaxed) {
                             event_callback(NodeEvent::Signal(signal));
                         }

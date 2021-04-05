@@ -20,7 +20,7 @@ fn init_connection(transport: Transport) -> (NetworkController, NetworkProcessor
         if transport.is_connection_oriented() {
             let mut connected = false;
             while !connected {
-                processor.process_poll_event(Some(*TIMEOUT), &mut |_| connected = true);
+                processor.process_poll_event(Some(*TIMEOUT), |_| connected = true);
             }
         }
         processor
@@ -42,7 +42,7 @@ fn latency_by(c: &mut Criterion, transport: Transport) {
 
         b.iter(|| {
             controller.send(endpoint, &[0xFF]);
-            processor.process_poll_event(Some(*TIMEOUT), &mut |_| ());
+            processor.process_poll_event(Some(*TIMEOUT), |_| ());
         });
     });
 }
@@ -77,7 +77,7 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
                 // Because the sender do not stop sends, the receiver has always data.
                 // This means that only one poll event is generated for all messages, and
                 // process_poll_event will call the callback continuously without ends.
-                processor.process_poll_event(Some(*TIMEOUT), &mut |_| ());
+                processor.process_poll_event(Some(*TIMEOUT), |_| ());
             });
 
             thread_running.store(false, Ordering::Relaxed);

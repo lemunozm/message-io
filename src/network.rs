@@ -5,7 +5,7 @@ mod registry;
 mod driver;
 mod remote_addr;
 mod transport;
-mod launcher;
+mod loader;
 
 // Reinterpret the SendStatus as part of the network module
 pub use super::adapter::{SendStatus};
@@ -17,7 +17,7 @@ pub use remote_addr::{RemoteAddr, ToRemoteAddr};
 pub use transport::{Transport};
 pub use driver::{NetEvent};
 
-use launcher::{DriverLauncher, ActionControllerList, EventProcessorList};
+use loader::{AdapterLoader, ActionControllerList, EventProcessorList};
 use poll::{Poll, PollEvent};
 
 use strum::{IntoEnumIterator};
@@ -27,10 +27,10 @@ use std::time::{Duration};
 use std::io::{self};
 
 pub fn split() -> (NetworkController, NetworkProcessor) {
-    let mut launcher = DriverLauncher::default();
-    Transport::iter().for_each(|transport| transport.mount_adapter(&mut launcher));
+    let mut loader = AdapterLoader::default();
+    Transport::iter().for_each(|transport| transport.mount_adapter(&mut loader));
 
-    let (poll, controllers, processors) = launcher.launch();
+    let (poll, controllers, processors) = loader.take();
 
     let network_controller = NetworkController::new(controllers);
     let network_processor = NetworkProcessor::new(poll, processors);

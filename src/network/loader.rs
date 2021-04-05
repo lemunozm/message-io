@@ -13,14 +13,14 @@ pub type ActionControllerList = Vec<Box<dyn ActionController + Send>>;
 pub type EventProcessorList = Vec<Box<dyn EventProcessor + Send>>;
 
 /// Used to configured the engine
-pub struct DriverLauncher {
+pub struct AdapterLoader {
     poll: Poll,
     controllers: ActionControllerList,
     processors: EventProcessorList,
 }
 
-impl Default for DriverLauncher {
-    fn default() -> DriverLauncher {
+impl Default for AdapterLoader {
+    fn default() -> AdapterLoader {
         Self {
             poll: Poll::default(),
             controllers: (0..ResourceId::MAX_ADAPTERS)
@@ -33,8 +33,8 @@ impl Default for DriverLauncher {
     }
 }
 
-impl DriverLauncher {
-    /// Mount a driver for an adapter associating it with an id.
+impl AdapterLoader {
+    /// Mount an adapter associating it with an id.
     pub fn mount(&mut self, adapter_id: u8, adapter: impl Adapter + 'static) {
         let index = adapter_id as usize;
 
@@ -45,7 +45,7 @@ impl DriverLauncher {
     }
 
     /// Consume this instance to obtain the driver handles.
-    pub fn launch(self) -> (Poll, ActionControllerList, EventProcessorList) {
+    pub fn take(self) -> (Poll, ActionControllerList, EventProcessorList) {
         (self.poll, self.controllers, self.processors)
     }
 }

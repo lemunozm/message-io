@@ -1,4 +1,4 @@
-use super::launcher::{DriverLauncher};
+use super::loader::{AdapterLoader};
 
 #[cfg(feature = "tcp")]
 use crate::adapters::tcp::{self, TcpAdapter};
@@ -52,16 +52,16 @@ pub enum Transport {
 impl Transport {
     /// Associates an adapter.
     /// This method mounts the adapters to be used in the network instance.
-    pub fn mount_adapter(self, launcher: &mut DriverLauncher) {
+    pub fn mount_adapter(self, loader: &mut AdapterLoader) {
         match self {
             #[cfg(feature = "tcp")]
-            Self::Tcp => launcher.mount(self.id(), TcpAdapter),
+            Self::Tcp => loader.mount(self.id(), TcpAdapter),
             #[cfg(feature = "tcp")]
-            Self::FramedTcp => launcher.mount(self.id(), FramedTcpAdapter),
+            Self::FramedTcp => loader.mount(self.id(), FramedTcpAdapter),
             #[cfg(feature = "udp")]
-            Self::Udp => launcher.mount(self.id(), UdpAdapter),
+            Self::Udp => loader.mount(self.id(), UdpAdapter),
             #[cfg(feature = "websocket")]
-            Self::Ws => launcher.mount(self.id(), WsAdapter),
+            Self::Ws => loader.mount(self.id(), WsAdapter),
         };
     }
 

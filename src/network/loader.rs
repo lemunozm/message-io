@@ -3,8 +3,7 @@ use super::resource_id::{ResourceId};
 use super::poll::{Poll};
 use super::remote_addr::{RemoteAddr};
 use super::driver::{NetEvent, Driver, ActionController, EventProcessor};
-
-use crate::adapter::{Adapter, SendStatus};
+use super::adapter::{Adapter, SendStatus};
 
 use std::net::{SocketAddr};
 use std::io::{self};

@@ -7,10 +7,13 @@ mod remote_addr;
 mod transport;
 mod loader;
 
-// Reinterpret the SendStatus as part of the network module
-pub use super::adapter::{SendStatus};
+/// Module that specify the pattern to follow to create adapters.
+/// This module is not part of the public API itself,
+/// it must be used from the internals to build new adapters.
+pub mod adapter;
 
 // Reexports
+pub use adapter::{SendStatus};
 pub use resource_id::{ResourceId, ResourceType};
 pub use endpoint::{Endpoint};
 pub use remote_addr::{RemoteAddr, ToRemoteAddr};

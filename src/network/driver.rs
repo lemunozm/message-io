@@ -3,8 +3,7 @@ use super::resource_id::{ResourceId, ResourceType};
 use super::poll::{Poll};
 use super::registry::{ResourceRegistry};
 use super::remote_addr::{RemoteAddr};
-
-use crate::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
+use super::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
 
 use std::net::{SocketAddr};
 use std::sync::{Arc};

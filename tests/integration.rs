@@ -76,8 +76,7 @@ fn start_echo_server(
             let (node, listener) = node::split();
             node.signals().send_with_timer((), *TIMEOUT);
 
-            let (listener_id, server_addr) =
-                node.network().listen(transport, LOCAL_ADDR).unwrap();
+            let (listener_id, server_addr) = node.network().listen(transport, LOCAL_ADDR).unwrap();
             tx.send(server_addr).unwrap();
 
             listener.for_each(move |event| match event {

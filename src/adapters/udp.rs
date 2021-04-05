@@ -1,4 +1,4 @@
-use crate::adapter::{
+use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo,
 };

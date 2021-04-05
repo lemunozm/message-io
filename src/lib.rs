@@ -10,11 +10,6 @@ mod adapters;
 /// Main API.
 pub mod node;
 
-/// Module that specify the pattern to follow to create adapters.
-/// This module is not part of the public API itself,
-/// it must be used from the internals to build new adapters.
-pub mod adapter;
-
 /// It contains all the resources and tools to create and manage connections.
 pub mod network;
 

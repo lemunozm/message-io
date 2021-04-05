@@ -12,9 +12,9 @@ enum Signal {
 }
 
 pub fn run(transport: Transport, remote_addr: RemoteAddr) {
-    let (handler, node) = Node::split();
+    let (node, receiver) = node::split();
 
-    let server_id = match handler.network().connect(transport, remote_addr.clone()) {
+    let server_id = match node.network().connect(transport, remote_addr.clone()) {
         Ok((server_id, local_addr)) => {
             println!("Connected to server by {} at {}", transport, server_id.addr());
             println!("Client identified by local port: {}", local_addr.port());
@@ -25,15 +25,15 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
         }
     };
 
-    handler.signals().send(Signal::Greet);
+    node.signals().send(Signal::Greet);
 
-    node.run(move |event| match event {
+    receiver.for_each(move |event| match event {
         NodeEvent::Signal(signal) => match signal {
             Signal::Greet => {
                 let message = FromClientMessage::Ping;
                 let output_data = bincode::serialize(&message).unwrap();
-                handler.network().send(server_id, &output_data);
-                handler.signals().send_with_timer(Signal::Greet, Duration::from_secs(1));
+                node.network().send(server_id, &output_data);
+                node.signals().send_with_timer(Signal::Greet, Duration::from_secs(1));
             }
         },
         NodeEvent::Network(net_event) => match net_event {
@@ -46,8 +46,8 @@ pub fn run(transport: Transport, remote_addr: RemoteAddr) {
                     FromServerMessage::UnknownPong => println!("Pong from server"),
                 }
             }
-            NetEvent::Connected(_, _) => unreachable!(), // Only generated when listen
+            NetEvent::Connected(_, _) => unreachable!(), // Only generated when a listener accepts
             NetEvent::Disconnected(_) => return println!("Server is disconnected"),
         }
-    }).wait();
+    });
 }

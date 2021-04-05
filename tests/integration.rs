@@ -1,3 +1,4 @@
+/*
 use message_io::network::{NetEvent, Transport, SendStatus};
 use message_io::node::{Node, NodeEvent};
 
@@ -345,3 +346,4 @@ fn message_size(transport: Transport, message_size: usize) {
     })
     .wait();
 }
+*/

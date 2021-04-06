@@ -16,19 +16,21 @@ lazy_static::lazy_static! {
 fn init_connection(transport: Transport) -> (NetworkController, NetworkProcessor, Endpoint) {
     let (controller, mut processor) = network::split();
 
-    let mut thread = NamespacedThread::spawn("perf-listening", move || {
-        if transport.is_connection_oriented() {
-            let mut connected = false;
-            while !connected {
-                processor.process_poll_event(Some(*TIMEOUT), |_| connected = true);
+    let running = Arc::new(AtomicBool::new(true));
+    let mut thread = {
+        let running = running.clone();
+        NamespacedThread::spawn("perf-listening", move || {
+            while running.load(Ordering::Relaxed) {
+                processor.process_poll_event(Some(*TIMEOUT), |_| ());
             }
-        }
-        processor
-    });
+            processor
+        })
+    };
 
     let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
     let receiver = controller.connect(transport, receiver_addr).unwrap().0;
 
+    running.store(false, Ordering::Relaxed);
     let processor = thread.join();
     // From here, the connection is performed independently of the transport used
 
@@ -65,14 +67,13 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
             let mut thread = NamespacedThread::spawn("perf-sender", move || {
                 let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
                 tx.send(()).unwrap(); // receiving thread ready
-                while running.load(Ordering::Relaxed) {
+                while running.load(Ordering::Relaxed)  {
                     controller.send(endpoint, &message);
                 }
             });
-
             rx.recv().unwrap();
 
-            b.iter(move || {
+            b.iter(|| {
                 // FIX IT:
                 // Because the sender do not stop sends, the receiver has always data.
                 // This means that only one poll event is generated for all messages, and
@@ -80,7 +81,7 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
                 processor.process_poll_event(Some(*TIMEOUT), |_| ());
             });
 
-            thread_running.store(false, Ordering::Relaxed);
+            thread_running.store(true, Ordering::Relaxed);
             thread.join();
         });
     }
@@ -101,7 +102,7 @@ fn latency(c: &mut Criterion) {
 fn throughput(c: &mut Criterion) {
     #[cfg(feature = "udp")]
     throughput_by(c, Transport::Udp);
-    // TODO: Fix this test: How to read inside of criterion iter()? an stream protocol?
+    // TODO: Fix this test: How to read inside of criterion iter() an stream protocol?
     // #[cfg(feature = "tcp")]
     // throughput_by(c, Transport::Tcp);
     #[cfg(feature = "tcp")]
@@ -110,5 +111,5 @@ fn throughput(c: &mut Criterion) {
     throughput_by(c, Transport::Ws);
 }
 
-criterion_group!(benches, latency /*throughput*/,);
+criterion_group!(benches, latency, /*throughput*/);
 criterion_main!(benches);

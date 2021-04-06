@@ -7,9 +7,10 @@ use super::adapter::{Adapter, SendStatus};
 
 use std::net::{SocketAddr};
 use std::io::{self};
+use std::panic::{UnwindSafe};
 
-type Controller = Box<dyn ActionController + Send>;
-type Processor = Box<dyn EventProcessor + Send>;
+type Controller = Box<dyn ActionController + Send + UnwindSafe>;
+type Processor = Box<dyn EventProcessor + Send + UnwindSafe>;
 
 pub type ActionControllerList = Vec<Controller>;
 pub type EventProcessorList = Vec<Processor>;

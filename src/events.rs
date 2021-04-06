@@ -7,7 +7,11 @@ use std::collections::{BTreeMap};
 ///
 /// Equivalent to:
 /// ```
-/// let event_queue = EventReceiver::default();
+/// struct MyEvent; // or usually an enum
+///
+/// use message_io::events::EventReceiver;
+///
+/// let event_queue = EventReceiver::<MyEvent>::default();
 /// let event_sender = event_queue.sender().clone();
 /// ```
 pub fn split<E: Send + 'static>() -> (EventSender<E>, EventReceiver<E>) {

@@ -15,10 +15,10 @@ enum Signal {
 const CHUNK_SIZE: usize = 65536;
 
 pub fn run(file_path: String) {
-    let (node, listener) = node::split();
+    let (handler, listener) = node::split();
 
     let server_addr = "127.0.0.1:3005";
-    let (server_id, _) = match node.network().connect(Transport::FramedTcp, server_addr) {
+    let (server_id, _) = match handler.network().connect(Transport::FramedTcp, server_addr) {
         Ok(server_id) => {
             println!("Sender connected by TCP at {}", server_addr);
             server_id
@@ -32,7 +32,7 @@ pub fn run(file_path: String) {
 
     let request = SenderMsg::FileRequest(file_name.clone(), file_size);
     let output_data = bincode::serialize(&request).unwrap();
-    node.network().send(server_id, &output_data);
+    handler.network().send(server_id, &output_data);
 
     let mut file_bytes_sent = 0;
     listener.for_each(move |event| match event {
@@ -41,9 +41,9 @@ pub fn run(file_path: String) {
                 let message: ReceiverMsg = bincode::deserialize(&input_data).unwrap();
                 match message {
                     ReceiverMsg::CanReceive(can) => match can {
-                        true => node.signals().send(Signal::SendChunk), // Start sending
+                        true => handler.signals().send(Signal::SendChunk), // Start sending
                         false => {
-                            node.stop();
+                            handler.stop();
                             println!("The receiver can not receive the file :(");
                         }
                     },
@@ -51,7 +51,7 @@ pub fn run(file_path: String) {
             }
             NetEvent::Connected(_, _) => unreachable!(),
             NetEvent::Disconnected(_) => {
-                node.stop();
+                handler.stop();
                 println!("\nReceiver disconnected");
             }
         },
@@ -62,17 +62,17 @@ pub fn run(file_path: String) {
                 if bytes_read > 0 {
                     let chunk = SenderMsg::Chunk(Vec::from(&data[0..bytes_read]));
                     let output_data = bincode::serialize(&chunk).unwrap();
-                    node.network().send(server_id, &output_data);
+                    handler.network().send(server_id, &output_data);
                     file_bytes_sent += bytes_read;
 
                     let percentage = ((file_bytes_sent as f32 / file_size as f32) * 100.0) as usize;
                     print!("\rSending '{}': {}%", file_name, percentage);
 
-                    node.signals().send_with_timer(Signal::SendChunk, Duration::from_micros(10));
+                    handler.signals().send_with_timer(Signal::SendChunk, Duration::from_micros(10));
                 }
                 else {
                     println!("\nFile sent!");
-                    node.stop();
+                    handler.stop();
                 }
             }
         },

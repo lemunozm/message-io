@@ -15,11 +15,13 @@ lazy_static::lazy_static! {
 
 /// Event returned by [`NodeListener::for_each()`] when some network or signal is received.
 pub enum NodeEvent<'a, S> {
-    /// The event comes from the network.
+    /// The `NodeEvent` is an event that comes from the network.
     /// See [`NetEvent`] to know about the different network events.
     Network(NetEvent<'a>),
 
-    /// The event comes from an user signal.
+    /// The `NodeEvent` is a signal.
+    /// A signal is an event produced by the own node to itself.
+    /// You can send signals with timers or priority.
     /// See [`EventSender`] to know about how to send signals.
     Signal(S),
 }
@@ -52,28 +54,42 @@ impl<'a, S> NodeEvent<'a, S> {
 ///
 /// # Examples
 /// ```rust
-/// enum MySignals {
+/// use message_io::node::{self, NodeEvent};
+///
+/// enum Signal {
+///     Close,
 ///     Tick,
 ///     //Other signals here.
 /// }
 ///
-/// let (node, _) = node::split();
-/// node.network.signals().send_with_timer(Tick, Duration::from_millis(500));
+/// let (handler, listener) = node::split();
+///
+/// handler.signals().send_with_timer(Signal::Close, std::time::Duration::from_secs(1));
+///
+/// listener.for_each(move |event| match event {
+///     NodeEvent::Network(_) => { /* ... */ },
+///     NodeEvent::Signal(signal) => match signal {
+///         Signal::Close => handler.stop(), //Received after 1 sec
+///         Signal::Tick => { /* ... */ },
+///     },
+/// });
 /// ```
 ///
-/// In case you don't use signals:
+/// In case you don't use signals, specify the node type with an unit (`()`) type.
 /// ```
-/// let (node, _) = node::split::<()>();
+/// use message_io::node::{self};
+///
+/// let (handler, _) = node::split::<()>();
 /// ```
 pub fn split<S: Send>() -> (NodeHandler<S>, NodeListener<S>) {
     let (network_controller, network_processor) = network::split();
     let (signal_sender, signal_receiver) = events::split();
     let running = Arc::new(AtomicBool::new(true));
 
-    let node_handler = NodeHandler::new(network_controller, signal_sender, running.clone());
-    let node_listener = NodeListener::new(network_processor, signal_receiver, running);
+    let handler = NodeHandler::new(network_controller, signal_sender, running.clone());
+    let listener = NodeListener::new(network_processor, signal_receiver, running);
 
-    (node_handler, node_listener)
+    (handler, listener)
 }
 
 /// A shareable and clonable entity that allows to deal with
@@ -96,18 +112,23 @@ impl<S> NodeHandler<S> {
     }
 
     /// Returns a reference to the EventSender to send signals to the node.
+    /// Signals are events that the node send to itself useful in situation where you need
+    /// to "wake up" the [`NodeListener`] to perform some action.
     /// See [`EventSender`].
     pub fn signals(&self) -> &EventSender<S> {
         &self.signals
     }
 
-    /// Finalizes the node processing.
-    /// No more events would be processing after this call.
+    /// Finalizes the [`NodeListener`].
+    /// After this call, no more events will be processed by [`NodeListener::for_each()`].
     pub fn stop(&self) {
         self.running.store(false, Ordering::Relaxed);
     }
 
     /// Check if the node is running.
+    /// Note that the node is running and listening events from its creation,
+    /// not only once you call to [`NodeListener::for_each()`].
+    /// Calling this function only will offer the event to the user to be processed.
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
     }
@@ -198,32 +219,34 @@ impl<S: Send + 'static> NodeListener<S> {
     /// # Examples
     /// **Synchronous** usage:
     /// ```
-    /// let (node, listener) = split();
-    /// node.signals().send_with_timer((), Duration::from_secs(1));
-    /// node.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    /// use message_io::node::{self, NodeEvent};
+    /// use message_io::network::Transport;
     ///
-    /// listener.for_each(move |event| {
-    ///     match event {
-    ///          NodeEvent::Network(net_event) => { /* Your logic here */ },
-    ///          NodeEvent::Signal(_) => node.stop(),
-    ///     }
+    /// let (handler, listener) = node::split();
+    /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
+    /// handler.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    ///
+    /// listener.for_each(move |event| match event {
+    ///     NodeEvent::Network(net_event) => { /* Your logic here */ },
+    ///     NodeEvent::Signal(_) => handler.stop(),
     /// });
-    /// // Blocked here until node.stop() was called (1 sec) because the returned value
-    /// // of for_each() is not handle (it is dropped just after called the method).
+    /// // Blocked here until handler.stop() was called (1 sec) because the returned value
+    /// // of for_each() is not used (it is dropped just after called the method).
     /// println!("Node is stopped");
     /// ```
     ///
     /// **Asynchronous** usage:
     /// ```
-    /// let (node, listener) = split();
-    /// node.signals().send_with_timer((), Duration::from_secs(1));
-    /// node.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    /// use message_io::node::{self, NodeEvent};
+    /// use message_io::network::Transport;
     ///
-    /// let task = listener.for_each(move |event| {
-    ///     match event {
-    ///          NodeEvent::Network(net_event) => { /* Your logic here */ },
-    ///          NodeEvent::Signal(_) => node.stop(),
-    ///     }
+    /// let (handler, listener) = node::split();
+    /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
+    /// handler.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    ///
+    /// let task = listener.for_each(move |event| match event {
+    ///      NodeEvent::Network(net_event) => { /* Your logic here */ },
+    ///      NodeEvent::Signal(_) => handler.stop(),
     /// });
     /// // for_each() will act asynchronous during 'task' lifetime.
     ///
@@ -231,9 +254,11 @@ impl<S: Send + 'static> NodeListener<S> {
     /// println!("Node is running");
     /// // ...
     ///
-    /// drop(task); // Blocked here until node.stop() was called (1 sec).
+    /// drop(task); // Blocked here until handler.stop() was called (1 sec).
     /// println!("Node is stopped");
     /// ```
+    /// Note that any events generated before calling this function will be storage
+    /// and offered once you call `for_each()`.
     pub fn for_each(
         mut self,
         event_callback: impl FnMut(NodeEvent<S>) + Send + 'static,
@@ -316,45 +341,45 @@ mod tests {
 
     #[test]
     fn create_node_and_drop() {
-        let (node, _listener) = split::<()>();
-        assert!(node.is_running());
+        let (handler, _listener) = split::<()>();
+        assert!(handler.is_running());
         // listener dropped here.
     }
 
     #[test]
     fn sync_node() {
-        let (node, listener) = split();
-        assert!(node.is_running());
-        node.signals().send_with_timer((), Duration::from_millis(1000));
+        let (handler, listener) = split();
+        assert!(handler.is_running());
+        handler.signals().send_with_timer((), Duration::from_millis(1000));
 
-        let inner_node = node.clone();
-        listener.for_each(move |_| inner_node.stop());
+        let inner_handler = handler.clone();
+        listener.for_each(move |_| inner_handler.stop());
 
         // Since here `NodeTask` is already dropped just after listener call,
         // the node is considered not running.
-        assert!(!node.is_running());
+        assert!(!handler.is_running());
     }
 
     #[test]
     fn async_node() {
-        let (node, listener) = split();
-        assert!(node.is_running());
-        node.signals().send_with_timer("check", Duration::from_millis(250));
+        let (handler, listener) = split();
+        assert!(handler.is_running());
+        handler.signals().send_with_timer("check", Duration::from_millis(250));
 
         let checked = Arc::new(AtomicBool::new(false));
         let inner_checked = checked.clone();
-        let inner_node = node.clone();
+        let inner_handler = handler.clone();
         let _node_task = listener.for_each(move |event| match event.signal() {
-            "stop" => inner_node.stop(),
+            "stop" => inner_handler.stop(),
             "check" => inner_checked.store(true, Ordering::Relaxed),
             _ => unreachable!(),
         });
 
         // Since here `NodeTask` is living, the node is considered running.
-        assert!(node.is_running());
+        assert!(handler.is_running());
         std::thread::sleep(Duration::from_millis(500));
         assert!(checked.load(Ordering::Relaxed));
-        assert!(node.is_running());
-        node.signals().send("stop");
+        assert!(handler.is_running());
+        handler.signals().send("stop");
     }
 }

@@ -12,21 +12,21 @@ struct ParticipantInfo {
 }
 
 pub struct DiscoveryServer {
-    node: NodeHandler<()>,
+    handler: NodeHandler<()>,
     listener: Option<NodeListener<()>>,
     participants: HashMap<String, ParticipantInfo>,
 }
 
 impl DiscoveryServer {
     pub fn new() -> Option<DiscoveryServer> {
-        let (node, listener) = node::split::<()>();
+        let (handler, listener) = node::split::<()>();
 
         let listen_addr = "127.0.0.1:5000";
-        match node.network().listen(Transport::FramedTcp, listen_addr) {
+        match handler.network().listen(Transport::FramedTcp, listen_addr) {
             Ok(_) => {
                 println!("Discovery server running at {}", listen_addr);
                 Some(DiscoveryServer {
-                    node,
+                    handler,
                     listener: Some(listener),
                     participants: HashMap::new(),
                 })
@@ -79,13 +79,13 @@ impl DiscoveryServer {
 
             let message = Message::ParticipantList(list);
             let output_data = bincode::serialize(&message).unwrap();
-            self.node.network().send(endpoint, &output_data);
+            self.handler.network().send(endpoint, &output_data);
 
             // Notify other participants about this new participant
             let message = Message::ParticipantNotificationAdded(name.to_string(), addr);
             let output_data = bincode::serialize(&message).unwrap();
             for participant in &mut self.participants {
-                self.node.network().send(participant.1.endpoint, &output_data);
+                self.handler.network().send(participant.1.endpoint, &output_data);
             }
 
             // Register participant
@@ -106,7 +106,7 @@ impl DiscoveryServer {
             let message = Message::ParticipantNotificationRemoved(name.to_string());
             let output_data = bincode::serialize(&message).unwrap();
             for participant in &mut self.participants {
-                self.node.network().send(participant.1.endpoint, &output_data);
+                self.handler.network().send(participant.1.endpoint, &output_data);
             }
             println!("Removed participant '{}' with ip {}", name, info.addr);
         }

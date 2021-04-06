@@ -15,10 +15,10 @@ pub struct Transfer {
 }
 
 pub fn run() {
-    let (node, listener) = node::split::<()>();
+    let (handler, listener) = node::split::<()>();
 
     let listen_addr = "127.0.0.1:3005";
-    match node.network().listen(Transport::FramedTcp, listen_addr) {
+    match handler.network().listen(Transport::FramedTcp, listen_addr) {
         Ok(_) => println!("Receiver running by TCP at {}", listen_addr),
         Err(_) => return println!("Can not listening by TCP at {}", listen_addr),
     }
@@ -45,7 +45,7 @@ pub fn run() {
                     };
 
                     let output_data = bincode::serialize(&ReceiverMsg::CanReceive(able)).unwrap();
-                    node.network().send(endpoint, &output_data);
+                    handler.network().send(endpoint, &output_data);
                 }
                 SenderMsg::Chunk(data) => {
                     let transfer = transfers.get_mut(&endpoint).unwrap();

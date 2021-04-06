@@ -11,11 +11,11 @@ struct ClientInfo {
 }
 
 pub fn run(transport: Transport, addr: SocketAddr) {
-    let (node, listener) = node::split::<()>();
+    let (handler, listener) = node::split::<()>();
 
     let mut clients: HashMap<Endpoint, ClientInfo> = HashMap::new();
 
-    match node.network().listen(transport, addr) {
+    match handler.network().listen(transport, addr) {
         Ok((_resource_id, real_addr)) => {
             println!("Server running at {} by {}", real_addr, transport)
         }
@@ -41,7 +41,7 @@ pub fn run(transport: Transport, addr: SocketAddr) {
                         }
                     };
                     let output_data = bincode::serialize(&message).unwrap();
-                    node.network().send(endpoint, &output_data);
+                    handler.network().send(endpoint, &output_data);
                 }
             }
         }

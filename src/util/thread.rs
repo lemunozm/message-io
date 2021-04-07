@@ -40,13 +40,20 @@ impl<T: Send + 'static> NamespacedThread<T> {
         log::trace!("Joined thread [{}]", self.namespace);
         content
     }
+
+    /// Wait the thread to finish.
+    /// Returns the inner `T` value if never was joined, `None` otherwise
+    pub fn try_join(&mut self) -> Option<T> {
+        if self.join_handle.is_some() {
+            return Some(self.join())
+        }
+        None
+    }
 }
 
 impl<T: Send + 'static> Drop for NamespacedThread<T> {
     fn drop(&mut self) {
-        if self.join_handle.is_some() {
-            self.join();
-        }
+        self.try_join();
     }
 }
 

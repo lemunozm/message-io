@@ -180,7 +180,8 @@ fn start_burst_receiver(
         listener.for_each(move |event| match event {
             NodeEvent::Signal(_) => std::panic::catch_unwind(|| {
                 panic!("{}", TIMEOUT_EVENT_RECV_ERR);
-            }).unwrap(),
+            })
+            .unwrap(),
             NodeEvent::Network(net_event) => match net_event {
                 NetEvent::Message(_, data) => {
                     let expected_message = format!("{}: {}", SMALL_MESSAGE, count);

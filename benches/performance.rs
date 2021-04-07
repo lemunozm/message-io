@@ -67,7 +67,7 @@ fn throughput_by(c: &mut Criterion, transport: Transport) {
             let mut thread = NamespacedThread::spawn("perf-sender", move || {
                 let message = (0..size).map(|_| 0xFF).collect::<Vec<u8>>();
                 tx.send(()).unwrap(); // receiving thread ready
-                while running.load(Ordering::Relaxed)  {
+                while running.load(Ordering::Relaxed) {
                     controller.send(endpoint, &message);
                 }
             });
@@ -111,5 +111,5 @@ fn throughput(c: &mut Criterion) {
     throughput_by(c, Transport::Ws);
 }
 
-criterion_group!(benches, latency, /*throughput*/);
+criterion_group!(benches, latency /*throughput*/,);
 criterion_main!(benches);

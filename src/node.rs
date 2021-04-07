@@ -255,6 +255,8 @@ impl<S: Send + 'static> NodeListener<S> {
     /// // ...
     ///
     /// drop(task); // Blocked here until handler.stop() was called (1 sec).
+    /// //also task.wait(); can be called doing the same (but taking a mutable reference).
+    ///
     /// println!("Node is stopped");
     /// ```
     /// Note that any events generated before calling this function will be storage
@@ -317,7 +319,7 @@ impl<S: Send + 'static> NodeListener<S> {
             })
         };
 
-        NodeTask { _network_thread: network_thread, _signal_thread: signal_thread }
+        NodeTask { network_thread, signal_thread }
     }
 }
 
@@ -327,11 +329,25 @@ impl<S: Send + 'static> Drop for NodeListener<S> {
     }
 }
 
-/// Entity used to ensure the lifetime of `NodeListener::for_each()` call.
+/// Entity used to ensure the lifetime of [`NodeListener::for_each()`] call.
 /// The node will process events asynchronously while this entity lives.
+/// The destruction of this entity will block until the task is finished.
+/// If you want to "unblock" the thread that drops this entity call to:
+/// [`NodeHandler::stop()`]
 pub struct NodeTask {
-    _network_thread: NamespacedThread<()>,
-    _signal_thread: NamespacedThread<()>,
+    network_thread: NamespacedThread<()>,
+    signal_thread: NamespacedThread<()>,
+}
+
+impl NodeTask {
+    /// Block the current thread until the task finalizes.
+    /// Similar to call `drop(node_task)` but more verbose and without take the ownership.
+    /// To finalize the task call [`NodeHandler::stop()`].
+    /// Calling `wait()` over an already finished task do not block.
+    pub fn wait(&mut self) {
+        self.network_thread.try_join();
+        self.signal_thread.try_join();
+    }
 }
 
 #[cfg(test)]
@@ -381,5 +397,32 @@ mod tests {
         assert!(checked.load(Ordering::Relaxed));
         assert!(handler.is_running());
         handler.signals().send("stop");
+    }
+
+    #[test]
+    fn wait_task() {
+        let (handler, listener) = split();
+
+        handler.signals().send_with_timer((), Duration::from_millis(1000));
+
+        let inner_handler = handler.clone();
+        listener.for_each(move |_| inner_handler.stop()).wait();
+
+        assert!(!handler.is_running());
+    }
+
+    #[test]
+    fn wait_already_waited_task() {
+        let (handler, listener) = split();
+
+        handler.signals().send_with_timer((), Duration::from_millis(1000));
+
+        let inner_handler = handler.clone();
+        let mut task = listener.for_each(move |_| inner_handler.stop());
+        assert!(handler.is_running());
+        task.wait();
+        assert!(!handler.is_running());
+        task.wait();
+        assert!(!handler.is_running());
     }
 }

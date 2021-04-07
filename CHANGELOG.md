@@ -1,7 +1,16 @@
 # Changelog
 
 ## Release 0.12.0
+- Node concept: `NodeHandler` and `NodeListener`.
+- Non-mutable and shared network operations.
+- Removed AdapterEvent. Now, the only network event is NetEvent that has been modified to contains a reference to the data instead of an allocated vector.
+- Removed `Network` entity that has been substituted by `NetworkController` to handle connect/listen/remove/send and `NetworkProcessor` to handle the input events.
+- Remamed `EventQueue`to `EventReceiver`.
+- Minor API additions.
 - Now UDP never generates disconnection events.
+- Increased performance:
+  - Latency reduced in arround 66%.
+  - Zero-copy message.
 
 ## Release 0.11.1
 - Reduce the bandwidth of `FramedTcp` transport using variadic encoding instead of constant padding.

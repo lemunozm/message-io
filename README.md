@@ -77,6 +77,11 @@ For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
 message-io = { version = "0.12", default-features = false, features = ["tcp", "udp"] }
 ```
 
+**Warning**: Version **0.12** comes with important API changes ([changelog](CHANGELOG.md))
+in order to reach [zero-copy message](https://github.com/lemunozm/message-io/issues/61) goal.
+If you find problems porting your application to this version,
+check the examples folder, API docs, and don't hesitate to open an issue.
+
 ### Documentation
 - [API documentation](https://docs.rs/message-io/)
 - [Basic concepts](docs/basic_concepts.md)
@@ -107,7 +112,7 @@ fn main() {
     // The 'listener', used to read events from the network or signals.
     let (handler, listener) = node::split::<()>();
 
-    // Listen for TCP, UDP and WebSocket messages.
+    // Listen for TCP, UDP and WebSocket messages at the same time.
     handler.network().listen(Transport::FramedTcp, "0.0.0.0:3042").unwrap();
     handler.network().listen(Transport::Udp, "0.0.0.0:3043").unwrap();
     handler.network().listen(Transport::Ws, "0.0.0.0:3044").unwrap();
@@ -128,7 +133,7 @@ fn main() {
 The following example shows a client that can connect to the previous server.
 It sends a message each second to the server and listen its echo response.
 Changing the `Transport::FramedTcp` to `Udp` or `Ws` will change the underlying transport used.
-Also, you can create the number of connections you want at the same time, without any extra thread.
+You can create the number of connections you want at the same time, without any extra thread.
 
 ```rust,no_run
 use message_io::node::{self, NodeEvent};
@@ -167,7 +172,7 @@ fn main() {
 
 ## Test it yourself!
 Clone the repository and test the *Ping Pong* example
-(similar to the *echo* example but more vitaminized).
+(similar to the *README* example but more vitaminized).
 
 Run the server:
 ```sh

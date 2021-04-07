@@ -1,7 +1,7 @@
 use std::thread::{self, JoinHandle};
 
 /// A comprensive error message to notify that the error shown is from other thread.
-pub(crate) const OTHER_THREAD_ERR: &str = "Avoid this 'panicked_at' error. \
+pub const OTHER_THREAD_ERR: &str = "Avoid this 'panicked_at' error. \
                                    This error is shown because other thread has panicked \
                                    You can safety skip this error.";
 

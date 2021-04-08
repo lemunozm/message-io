@@ -58,7 +58,8 @@ You could change the transport of your application in literally one line.
 - High performance:
     - Non-blocking sockets: scale the application without wasting memory and time synchonizing
     multiple threads.
-    - Zero-copy message. You write and read directly from the internal OS socket buffer without any copy in the middle by the library.
+    - Write/read messages with zero-copy.
+    You write and read directly from the internal OS socket buffer without any copy in the middle by the library.
     - Full duplex: simultaneous reading/writing operations over same internal OS sockets.
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
@@ -78,7 +79,7 @@ message-io = { version = "0.12", default-features = false, features = ["tcp", "u
 ```
 
 **Warning**: Version **0.12** comes with important API changes ([changelog](CHANGELOG.md))
-in order to reach [zero-copy message](https://github.com/lemunozm/message-io/issues/61) goal.
+in order to reach [zero-copy write/read](https://github.com/lemunozm/message-io/issues/61) goal.
 If you find problems porting your application to this version,
 check the examples folder, API docs, and don't hesitate to open an issue.
 

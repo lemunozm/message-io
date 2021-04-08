@@ -1,107 +1,113 @@
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
-};
 use std::thread::{self, JoinHandle};
 
-pub const OTHER_THREAD_ERR: &str = "This error is shown because other thread has panicked \
-                                  You can safety skip this error.";
+/// A comprensive error message to notify that the error shown is from other thread.
+pub const OTHER_THREAD_ERR: &str = "Avoid this 'panicked_at' error. \
+                                   This error is shown because other thread has panicked \
+                                   You can safety skip this error.";
 
-pub enum ThreadState<S: Send + 'static> {
-    Ready(S),
-    Running(JoinHandle<S>, Arc<AtomicBool>),
+/// Thread similar to the std, but with a name that can be nested.
+pub struct NamespacedThread<T: Send + 'static> {
+    namespace: String,
+    join_handle: Option<JoinHandle<T>>,
 }
 
-impl<S: Send + 'static> ThreadState<S> {
-    fn init_thread(
-        name: &str,
-        running: Arc<AtomicBool>,
-        mut state: S,
-        callback: impl Fn(&mut S) + Send + 'static,
-    ) -> JoinHandle<S> {
-        thread::Builder::new()
-            .name(format!("{}/{}", thread::current().name().unwrap_or(""), name))
-            .spawn(move || {
-                while running.load(Ordering::Relaxed) {
-                    callback(&mut state);
-                }
-                state
-            })
-            .unwrap()
-    }
-
-    pub fn run(self, name: &str, callback: impl Fn(&mut S) + Send + 'static) -> ThreadState<S> {
-        match self {
-            ThreadState::Ready(state) => {
-                let thread_running = Arc::new(AtomicBool::new(true));
-                let running = thread_running.clone();
-                let thread = Self::init_thread(name, running, state, callback);
-                ThreadState::Running(thread, thread_running)
-            }
-            ThreadState::Running(..) => panic!("Thread [{}] already running", name),
+impl<T: Send + 'static> NamespacedThread<T> {
+    /// Similar to [`thread::spawn()`] but with a name.
+    pub fn spawn<F>(name: &str, f: F) -> Self
+    where
+        F: FnOnce() -> T,
+        F: Send + 'static,
+    {
+        let namespace = format!("{}/{}", thread::current().name().unwrap_or(""), name);
+        Self {
+            namespace: namespace.clone(),
+            join_handle: Some(
+                thread::Builder::new()
+                    .name(namespace.clone())
+                    .spawn(move || {
+                        log::trace!("Thread [{}] spawned", namespace);
+                        f()
+                    })
+                    .unwrap(),
+            ),
         }
     }
 
-    pub fn stop(&self) {
-        match self {
-            ThreadState::Ready(..) => panic!("Thread is not running"),
-            ThreadState::Running(_, running) => {
-                running.store(false, Ordering::Relaxed);
-            }
-        }
+    /// Wait the thread to finish.
+    pub fn join(&mut self) -> T {
+        log::trace!("Join thread [{}] ...", self.namespace);
+        let content = self.join_handle.take().unwrap().join().expect(OTHER_THREAD_ERR);
+        log::trace!("Joined thread [{}]", self.namespace);
+        content
     }
 
-    pub fn join(self) -> ThreadState<S> {
-        match self {
-            ThreadState::Ready(..) => panic!("Thread is not running"),
-            ThreadState::Running(thread, _) => {
-                let state = thread.join().expect(OTHER_THREAD_ERR);
-                ThreadState::Ready(state)
-            }
+    /// Wait the thread to finish.
+    /// Returns the inner `T` value if never was joined, `None` otherwise
+    pub fn try_join(&mut self) -> Option<T> {
+        if self.join_handle.is_some() {
+            return Some(self.join())
         }
+        None
     }
 }
 
-pub struct RunnableThread<S: Send + 'static> {
-    name: String,
-    thread_state: Mutex<Option<ThreadState<S>>>,
-}
-
-impl<S: Send> RunnableThread<S> {
-    pub fn new(name: &str, state: S) -> Self {
-        Self { name: name.into(), thread_state: Mutex::new(Some(ThreadState::Ready(state))) }
-    }
-
-    pub fn is_running(&self) -> bool {
-        let thread_state = self.thread_state.lock().unwrap();
-        match thread_state.as_ref().unwrap() {
-            ThreadState::Ready(..) => false,
-            ThreadState::Running(..) => true,
-        }
-    }
-
-    pub fn run(&self, callback: impl Fn(&mut S) + Send + 'static) {
-        let mut thread_state = self.thread_state.lock().unwrap();
-        *thread_state = Some(thread_state.take().unwrap().run(&self.name, callback));
-        log::trace!("Thread [{}] running", self.name);
-    }
-
-    pub fn stop(&self) {
-        self.thread_state.lock().unwrap().as_ref().unwrap().stop();
-        log::trace!("Thread [{}] stopped", self.name);
-    }
-
-    pub fn join(&self) {
-        log::trace!("Waiting to finish thread: [{}]", self.name);
-        let mut thread_state = self.thread_state.lock().unwrap();
-        *thread_state = Some(thread_state.take().unwrap().join());
-    }
-}
-
-impl<S: Send> Drop for RunnableThread<S> {
+impl<T: Send + 'static> Drop for NamespacedThread<T> {
     fn drop(&mut self) {
-        if self.is_running() {
-            self.stop();
-        }
+        self.try_join();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc};
+
+    #[test]
+    fn basic_usage() {
+        let called = Arc::new(AtomicBool::new(false));
+        let mut thread = {
+            let called = called.clone();
+            NamespacedThread::spawn("test", move || {
+                std::thread::sleep(Duration::from_millis(500));
+                called.store(true, Ordering::Relaxed);
+            })
+        };
+
+        std::thread::sleep(Duration::from_millis(250));
+        assert!(!called.load(Ordering::Relaxed));
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(called.load(Ordering::Relaxed));
+        thread.join();
+    }
+
+    #[test]
+    fn join_result() {
+        let called = Arc::new(AtomicBool::new(false));
+        let mut thread = {
+            let called = called.clone();
+            NamespacedThread::spawn("test", move || {
+                std::thread::sleep(Duration::from_millis(500));
+                called.store(true, Ordering::Relaxed);
+                "result"
+            })
+        };
+        assert_eq!("result", thread.join());
+        assert!(called.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn drop_implies_join() {
+        let called = Arc::new(AtomicBool::new(false));
+        let thread = {
+            let called = called.clone();
+            NamespacedThread::spawn("test", move || {
+                std::thread::sleep(Duration::from_millis(500));
+                called.store(true, Ordering::Relaxed);
+            })
+        };
+        drop(thread);
+        assert!(called.load(Ordering::Relaxed));
     }
 }

@@ -52,7 +52,7 @@ jobs:
       run: cargo build
       continue-on-error: ${{ matrix.can-fail }}
     - name: Check test and examples
-      run: cargo test
+      run: cargo test -- --nocapture
       continue-on-error: ${{ matrix.can-fail }}
     - name: Check benchmarks (only compilation)
       run: cargo bench --no-run

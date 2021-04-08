@@ -7,8 +7,8 @@ use message_io::network::{Transport, ToRemoteAddr};
 use std::net::{ToSocketAddrs};
 
 const HELP_MSG: &str = concat!(
-    "Usage: ping-pong server (tcp | udp | ws) [<port>]\n",
-    "       pong-pong client (tcp | udp | ws) (<ip>:<port>|url)"
+    "Usage: ping-pong server (tcp | udp | ws) <port>\n",
+    "       pong-pong client (tcp | udp | ws) (<ip>:<port> | url)"
 );
 
 pub fn main() {

@@ -17,7 +17,7 @@ pub fn decode_size(data: &[u8]) -> Option<(usize, usize)> {
     usize::decode_var(data)
 }
 
-/// Used to decoded one message from several/partial data chunks
+/// Used to decoded messages from several/partial data chunks
 pub struct Decoder {
     stored: Vec<u8>,
 }

@@ -72,13 +72,13 @@ impl ResourceId {
     }
 
     /// Returns the associated adapter id.
-    /// Note that this returned value is the same as the value of `crate::network::Transport::id()`
+    /// Note that this returned value is the same as the value of [`crate::network::Transport::id()`]
     /// if that transport uses the same adapter.
     pub fn adapter_id(&self) -> u8 {
         ((self.id & Self::ADAPTER_ID_MASK as usize) >> Self::ADAPTER_ID_POS) as u8
     }
 
-    /// Returns the unique identifier inside this adapter.
+    /// Returns the unique resource identifier inside the associated adapter.
     pub fn base_value(&self) -> usize {
         (self.id & Self::BASE_VALUE_MASK) >> Self::BASE_VALUE_POS
     }

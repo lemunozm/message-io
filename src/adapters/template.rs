@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 
-use crate::adapter::{
+use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo,
 };
@@ -29,7 +29,7 @@ impl Remote for RemoteResource {
         todo!();
     }
 
-    fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
+    fn receive(&self, process_data: impl FnMut(&[u8])) -> ReadStatus {
         todo!();
     }
 
@@ -52,7 +52,7 @@ impl Local for LocalResource {
         todo!();
     }
 
-    fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
+    fn accept(&self, accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
         todo!();
     }
 }

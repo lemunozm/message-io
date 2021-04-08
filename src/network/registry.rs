@@ -1,7 +1,7 @@
 use super::resource_id::{ResourceId};
 use super::poll::{PollRegistry};
+use super::adapter::{Resource};
 
-use crate::adapter::{Resource};
 use crate::util::thread::{OTHER_THREAD_ERR};
 
 use std::collections::{HashMap};

@@ -51,7 +51,7 @@ pub struct ListeningInfo<L: Local> {
     pub local_addr: SocketAddr,
 }
 
-/// The following represents the posible status that [`crate::network::Network::send()`]
+/// The following represents the posible status that [`crate::network::NetworkController::send()`]
 /// call can return.
 /// The library do not encourage to perform the check of this status for each `send()` call,
 /// only in that cases where you need extra information about how the sending method was.
@@ -68,12 +68,9 @@ pub enum SendStatus {
     /// and the second one is the maximun offers by the datagram based protocol used.
     MaxPacketSizeExceeded(usize, usize),
 
-    /// It means that the connection is not able for sending the message.
-    /// This implies that a [`crate::network::NetEvent::Disconnected`] has been or will be
-    /// generated.
-    /// The library encourage to manage the disconnection error in the event queue based with
-    /// the RemoveEndpoint received, and left this status to determinated in some cases
-    /// if the message was not sent.
+    /// It means that the message could not be sent by the specified `ResourceId`.
+    /// This implies that a [`crate::network::NetEvent::Disconnected`] has happened or that
+    /// the resource never existed.
     ResourceNotFound,
 }
 
@@ -110,7 +107,7 @@ pub trait Remote: Resource + Sized {
     /// Note that `receive()` could imply more than one call to `read`.
     /// The implementator must be read all data from the resource.
     /// For most of the cases it means read until the network resource returns `WouldBlock`.
-    fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus;
+    fn receive(&self, process_data: impl FnMut(&[u8])) -> ReadStatus;
 
     /// Sends a raw data from a resource.
     /// The **implementator** is in charge to send the entire `data`.
@@ -157,7 +154,7 @@ pub trait Local: Resource + Sized {
     /// The **implementator** must process all these pending connections in this call.
     /// For most of the cases it means accept connections until the network
     /// resource returns `WouldBlock`.
-    fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>));
+    fn accept(&self, accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>));
 
     /// Sends a raw data from a resource.
     /// Similar to [`Remote::send()`] but the resource that sends the data is a `Local`.

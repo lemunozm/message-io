@@ -1,4 +1,4 @@
-use crate::adapter::{
+use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo,
 };
@@ -48,7 +48,7 @@ impl Remote for RemoteResource {
         Ok(ConnectionInfo { remote: RemoteResource { socket }, local_addr, peer_addr })
     }
 
-    fn receive(&self, process_data: &dyn Fn(&[u8])) -> ReadStatus {
+    fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
         let buffer: MaybeUninit<[u8; INPUT_BUFFER_SIZE]> = MaybeUninit::uninit();
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 
@@ -60,11 +60,11 @@ impl Remote for RemoteResource {
                 }
                 Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
                     // Avoid ICMP generated error to be logged
-                    break ReadStatus::Disconnected
+                    break ReadStatus::WaitNextEvent
                 }
                 Err(err) => {
                     log::error!("UDP receive error: {}", err);
-                    break ReadStatus::Disconnected // Should not happen
+                    break ReadStatus::WaitNextEvent // Should not happen
                 }
             }
         }
@@ -104,7 +104,7 @@ impl Local for LocalResource {
         Ok(ListeningInfo { local: { LocalResource { socket } }, local_addr })
     }
 
-    fn accept(&self, accept_remote: &dyn Fn(AcceptedType<'_, Self::Remote>)) {
+    fn accept(&self, mut accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
         let buffer: MaybeUninit<[u8; INPUT_BUFFER_SIZE]> = MaybeUninit::uninit();
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 

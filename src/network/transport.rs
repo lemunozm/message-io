@@ -1,4 +1,4 @@
-use super::engine::{AdapterLauncher};
+use super::loader::{DriverLoader};
 
 #[cfg(feature = "tcp")]
 use crate::adapters::tcp::{self, TcpAdapter};
@@ -13,8 +13,10 @@ use strum::{EnumIter};
 use serde::{Serialize, Deserialize};
 
 /// Enum to identified the underlying transport used.
-/// It can be passed to [`crate::network::Network::connect()`] and
-/// [`crate::network::Network::listen()`] methods to specify the transport used.
+/// It can be passed to
+/// [`NetworkController::connect()`](crate::network::NetworkController::connect()) and
+/// [`NetworkController::listen()`](crate::network::NetworkController::connect()) methods
+/// to specify the transport used.
 #[derive(EnumIter, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Transport {
     /// TCP protocol (available through the *tcp* feature).
@@ -51,17 +53,17 @@ pub enum Transport {
 
 impl Transport {
     /// Associates an adapter.
-    /// This method mounts the adapter to be used in the `Network`.
-    pub fn mount_adapter(self, launcher: &mut AdapterLauncher) {
+    /// This method mounts the adapters to be used in the network instance.
+    pub fn mount_adapter(self, loader: &mut DriverLoader) {
         match self {
             #[cfg(feature = "tcp")]
-            Self::Tcp => launcher.mount(self.id(), TcpAdapter),
+            Self::Tcp => loader.mount(self.id(), TcpAdapter),
             #[cfg(feature = "tcp")]
-            Self::FramedTcp => launcher.mount(self.id(), FramedTcpAdapter),
+            Self::FramedTcp => loader.mount(self.id(), FramedTcpAdapter),
             #[cfg(feature = "udp")]
-            Self::Udp => launcher.mount(self.id(), UdpAdapter),
+            Self::Udp => loader.mount(self.id(), UdpAdapter),
             #[cfg(feature = "websocket")]
-            Self::Ws => launcher.mount(self.id(), WsAdapter),
+            Self::Ws => loader.mount(self.id(), WsAdapter),
         };
     }
 

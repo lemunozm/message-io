@@ -1,31 +1,25 @@
 # Basic concepts
-The library has two main modules:
-
-- **`EventQueue`**:
-It is a generic and synchronized queue where all the network events, among others, are sent.
-The user must be read these events in order to dispatch actions.
+The main `message-io` entity is the **node**.
+It is in charge of managing the different connections, performing actions over them and offering
+the events comming from the network or by the own node (called signals).
 
 <p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vQr06OL40IWagXWHoyytUIlR1SHoahYE0Pkj6r0HmokaUMW4ojC5MV2OViFO9m-2jDqrDokPJ62oSzg/pub?w=837&h=313"/>
+  <img src="https://docs.google.com/drawings/d/e/2PACX-1vQxs3w6bgIL1Qq600Q0IopWiKvvlKdj9KC7rUuF9Der6sN2UtzYrmn81DPEbRNFmBlEkE1qvDGxwc75/pub?w=890&h=617"/>
 </p>
 
-- **`Network`**:
-It is an abstraction layer of the transport protocols that works over *non-blocking* sockets.
-It allows to create/remove connections, send and receive messages (defined by the user).
+It is splitted in two sides:
+- `NodeHandler`: the "input" side, that performs actions.
+  Theses actions can be network actions, send signals, or stop the `NodeListener`.
+  This entity is clonable and sharable among threads, so you can send messages/signals anywhere from
+  your program.
+- `NodeListener`: the "output" side, that receives events synchronized from one callback.
 
-To manage the connections, the `Network` offers an *`Endpoint`*
-that is an unique identifier of the connection. It can be used
-send, remove, or identify received messages.
-It can be understood as the remitter/recipient of the message.
-
-<p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vS3y1BKwPHjoFqtHm2pqfmvxr0JRQIzeRJim9s2UOrOIS74cGwlyqxnH4_DHVXTverziCjPzl6FtQMe/pub?w=586&h=273"/>
-</p>
-
-The power comes when both pieces joins together, allowing to process all actions from one thread.
-To reach this, the user has to connect the `Network` to the `EventQueue` sending the `NetEvent` produced by the first one.
-
-<p align="center">
-  <img src="https://docs.google.com/drawings/d/e/2PACX-1vT6IuBVr4mLbdNfs2yZayqqUJ04PsuqG27Ce3Vdr0ZG8ItX3slISoKVxyndybaYPIS5oFZ6N4TljrKQ/pub?w=701&h=383"/>
-</p>
-
+And each side has two main entities:
+- A synchronized queue (`EventSender` and `EventReceiver`) to send and receive signals from
+  the own node.
+  This is useful to make sending rates, messages based on timeouts, etc.
+- The network that is splited in a `NetworkController` to perform actions, and a `NetworkProcessor`
+  to receive events from the network.
+  The actions could be create any number of connections/listener, remove them or sending messages.
+  The connections are managed by the network and identified by an `Endpoint`, that is a few copiable/hashable struct that represent those connections uniquely.
+  It can be understood as the remitter/recipient of the message.

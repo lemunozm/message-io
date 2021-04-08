@@ -38,12 +38,10 @@ You could change the transport of your application in literally one line.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
 - Multiples transports
 ([docs](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html)):
-  - **TCP**: native and framed version
+  - **TCP**: stream and framed mode (to deal with messages instead of stream)
   - **UDP**, with multicast option
   - **WebSocket**: basic and secure option using
     [tungstenite-rs](https://github.com/snapview/tungstenite-rs).
-- Customizable: `message-io` doesn't have the transport you need?
-  Add easily and [adapter](#custom-adapter).
 - Custom FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
@@ -62,6 +60,8 @@ You could change the transport of your application in literally one line.
     multiple threads.
     - Zero-copy message. You write and read directly from the internal OS socket buffer without any copy in the middle by the library.
     - Full duplex: simultaneous reading/writing operations over same internal OS sockets.
+- Customizable: `message-io` doesn't have the transport you need?
+  Add easily and [adapter](#custom-adapter).
 
 ## Getting started
 Add to your `Cargo.toml` (all the transports included by default):

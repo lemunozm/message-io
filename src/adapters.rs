@@ -1,4 +1,5 @@
-pub mod template;
+mod template;
+
 #[cfg(feature = "tcp")]
 pub mod tcp;
 #[cfg(feature = "tcp")]

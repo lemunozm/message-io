@@ -26,10 +26,10 @@ fn main() {
     throughput_message_io(Transport::FramedTcp, CHUNK);
     throughput_message_io(Transport::Ws, CHUNK);
     println!("");
-    throughput_std_udp(CHUNK);
-    throughput_std_tcp(CHUNK);
-    throughput_std_framed_tcp(CHUNK);
-    throughput_std_ws(CHUNK);
+    throughput_native_udp(CHUNK);
+    throughput_native_tcp(CHUNK);
+    throughput_native_framed_tcp(CHUNK);
+    throughput_native_ws(CHUNK);
 }
 
 fn throughput_message_io(transport: Transport, packet_size: usize) {
@@ -85,8 +85,8 @@ fn throughput_message_io(transport: Transport, packet_size: usize) {
     task.wait();
 }
 
-fn throughput_std_udp(packet_size: usize) {
-    print!("isolated Udp: \t\t");
+fn throughput_native_udp(packet_size: usize) {
+    print!("native Udp: \t\t");
     io::stdout().flush().unwrap();
 
     let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -125,8 +125,8 @@ fn throughput_std_udp(packet_size: usize) {
     println!("Throughput: {}", ThroughputMeasure(EXPECTED_BYTES, elapsed));
 }
 
-fn throughput_std_tcp(packet_size: usize) {
-    print!("isolated Tcp: \t\t");
+fn throughput_native_tcp(packet_size: usize) {
+    print!("native Tcp: \t\t");
     io::stdout().flush().unwrap();
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -165,8 +165,8 @@ fn throughput_std_tcp(packet_size: usize) {
     println!("Throughput: {}", ThroughputMeasure(EXPECTED_BYTES, elapsed));
 }
 
-fn throughput_std_framed_tcp(packet_size: usize) {
-    print!("isolated FramedTcp: \t");
+fn throughput_native_framed_tcp(packet_size: usize) {
+    print!("native FramedTcp: \t");
     io::stdout().flush().unwrap();
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -212,8 +212,8 @@ fn throughput_std_framed_tcp(packet_size: usize) {
     println!("Throughput: {}", ThroughputMeasure(EXPECTED_BYTES, elapsed));
 }
 
-fn throughput_std_ws(packet_size: usize) {
-    print!("isolated Ws: \t\t");
+fn throughput_native_ws(packet_size: usize) {
+    print!("native Ws: \t\t");
     io::stdout().flush().unwrap();
 
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();

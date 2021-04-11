@@ -1,6 +1,6 @@
-# Throughput benchmark
+# Throughput example
 
-This example shows the throughput among differents transport in both ways: used by `message-io` and used isolated from the library.
+This example shows the throughput among differents transport in both ways: used by `message-io` and used isolated from the library, natively.
 
 The aim is to compare two dimensions: different procols among us and the overhead `message-io` adds.
 
@@ -9,7 +9,7 @@ To run this tests, run:
 cargo run --release --example throughput
 ```
 
-*NOT FORGET** to run this example with the `--release` flag to get the real measurements.
+**NOT FORGET** to run this example with the `--release` flag to get the real measurements.
 
 The throughput is measured by sending *1GB* of data between two connected endpoints by **localhost**.
 The measure starts when the sender starts sending the data and finished when the receiver receives

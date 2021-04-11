@@ -5,7 +5,9 @@
 // Tells rustdoc where is the README to compile and test the rust code found there
 doc_comment::doctest!("../README.md");
 
-mod adapters;
+/// Adapter related information.
+/// If some adapter has special values or configuration, it is specified here.
+pub mod adapters;
 
 /// Main API. Create connections, send and receive message, signals,...
 pub mod node;

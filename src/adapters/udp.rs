@@ -13,23 +13,26 @@ use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 use std::io::{self, ErrorKind};
 use std::mem::{MaybeUninit};
 
-/// Maximun payload that a UDP packet can send safety in main OS.
-/// - 9216: MTU of the OS with the minimun MTU: OSX
-/// - 20: max IP header
-/// - 8: max udp header
-/// The serialization of your message must not exceed this value.
-pub const MAX_UDP_PAYLOAD_LEN: usize = 9216 - 20 - 8;
+/// Maximun payload that UDP can send.
+/// The following payload works on Linux and Windows, but overcome the MacOS limits.
+/// To more safety limit, see: `MAX_COMPATIBLE_UDP_PAYLOAD_LEN`.
+// - 20: max IP header
+// - 8: max udp header
+pub const MAX_PAYLOAD_LEN: usize = 65535 - 20 - 8;
 
-// The reception buffer can reach the UDP standard size.
-const INPUT_BUFFER_SIZE: usize = 65535 - 20 - 8;
+/// Maximun payload that UDP can send safety in main OS.
+// 9216: MTU of the OS with the minimun MTU: OSX
+pub const MAX_COMPATIBLE_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 
-pub struct UdpAdapter;
+const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
+
+pub(crate) struct UdpAdapter;
 impl Adapter for UdpAdapter {
     type Remote = RemoteResource;
     type Local = LocalResource;
 }
 
-pub struct RemoteResource {
+pub(crate) struct RemoteResource {
     socket: UdpSocket,
 }
 
@@ -75,7 +78,7 @@ impl Remote for RemoteResource {
     }
 }
 
-pub struct LocalResource {
+pub(crate) struct LocalResource {
     socket: UdpSocket,
 }
 
@@ -136,28 +139,27 @@ impl Drop for LocalResource {
 }
 
 fn send_packet(data: &[u8], send_method: impl Fn(&[u8]) -> io::Result<usize>) -> SendStatus {
-    if data.len() > MAX_UDP_PAYLOAD_LEN {
-        log::error!(
-            "The UDP message could not be sent because it exceeds the MTU. \
-            Current size: {}, MTU: {}",
-            data.len(),
-            MAX_UDP_PAYLOAD_LEN
-        );
-        SendStatus::MaxPacketSizeExceeded(data.len(), MAX_UDP_PAYLOAD_LEN)
-    }
-    else {
-        loop {
-            match send_method(data) {
-                Ok(_) => break SendStatus::Sent,
-                // Avoid ICMP generated error to be logged
-                Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
-                    break SendStatus::ResourceNotFound
+    loop {
+        match send_method(data) {
+            Ok(_) => break SendStatus::Sent,
+            // Avoid ICMP generated error to be logged
+            Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
+                break SendStatus::ResourceNotFound
+            }
+            Err(ref err) if err.kind() == ErrorKind::WouldBlock => continue,
+            Err(ref err) if err.kind() == ErrorKind::Other => {
+                let expected_assumption = if data.len() > MAX_PAYLOAD_LEN {
+                    MAX_PAYLOAD_LEN
                 }
-                Err(ref err) if err.kind() == ErrorKind::WouldBlock => continue,
-                Err(err) => {
-                    log::error!("UDP send error: {}", err);
-                    break SendStatus::ResourceNotFound // should not happen
-                }
+                else {
+                    // e.g. MacOS do not support the MAX UDP MTU.
+                    MAX_COMPATIBLE_PAYLOAD_LEN
+                };
+                break SendStatus::MaxPacketSizeExceeded(data.len(), expected_assumption)
+            }
+            Err(err) => {
+                log::error!("UDP send error: {}", err);
+                break SendStatus::ResourceNotFound // should not happen
             }
         }
     }

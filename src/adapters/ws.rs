@@ -26,9 +26,9 @@ use std::ops::{DerefMut};
 
 /// Max message size for default config
 // From https://docs.rs/tungstenite/0.13.0/src/tungstenite/protocol/mod.rs.html#65
-pub const MAX_WS_PAYLOAD_LEN: usize = 32 << 20;
+pub const MAX_PAYLOAD_LEN: usize = 32 << 20;
 
-pub struct WsAdapter;
+pub(crate) struct WsAdapter;
 impl Adapter for WsAdapter {
     type Remote = RemoteResource;
     type Local = LocalResource;
@@ -44,7 +44,7 @@ enum RemoteState {
     Handshake(Option<PendingHandshake>),
 }
 
-pub struct RemoteResource {
+pub(crate) struct RemoteResource {
     state: Mutex<RemoteState>,
 }
 
@@ -181,6 +181,9 @@ impl RemoteResource {
                 Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
                     result = web_socket.write_pending();
                 }
+                Err(Error::Capacity(_)) => {
+                    break SendStatus::MaxPacketSizeExceeded(data.len(), MAX_PAYLOAD_LEN)
+                }
                 Err(err) => {
                     log::error!("WS send error: {}", err);
                     break SendStatus::ResourceNotFound // should not happen
@@ -190,7 +193,7 @@ impl RemoteResource {
     }
 }
 
-pub struct LocalResource {
+pub(crate) struct LocalResource {
     listener: TcpListener,
 }
 

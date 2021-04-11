@@ -1,5 +1,12 @@
 # Changelog
 
+## Release 0.12.1
+- *WebSocket* now can returns when send correctly a `SendStatus::MaxPacketSizeExceeded` instead of `ResourceNotFound` if the packet size is exceeded.
+- *UDP* has increases the packet size when send.
+  Now more bytes per packet can be sent if the OS let it.
+- Exported some adapter constants dependent.
+- `Transport::max_message_size()` now represents the teorical maximum size (see its related docs).
+
 ## Release 0.12.0
 - Node concept: `NodeHandler` and `NodeListener`.
 - Non-mutable and shared network operations.

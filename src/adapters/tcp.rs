@@ -12,15 +12,18 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 use std::mem::{MaybeUninit};
 
-pub const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
+/// Size of the internal reading buffer.
+/// It implies that at most the generated [`crate::network::NetEvent::Message`]
+/// will contains a chunk of data of this value.
+pub const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
 
-pub struct TcpAdapter;
+pub(crate) struct TcpAdapter;
 impl Adapter for TcpAdapter {
     type Remote = RemoteResource;
     type Local = LocalResource;
 }
 
-pub struct RemoteResource {
+pub(crate) struct RemoteResource {
     stream: TcpStream,
 }
 
@@ -97,7 +100,7 @@ impl Remote for RemoteResource {
     }
 }
 
-pub struct LocalResource {
+pub(crate) struct LocalResource {
     listener: TcpListener,
 }
 

@@ -1,6 +1,7 @@
 use message_io::network::{NetEvent, Transport, SendStatus};
 use message_io::node::{self, NodeEvent};
 use message_io::util::thread::{NamespacedThread};
+use message_io::adapters::udp::{self};
 
 use test_case::test_case;
 
@@ -251,12 +252,12 @@ fn burst(transport: Transport, messages_count: usize) {
 
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, BIG_MESSAGE_SIZE))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, BIG_MESSAGE_SIZE))]
-#[cfg_attr(feature = "udp", test_case(Transport::Udp, Transport::Udp.max_message_size()))]
+#[cfg_attr(feature = "udp", test_case(Transport::Udp, udp::MAX_COMPATIBLE_PAYLOAD_LEN))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, BIG_MESSAGE_SIZE))]
 fn message_size(transport: Transport, message_size: usize) {
     //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
-    assert!(!transport.is_packet_based() || message_size <= transport.max_message_size());
+    assert!(message_size <= transport.max_message_size());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
     let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();

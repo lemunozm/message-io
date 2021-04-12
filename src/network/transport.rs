@@ -1,13 +1,13 @@
 use super::loader::{DriverLoader};
 
 #[cfg(feature = "tcp")]
-use crate::adapters::tcp::{self, TcpAdapter};
+use crate::adapters::tcp::{TcpAdapter};
 #[cfg(feature = "tcp")]
-use crate::adapters::framed_tcp::{self, FramedTcpAdapter};
+use crate::adapters::framed_tcp::{FramedTcpAdapter};
 #[cfg(feature = "udp")]
 use crate::adapters::udp::{self, UdpAdapter};
 #[cfg(feature = "websocket")]
-use crate::adapters::web_socket::{self, WsAdapter};
+use crate::adapters::ws::{self, WsAdapter};
 
 use strum::{EnumIter};
 use serde::{Serialize, Deserialize};
@@ -67,19 +67,23 @@ impl Transport {
         };
     }
 
-    /// Max packet payload size available for each transport.
-    /// If the protocol is not packet-based (e.g. TCP, that is a stream),
-    /// the returned value correspond with the maximum bytes that can produce a read event.
+    /// Maximum teorical packet payload length available for each transport.
+    ///
+    /// Note: For UDP this value *depends* of the OS.
+    /// The value returned by this function is the **teorical maximum** and could not be valid for
+    /// all OS (*MacOS* in as an example of this).
+    /// You can ensure your message not exceeds `udp::MAX_COMPATIBLE_UDP_PAYLOAD_LEN` in order to be
+    /// more cross-platform compatible.
     pub const fn max_message_size(self) -> usize {
         match self {
             #[cfg(feature = "tcp")]
-            Self::Tcp => tcp::INPUT_BUFFER_SIZE,
+            Self::Tcp => usize::MAX,
             #[cfg(feature = "tcp")]
-            Self::FramedTcp => framed_tcp::MAX_TCP_PAYLOAD_LEN,
+            Self::FramedTcp => usize::MAX,
             #[cfg(feature = "udp")]
-            Self::Udp => udp::MAX_UDP_PAYLOAD_LEN,
+            Self::Udp => udp::MAX_PAYLOAD_LEN,
             #[cfg(feature = "websocket")]
-            Self::Ws => web_socket::MAX_WS_PAYLOAD_LEN,
+            Self::Ws => ws::MAX_PAYLOAD_LEN,
         }
     }
 
@@ -118,7 +122,7 @@ impl Transport {
 
     /// Returns the adapter id used for this transport.
     /// It is equivalent to the position of the enum starting by 0
-    pub fn id(self) -> u8 {
+    pub const fn id(self) -> u8 {
         self as u8
     }
 }

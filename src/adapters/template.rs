@@ -11,13 +11,13 @@ use mio::event::{Source};
 use std::net::{SocketAddr};
 use std::io::{self};
 
-pub struct MyAdapter;
+pub(crate) struct MyAdapter;
 impl Adapter for MyAdapter {
     type Remote = RemoteResource;
     type Local = LocalResource;
 }
 
-pub struct RemoteResource;
+pub(crate) struct RemoteResource;
 impl Resource for RemoteResource {
     fn source(&mut self) -> &mut dyn Source {
         todo!();
@@ -38,7 +38,7 @@ impl Remote for RemoteResource {
     }
 }
 
-pub struct LocalResource;
+pub(crate) struct LocalResource;
 impl Resource for LocalResource {
     fn source(&mut self) -> &mut dyn Source {
         todo!();

@@ -14,20 +14,15 @@ use std::ops::{Deref};
 use std::cell::{RefCell};
 use std::mem::{MaybeUninit};
 
-const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
+const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
 
-/// The max packet value for tcp.
-/// Although this size is very high, it is preferred send data in smaller chunks with a rate
-/// to not saturate the receiver thread in the endpoint.
-pub const MAX_TCP_PAYLOAD_LEN: usize = usize::MAX;
-
-pub struct FramedTcpAdapter;
+pub(crate) struct FramedTcpAdapter;
 impl Adapter for FramedTcpAdapter {
     type Remote = RemoteResource;
     type Local = LocalResource;
 }
 
-pub struct RemoteResource {
+pub(crate) struct RemoteResource {
     stream: TcpStream,
     decoder: RefCell<Decoder>,
 }
@@ -119,7 +114,7 @@ impl Remote for RemoteResource {
     }
 }
 
-pub struct LocalResource {
+pub(crate) struct LocalResource {
     listener: TcpListener,
 }
 

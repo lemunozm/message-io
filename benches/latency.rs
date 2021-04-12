@@ -4,6 +4,7 @@ use message_io::util::encoding::{self, Decoder, MAX_ENCODED_SIZE};
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
+#[cfg(feature = "websocket")]
 use tungstenite::{Message, connect as ws_connect, accept as ws_accept};
 use url::{Url};
 
@@ -114,7 +115,7 @@ fn latency_by_native_framed_tcp(c: &mut Criterion) {
     });
 }
 
-use std::sync::Mutex;
+#[cfg(feature = "websocket")]
 fn latency_by_native_web_socket(c: &mut Criterion) {
     let msg = format!("latency by native Ws");
     c.bench_function(&msg, |b| {

@@ -131,7 +131,7 @@ impl Remote for RemoteResource {
                             if let Err(err) = _peek_result {
                                 break Self::io_error_to_read_status(&err)
                             }
-                        }
+                        },
                         Message::Close(_) => break ReadStatus::Disconnected,
                         _ => continue,
                     },

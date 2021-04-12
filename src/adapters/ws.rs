@@ -114,10 +114,24 @@ impl Remote for RemoteResource {
                     match web_socket.read_message() {
                         Ok(message) => match message {
                             Message::Binary(data) => {
+                                // As an optimization.
+                                // Fast check to knwo if there is more data to avoid call
+                                // WebSocker::read_message() again.
+                                let mut should_wait = false;
+                                if let Err(err) = web_socket.get_ref().peek(&mut [0; 0]) {
+                                    if err.kind() == ErrorKind::WouldBlock {
+                                        should_wait = true;
+                                    }
+                                }
+
                                 // We can not call process_data while the socket is blocked.
                                 // The user could lock it again if sends from the callback.
                                 drop(state);
                                 process_data(&data);
+
+                                if should_wait {
+                                    break ReadStatus::WaitNextEvent
+                                }
                             }
                             Message::Close(_) => break ReadStatus::Disconnected,
                             _ => continue,

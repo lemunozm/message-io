@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.12.2
+- Reduced *WebSocket* latency.
+
 ## Release 0.12.1
 - *WebSocket* now can returns when send correctly a `SendStatus::MaxPacketSizeExceeded` instead of `ResourceNotFound` if the packet size is exceeded.
 - *UDP* has increases the packet size when send.

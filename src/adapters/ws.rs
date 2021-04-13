@@ -110,30 +110,37 @@ impl Remote for RemoteResource {
             // "emulates" full duplex for the websocket case locking here and not outside the loop.
             let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
             match state.deref_mut() {
-                RemoteState::WebSocket(web_socket) => {
-                    match web_socket.read_message() {
-                        Ok(message) => match message {
-                            Message::Binary(data) => {
-                                // We can not call process_data while the socket is blocked.
-                                // The user could lock it again if sends from the callback.
-                                drop(state);
-                                process_data(&data);
+                RemoteState::WebSocket(web_socket) => match web_socket.read_message() {
+                    Ok(message) => match message {
+                        Message::Binary(data) => {
+                            // As an optimization.
+                            // Fast check to know if there is more data to avoid call
+                            // WebSocket::read_message() again.
+                            // TODO: investigate why this code doesn't work in windows.
+                            // Seems like windows consume the `WouldBlock` notification
+                            // at peek() when it happens, and the poll never wakes it again.
+                            #[cfg(not(target_os = "windows"))]
+                            let _peek_result = web_socket.get_ref().peek(&mut [0; 0]);
+
+                            // We can not call process_data while the socket is blocked.
+                            // The user could lock it again if sends from the callback.
+                            drop(state);
+                            process_data(&data);
+
+                            #[cfg(not(target_os = "windows"))]
+                            if let Err(err) = _peek_result {
+                                break Self::io_error_to_read_status(&err)
                             }
-                            Message::Close(_) => break ReadStatus::Disconnected,
-                            _ => continue,
-                        },
-                        Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
-                            break ReadStatus::WaitNextEvent
                         }
-                        Err(Error::Io(ref err)) if err.kind() == ErrorKind::ConnectionReset => {
-                            break ReadStatus::Disconnected
-                        }
-                        Err(err) => {
-                            log::error!("WS receive error: {}", err);
-                            break ReadStatus::Disconnected // should not happen
-                        }
+                        Message::Close(_) => break ReadStatus::Disconnected,
+                        _ => continue,
+                    },
+                    Err(Error::Io(ref err)) => break Self::io_error_to_read_status(err),
+                    Err(err) => {
+                        log::error!("WS receive error: {}", err);
+                        break ReadStatus::Disconnected // should not happen
                     }
-                }
+                },
                 RemoteState::Handshake(handshake) => {
                     let current_handshake = handshake.take().unwrap();
                     match current_handshake.mid_handshake.handshake() {
@@ -189,6 +196,19 @@ impl RemoteResource {
                     break SendStatus::ResourceNotFound // should not happen
                 }
             }
+        }
+    }
+
+    fn io_error_to_read_status(err: &io::Error) -> ReadStatus {
+        if err.kind() == io::ErrorKind::WouldBlock {
+            ReadStatus::WaitNextEvent
+        }
+        else if err.kind() == io::ErrorKind::ConnectionReset {
+            ReadStatus::Disconnected
+        }
+        else {
+            log::error!("WS receive error: {}", err);
+            ReadStatus::Disconnected // should not happen
         }
     }
 }

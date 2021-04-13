@@ -17,7 +17,7 @@ const SMALL_MESSAGE: &'static str = "Integration test message";
 const BIG_MESSAGE_SIZE: usize = 1024 * 1024 * 8; // 8MB
 
 lazy_static::lazy_static! {
-    pub static ref TIMEOUT: Duration = Duration::from_secs(30);
+    pub static ref TIMEOUT: Duration = Duration::from_secs(60);
 }
 
 // Common error messages
@@ -179,10 +179,7 @@ fn start_burst_receiver(
 
         let mut count = 0;
         listener.for_each(move |event| match event {
-            NodeEvent::Signal(_) => std::panic::catch_unwind(|| {
-                panic!("{}", TIMEOUT_EVENT_RECV_ERR);
-            })
-            .unwrap(),
+            NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
             NodeEvent::Network(net_event) => match net_event {
                 NetEvent::Message(_, data) => {
                     let expected_message = format!("{}: {}", SMALL_MESSAGE, count);

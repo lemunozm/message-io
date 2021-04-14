@@ -73,7 +73,7 @@ you can select them by their associated features `tcp`, `udp`, and `websocket`.
 For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
 ```toml
 [dependencies]
-message-io = { version = "0.12", default-features = false, features = ["tcp", "udp"] }
+message-io = { version = "0.13", default-features = false, features = ["tcp", "udp"] }
 ```
 
 **Warning**: Version **0.12** comes with important API changes ([changelog](CHANGELOG.md))

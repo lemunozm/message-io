@@ -175,7 +175,7 @@ impl StoredNetEvent {
 struct SendableEventCallback<S>(Arc<Mutex<dyn FnMut(NodeEvent<S>)>>);
 
 // This struct is used to allow passing no Sendable objects into the listener jobs.
-// Although it is unsafe, it is safety handled by the for_each / for_each_async functions.
+// Although it is unsafe, it is safely handled by the for_each / for_each_async functions.
 // (see its internal comments)
 unsafe impl<S> Send for SendableEventCallback<S> {}
 

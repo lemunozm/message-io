@@ -84,6 +84,7 @@ check the examples folder, API docs, and don't hesitate to open an issue.
 ### Documentation
 - [API documentation](https://docs.rs/message-io/)
 - [Basic concepts](docs/basic_concepts.md)
+- [Benchmarks](docs/performance_benchmarks.md)
 - [Examples](examples):
   - [Ping Pong](examples/ping-pong) (a simple client/server example)
   - [Multicast](examples/multicast)

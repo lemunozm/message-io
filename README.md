@@ -55,12 +55,10 @@ You could change the transport of your application in literally one line.
     "One thread to rule them all".
   - Easy error handling:
     do not deal with dark internal `std::io::Error` when send/receive from the network.
-- High performance:
-    - Non-blocking sockets: scale the application without wasting memory and time synchonizing
-    multiple threads.
+- High performance (see the [benchmarks](docs/performance_benchmarks.md)):
     - Write/read messages with zero-copy.
     You write and read directly from the internal OS socket buffer without any copy in the middle by the library.
-    - Full duplex: simultaneous reading/writing operations over same internal OS sockets.
+    - Full duplex: simultaneous reading/writing operations over same internal OS socket.
 - Customizable: `message-io` doesn't have the transport you need?
   Add easily and [adapter](#custom-adapter).
 

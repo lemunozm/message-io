@@ -55,7 +55,7 @@ fn throughput_message_io(transport: Transport, packet_size: usize) {
         let mut received_bytes = 0;
         let handler = handler.clone();
 
-        listener.for_each(move |event| match event.network() {
+        listener.for_each_async(move |event| match event.network() {
             NetEvent::Connected(_, _) => {
                 t_ready.send(()).unwrap();
             }

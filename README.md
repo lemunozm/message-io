@@ -90,11 +90,6 @@ check the examples folder, API docs, and don't hesitate to open an issue.
   - [Distributed network with discovery server](examples/distributed)
   - [File transfer](examples/file-transfer)
 
-- Applications using `message-io`:
-  - [Termchat](https://github.com/lemunozm/termchat): Distributed LAN chat in the terminal.
-  - [AsciiArena](https://github.com/lemunozm/asciiarena): Terminal multiplayer deathmatch game
-    (alpha version).
-
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds
 to them.

@@ -1,5 +1,12 @@
 # Changelog
 
+## Release 0.13.0
+- Updated `NodeListener::for_each` to works fully synchronous. `Send` trait of the event callback parameter has been removed to works fine with objects like `Rc` `Cell` or references.
+This function no longer returns a `NodeTask`.
+- New method `NodeListener::for_each_async` has been added to support the previous behaviour of
+`for_each`.
+- Added `Debug` to `NodeEvent`.
+
 ## Release 0.12.2
 - Reduced *WebSocket* latency.
 

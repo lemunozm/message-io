@@ -13,7 +13,8 @@ lazy_static::lazy_static! {
     static ref SAMPLING_TIMEOUT: Duration = Duration::from_millis(50);
 }
 
-/// Event returned by [`NodeListener::for_each()`] when some network or signal is received.
+/// Event returned by [`NodeListener::for_each()`] and [`NodeListener::for_each_async()`]
+/// when some network event or signal is received.
 pub enum NodeEvent<'a, S> {
     /// The `NodeEvent` is an event that comes from the network.
     /// See [`NetEvent`] to know about the different network events.
@@ -24,6 +25,15 @@ pub enum NodeEvent<'a, S> {
     /// You can send signals with timers or priority.
     /// See [`EventSender`] to know about how to send signals.
     Signal(S),
+}
+
+impl<'a, S: std::fmt::Debug> std::fmt::Debug for NodeEvent<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeEvent::Network(net_event) => write!(f, "NodeEvent::Network({:?})", net_event),
+            NodeEvent::Signal(signal) => write!(f, "NodeEvent::Signal({:?})", signal),
+        }
+    }
 }
 
 impl<'a, S> NodeEvent<'a, S> {
@@ -171,6 +181,19 @@ impl StoredNetEvent {
     }
 }
 
+struct SendableEventCallback<S>(Arc<Mutex<dyn FnMut(NodeEvent<S>)>>);
+
+// This struct is used to allow passing no Sendable objects into the listener jobs.
+// Although it is unsafe, it is safely handled by the for_each / for_each_async functions.
+// (see its internal comments)
+unsafe impl<S> Send for SendableEventCallback<S> {}
+
+impl<S> Clone for SendableEventCallback<S> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
 /// Main entity to manipulates the network and signal events easily.
 /// The node run asynchronously.
 pub struct NodeListener<S: Send + 'static> {
@@ -209,15 +232,10 @@ impl<S: Send + 'static> NodeListener<S> {
 
     /// Iterate indefinitely over all generated `NetEvent`.
     /// This function will work until [`NodeHandler::stop`] was called.
-    /// A `NodeTask` representing the asynchronous job is returned.
-    /// Destroying this object will result in blocking the current thread until
-    /// [`NodeHandler::stop`] was called.
     ///
-    /// In order to allow the node working asynchronously, you can move the `NodeTask` to a
-    /// an object with a longer lifetime.
-    ///
-    /// # Examples
-    /// **Synchronous** usage:
+    /// Note that any events generated before calling this function (e.g. some connection was done)
+    /// will be storage and offered once you call `for_each()`.
+    /// # Example
     /// ```
     /// use message_io::node::{self, NodeEvent};
     /// use message_io::network::Transport;
@@ -230,12 +248,27 @@ impl<S: Send + 'static> NodeListener<S> {
     ///     NodeEvent::Network(net_event) => { /* Your logic here */ },
     ///     NodeEvent::Signal(_) => handler.stop(),
     /// });
-    /// // Blocked here until handler.stop() was called (1 sec) because the returned value
-    /// // of for_each() is not used (it is dropped just after called the method).
+    /// // Blocked here until handler.stop() was called (1 sec).
     /// println!("Node is stopped");
     /// ```
+    pub fn for_each(self, event_callback: impl FnMut(NodeEvent<S>) + 'static) {
+        let sendable_callback = SendableEventCallback(Arc::new(Mutex::new(event_callback)));
+        let mut task = self.for_each_impl(sendable_callback);
+
+        // Although the event_callback is not sync, we ensure with this wait() that no more events
+        // will be processed when the control is returned to the user.
+        task.wait();
+    }
+
+    /// Similar to [`NodeListener::for_each()`] but it returns the control to the user
+    /// after call it. The events would be processed asynchronously.
+    /// A `NodeTask` representing this asynchronous job is returned.
+    /// Destroying this object will result in blocking the current thread until
+    /// [`NodeHandler::stop`] was called.
     ///
-    /// **Asynchronous** usage:
+    /// In order to allow the node working asynchronously, you can move the `NodeTask` to a
+    /// an object with a longer lifetime.
+    ///
     /// ```
     /// use message_io::node::{self, NodeEvent};
     /// use message_io::network::Transport;
@@ -248,32 +281,36 @@ impl<S: Send + 'static> NodeListener<S> {
     ///      NodeEvent::Network(net_event) => { /* Your logic here */ },
     ///      NodeEvent::Signal(_) => handler.stop(),
     /// });
-    /// // for_each() will act asynchronous during 'task' lifetime.
+    /// // for_each_async() will act asynchronous during 'task' lifetime.
     ///
     /// // ...
     /// println!("Node is running");
     /// // ...
     ///
     /// drop(task); // Blocked here until handler.stop() was called (1 sec).
-    /// //also task.wait(); can be called doing the same (but taking a mutable reference).
+    /// // Also task.wait(); can be called doing the same (but taking a mutable reference).
     ///
     /// println!("Node is stopped");
     /// ```
-    /// Note that any events generated before calling this function will be storage
-    /// and offered once you call `for_each()`.
-    pub fn for_each(
-        mut self,
+    pub fn for_each_async(
+        self,
         event_callback: impl FnMut(NodeEvent<S>) + Send + 'static,
     ) -> NodeTask {
+        let sendable_callback = SendableEventCallback(Arc::new(Mutex::new(event_callback)));
+
+        // The signature of this functions add the `Send` to the `event_callback` that
+        // `SendableEventCallback` removed, so the usage is safe.
+        self.for_each_impl(sendable_callback)
+    }
+
+    fn for_each_impl(mut self, multiplexed: SendableEventCallback<S>) -> NodeTask {
         // Stop cache events
         self.cache_running.store(false, Ordering::Relaxed);
         let (mut network_processor, mut cache) = self.network_cache_thread.join();
 
-        let multiplexed = Arc::new(Mutex::new(event_callback));
-
         // To avoid processing stops while the node is configuring,
         // the user callback locked until the function ends.
-        let _locked = multiplexed.lock().expect(OTHER_THREAD_ERR);
+        let _locked = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
 
         let network_thread = {
             let multiplexed = multiplexed.clone();
@@ -282,7 +319,7 @@ impl<S: Send + 'static> NodeListener<S> {
             NamespacedThread::spawn("node-network-thread", move || {
                 // Dispatch the catched events first.
                 while let Some(event) = cache.pop_front() {
-                    let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
+                    let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
                     let net_event = event.borrow();
                     log::trace!("Read from cache {:?}", net_event);
                     event_callback(NodeEvent::Network(net_event));
@@ -293,7 +330,7 @@ impl<S: Send + 'static> NodeListener<S> {
 
                 while running.load(Ordering::Relaxed) {
                     network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), |net_event| {
-                        let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
+                        let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
                         if running.load(Ordering::Relaxed) {
                             event_callback(NodeEvent::Network(net_event));
                         }
@@ -310,7 +347,7 @@ impl<S: Send + 'static> NodeListener<S> {
             NamespacedThread::spawn("node-signal-thread", move || {
                 while running.load(Ordering::Relaxed) {
                     if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT) {
-                        let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
+                        let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
                         if running.load(Ordering::Relaxed) {
                             event_callback(NodeEvent::Signal(signal));
                         }
@@ -329,11 +366,11 @@ impl<S: Send + 'static> Drop for NodeListener<S> {
     }
 }
 
-/// Entity used to ensure the lifetime of [`NodeListener::for_each()`] call.
+/// Entity used to ensure the lifetime of [`NodeListener::for_each_async()`] call.
 /// The node will process events asynchronously while this entity lives.
 /// The destruction of this entity will block until the task is finished.
-/// If you want to "unblock" the thread that drops this entity call to:
-/// [`NodeHandler::stop()`]
+/// If you want to "unblock" the thread that drops this entity call to
+/// [`NodeHandler::stop()`] before or from another thread.
 pub struct NodeTask {
     network_thread: NamespacedThread<()>,
     signal_thread: NamespacedThread<()>,
@@ -385,7 +422,7 @@ mod tests {
         let checked = Arc::new(AtomicBool::new(false));
         let inner_checked = checked.clone();
         let inner_handler = handler.clone();
-        let _node_task = listener.for_each(move |event| match event.signal() {
+        let _node_task = listener.for_each_async(move |event| match event.signal() {
             "stop" => inner_handler.stop(),
             "check" => inner_checked.store(true, Ordering::Relaxed),
             _ => unreachable!(),
@@ -406,7 +443,7 @@ mod tests {
         handler.signals().send_with_timer((), Duration::from_millis(1000));
 
         let inner_handler = handler.clone();
-        listener.for_each(move |_| inner_handler.stop()).wait();
+        listener.for_each_async(move |_| inner_handler.stop()).wait();
 
         assert!(!handler.is_running());
     }
@@ -418,7 +455,7 @@ mod tests {
         handler.signals().send_with_timer((), Duration::from_millis(1000));
 
         let inner_handler = handler.clone();
-        let mut task = listener.for_each(move |_| inner_handler.stop());
+        let mut task = listener.for_each_async(move |_| inner_handler.stop());
         assert!(handler.is_running());
         task.wait();
         assert!(!handler.is_running());

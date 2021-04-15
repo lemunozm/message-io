@@ -88,15 +88,21 @@ impl Remote for RemoteResource {
         let mut buf = [0; MAX_ENCODED_SIZE]; // used to avoid a heap allocation
         let encoded_size = encoding::encode_size(data, &mut buf);
 
+        let stream = &self.stream;
+        // We want to send the message as a whole whatever it can be possible.
+        // In this protocol, sending few bytes than the message has no sense and adds latency:
+        // by the network sending small chunks, and by the receiver allocating memory to decode them.
+        // If the target is throughput, use TCP instead.
+        stream.set_nodelay(false).ok();
+
         let mut total_bytes_sent = 0;
         let total_bytes = encoded_size.len() + data.len();
-        loop {
+        let status = loop {
             let data_to_send = match total_bytes_sent < encoded_size.len() {
                 true => &encoded_size[total_bytes_sent..],
                 false => &data[total_bytes_sent - encoded_size.len()..],
             };
 
-            let stream = &self.stream;
             match stream.deref().write(data_to_send) {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
@@ -110,7 +116,13 @@ impl Remote for RemoteResource {
                     break SendStatus::ResourceNotFound // should not happen
                 }
             }
-        }
+        };
+
+        // We have already the entire message in the OS buffer, send now, not wait for the next one.
+        // The message in this protocol has an information meanless.
+        // The user can process already this unit of data. Do not wait for other possible message.
+        stream.set_nodelay(true).ok();
+        status
     }
 }
 

@@ -27,6 +27,15 @@ pub enum NodeEvent<'a, S> {
     Signal(S),
 }
 
+impl<'a, S: std::fmt::Debug> std::fmt::Debug for NodeEvent<'a, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeEvent::Network(net_event) => write!(f, "NodeEvent::Network({:?})", net_event),
+            NodeEvent::Signal(signal) => write!(f, "NodeEvent::Signal({:?})", signal),
+        }
+    }
+}
+
 impl<'a, S> NodeEvent<'a, S> {
     /// Assume the event is a [`NodeEvent::Network`], panics if not.
     pub fn network(self) -> NetEvent<'a> {
@@ -360,8 +369,8 @@ impl<S: Send + 'static> Drop for NodeListener<S> {
 /// Entity used to ensure the lifetime of [`NodeListener::for_each_async()`] call.
 /// The node will process events asynchronously while this entity lives.
 /// The destruction of this entity will block until the task is finished.
-/// If you want to "unblock" the thread that drops this entity call to:
-/// [`NodeHandler::stop()`]
+/// If you want to "unblock" the thread that drops this entity call to
+/// [`NodeHandler::stop()`] before or from another thread.
 pub struct NodeTask {
     network_thread: NamespacedThread<()>,
     signal_thread: NamespacedThread<()>,

@@ -66,7 +66,7 @@ You could change the transport of your application in literally one line.
 Add to your `Cargo.toml` (all the transports included by default):
 ```toml
 [dependencies]
-message-io = "0.12"
+message-io = "0.13"
 ```
 If you **only** want to use a subset of the available transport battery,
 you can select them by their associated features `tcp`, `udp`, and `websocket`.

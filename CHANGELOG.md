@@ -5,6 +5,7 @@
 This function no longer returns a `NodeTask`.
 - New method `NodeListener::for_each_async` has been added to support the previous behaviour of
 `for_each`.
+- Added `Debug` to `NodeEvent`.
 
 ## Release 0.12.2
 - Reduced *WebSocket* latency.

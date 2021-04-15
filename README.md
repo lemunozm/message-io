@@ -3,6 +3,7 @@
 [![](https://img.shields.io/crates/l/message-io)](https://www.apache.org/licenses/LICENSE-2.0.txt)
 [![](https://img.shields.io/crates/d/message-io)](https://crates.io/crates/message-io)
 [![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
+[![](https://img.shields.io/badge/bymeacoffee-donate-yellow)](https://www.buymeacoffee.com/lemunozm)
 
 
 # message-io
@@ -17,6 +18,8 @@ It also allows you to make an adapter for your own transport protocol following 
 
 If you find a problem using the library or you have an improvement idea,
 do not hesitate to open an issue. **Any contribution is welcome!**
+
+And remember, more [caffeine](https://www.buymeacoffee.com/lemunozm), more productive!
 
 ## Motivation
 Managing sockets is hard because you need to fight with threads, concurrency, full duplex, encoding,

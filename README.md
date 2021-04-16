@@ -90,6 +90,7 @@ check the examples folder, API docs, and don't hesitate to open an issue.
   - [Multicast](examples/multicast)
   - [Distributed network with discovery server](examples/distributed)
   - [File transfer](examples/file-transfer)
+- [Open Source applications](#app-list)
 
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds
@@ -181,7 +182,7 @@ cargo run --example ping-pong client tcp 127.0.0.1:3456
 You can play with it changing the transport, running several clients, disconnect them, etc.
 See more [here](examples/ping-pong).
 
-## Do you need a transport protocol that `message-io` doesn't have? Add an adapter! <span id="custom-adapter"><span>
+## Do you need a transport protocol that `message-io` doesn't have? Add an adapter! <span id="custom-adapter"/>
 
 `message-io` offers two *kinds* of APIs.
 The **user API**, that talks to `message-io` itself as an user that want to use the library,
@@ -205,5 +206,13 @@ If a transport protocol can be built in top of [`mio`](https://github.com/tokio-
 That's all.
 You can use your new transport with the `message-io` API like any other.
 
-Oops! one step more, make a *Pull request* so everyone can use it :)
+Oops! one step more, make a *Pull Request* so everyone can use it :)
 
+## Open source projects using `message-io` <span id="app-list"/>
+- [Termchat](https://github.com/lemunozm/termchat) Terminal chat through the LAN with video streaming and file transfer.
+- [Egregoria](https://github.com/Uriopass/Egregoria) Contemplative society simulation.
+- [Project-Midas](https://github.com/ray33ee/Project-Midas) Distributed network based parallel computing system.
+- [AsciiArena](https://github.com/lemunozm/asciiarena) Terminal multiplayer death match game (alpha).
+- [LanChat](https://github.com/sigmaSd/LanChat) LanChat flutter + rust demo.
+
+*Does your awesome project use `message-io`? Make a Pull Request and add it to the list!*

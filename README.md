@@ -7,28 +7,28 @@
 
 
 # message-io
-`message-io` is an event-driven message library to build network applications **easy** and **fast**.
-The library handles the internal OS socket in order to offer a simple event message API to the user.
+`message-io` is an event-driven message library to build network applications **quickly** and **easily**.
+The library handles the OS socket internally and offers a simple event message API to the user.
 It also allows you to make an adapter for your own transport protocol following some
-[rules](#custom-adapter), delegating to the library the tedious asynchrony and thread management.
+[rules](#custom-adapter), delegating the tedious asynchrony and thread management to the library.
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vSPmycMsWoQq60MPEODcakFQVPkDwVy98AnduTswFNPGBB5dpbIsSCHHBhS2iEuSUtbVaYQb7zgfgjO/pub?w=653&h=305" width="653"/>
 </p>
 
-If you find a problem using the library or you have an improvement idea,
+If you find a problem using the library or you have an idea to improve it,
 do not hesitate to open an issue. **Any contribution is welcome!**
 
-And remember, more [caffeine](https://www.buymeacoffee.com/lemunozm), more productive!
+And remember: more [caffeine](https://www.buymeacoffee.com/lemunozm), more productive!
 
 ## Motivation
 Managing sockets is hard because you need to fight with threads, concurrency, full duplex, encoding,
 IO errors that come from the OS (which are really difficult to understand in some situations), etc.
 If you make use of *non-blocking* sockets, it adds a new layer of complexity:
-synchronize the events that come asynchronously from the Operative System.
+synchronize the events that come asynchronously from the Operating System.
 
-`message-io` offers an easy way to deal with all these mentioned problems,
-making them transparently for you,
+`message-io` offers an easy way to deal with all these aforementioned problems,
+making them transparent for you,
 the programmer that wants to make an application with its own problems.
 For that, the library gives you a simple API with two concepts to understand:
 **messages** (the data you send and receive), and **endpoints** (the recipients of that data).
@@ -37,9 +37,9 @@ of the transport protocol used.
 You could change the transport of your application in literally one line.
 
 ## Features
-- Highly scalable: **non-blocking sockets** that allows to manage thousands of active connections.
+- Highly scalable: **non-blocking sockets** that allow for the management of thousands of active connections.
 - Multiplatform: see [mio platform support](https://github.com/tokio-rs/mio#platforms).
-- Multiples transports
+- Multiple transport protocols
 ([docs](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html)):
   - **TCP**: stream and framed mode (to deal with messages instead of stream)
   - **UDP**, with multicast option
@@ -48,25 +48,25 @@ You could change the transport of your application in literally one line.
 - Custom FIFO events with timers and priority.
 - Easy, intuitive and consistent API:
   - Follows [KISS principle](https://en.wikipedia.org/wiki/KISS_principle).
-  - Abstraction from transport layer: do not think about sockets, think about messages and endpoints.
+  - Abstraction from transport layer: don't think about sockets, think about messages and endpoints.
   - Only two main entities to use:
     - a [`NodeHandler`](https://docs.rs/message-io/latest/message_io/node/struct.NodeHandler.html)
     to manage all connections (connect, listen, remove, send) and signals (timers, priority).
     - a [`NodeListener`](https://docs.rs/message-io/latest/message_io/node/struct.NodeListener.html)
     to process all signals and events from the network.
-  - Forget concurrence problems: handle all connection and listeners from one thread:
+  - Forget concurrency problems: handle all connection and listeners from one thread;
     "One thread to rule them all".
   - Easy error handling:
-    do not deal with dark internal `std::io::Error` when send/receive from the network.
+    do not deal with dark internal `std::io::Error` when sending/receiving from the network.
 - High performance (see the [benchmarks](docs/performance_benchmarks.md)):
     - Write/read messages with zero-copy.
     You write and read directly from the internal OS socket buffer without any copy in the middle by the library.
-    - Full duplex: simultaneous reading/writing operations over same internal OS socket.
+    - Full duplex: simultaneous reading/writing operations over the same internal OS socket.
 - Customizable: `message-io` doesn't have the transport you need?
-  Add easily and [adapter](#custom-adapter).
+  Easily add an [adapter](#custom-adapter).
 
 ## Getting started
-Add to your `Cargo.toml` (all the transports included by default):
+Add to your `Cargo.toml` (all transports included by default):
 ```toml
 [dependencies]
 message-io = "0.13"
@@ -98,7 +98,7 @@ check the examples folder, API docs, and don't hesitate to open an issue.
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds
 to them.
-It is capable to manage several client connections and listen from 3 differents protocols
+It is able to manage several client connections and listen from 3 differents protocols
 at the same time.
 
 ```rust,no_run
@@ -182,13 +182,13 @@ Run the client:
 cargo run --example ping-pong client tcp 127.0.0.1:3456
 ```
 
-You can play with it changing the transport, running several clients, disconnect them, etc.
+You can play with it by changing the transport, running several clients, disconnecting them, etc.
 See more [here](examples/ping-pong).
 
 ## Do you need a transport protocol that `message-io` doesn't have? Add an adapter! <span id="custom-adapter"/>
 
-`message-io` offers two *kinds* of APIs.
-The **user API**, that talks to `message-io` itself as an user that want to use the library,
+`message-io` offers two *kinds* of API.
+The **user API** that talks to `message-io` itself as a user of the library,
 and the internal **adapter API** for those who want to add their protocol adapters into the library.
 
 <p align="center">
@@ -196,12 +196,12 @@ and the internal **adapter API** for those who want to add their protocol adapte
 </p>
 
 If a transport protocol can be built in top of [`mio`](https://github.com/tokio-rs/mio)
-(most of the existing protocol libraries can), then you can add it to `message-io` **really easy**:
+(most of the existing protocol libraries can), then you can add it to `message-io` **really easily**:
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
   traits that you find [here](https://docs.rs/message-io/latest/message_io/network/adapter/index.html).
   It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
-  and take little more than 150 lines to implement an adapter file.
+  and it takes little more than 150 lines to implement an adapter.
 
 1. Add a new field in the `Transport` enum found in
 [src/network/transport.rs](src/network/transport.rs) to register your new adapter.
@@ -209,7 +209,7 @@ If a transport protocol can be built in top of [`mio`](https://github.com/tokio-
 That's all.
 You can use your new transport with the `message-io` API like any other.
 
-Oops! one step more, make a *Pull Request* so everyone can use it :)
+Oops! one more step:make a *Pull Request* so everyone can use it :)
 
 ## Open source projects using `message-io` <span id="app-list"/>
 - [Termchat](https://github.com/lemunozm/termchat) Terminal chat through the LAN with video streaming and file transfer.

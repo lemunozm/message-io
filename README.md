@@ -7,7 +7,7 @@
 
 
 # message-io
-`message-io` is an event-driven message library to build network applications **quickly** and **easily**.
+`message-io` is a fast and easy-to-use event-driven message library for building network applications.
 The library handles the OS socket internally and offers a simple event message API to the user.
 It also allows you to make an adapter for your own transport protocol following some
 [rules](#custom-adapter), delegating the tedious asynchrony and thread management to the library.

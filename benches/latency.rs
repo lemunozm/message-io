@@ -6,6 +6,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 
 #[cfg(feature = "websocket")]
 use tungstenite::{Message, connect as ws_connect, accept as ws_accept};
+#[cfg(feature = "websocket")]
 use url::{Url};
 
 use std::net::{TcpListener, TcpStream, UdpSocket};

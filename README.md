@@ -209,7 +209,7 @@ If a transport protocol can be built in top of [`mio`](https://github.com/tokio-
 That's all.
 You can use your new transport with the `message-io` API like any other.
 
-Oops! one more step:make a *Pull Request* so everyone can use it :)
+Oops! one more step: make a *Pull Request* so everyone can use it :)
 
 ## Open source projects using `message-io` <span id="app-list"/>
 - [Termchat](https://github.com/lemunozm/termchat) Terminal chat through the LAN with video streaming and file transfer.

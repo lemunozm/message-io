@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.13.1
+- Added `NodeListener::enqueue()`.
+
 ## Release 0.13.0
 - Updated `NodeListener::for_each` to works fully synchronous. `Send` trait of the event callback parameter has been removed to works fine with objects like `Rc` `Cell` or references.
 This function no longer returns a `NodeTask`.

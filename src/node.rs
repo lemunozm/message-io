@@ -54,6 +54,88 @@ impl<'a, S> NodeEvent<'a, S> {
     }
 }
 
+/// Analogous to [`NodeEvent`] but without reference the data.
+/// This kind of event is dispatched by `NodeListener::to_event_queue()`.
+/// It is useful when you need to move an [`NodeEvent`]
+#[derive(Clone)]
+pub enum StoredNodeEvent<S> {
+    /// The `StoredNodeEvent` is an event that comes from the network.
+    /// See [`NetEvent`] to know about the different network events.
+    Network(StoredNetEvent),
+
+    /// The `StoredNodeEvent` is a signal.
+    /// A signal is an event produced by the own node to itself.
+    /// You can send signals with timers or priority.
+    /// See [`EventSender`] to know about how to send signals.
+    Signal(S),
+}
+
+impl<S: std::fmt::Debug> std::fmt::Debug for StoredNodeEvent<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StoredNodeEvent::Network(net_event) => write!(f, "NodeEvent::Network({:?})", net_event),
+            StoredNodeEvent::Signal(signal) => write!(f, "NodeEvent::Signal({:?})", signal),
+        }
+    }
+}
+
+impl<S> StoredNodeEvent<S> {
+    /// Assume the event is a [`StoredNodeEvent::Network`], panics if not.
+    pub fn network(self) -> StoredNetEvent {
+        match self {
+            StoredNodeEvent::Network(net_event) => net_event,
+            StoredNodeEvent::Signal(..) => panic!("NodeEvent must be a NetEvent"),
+        }
+    }
+
+    /// Assume the event is a [`StoredNodeEvent::Signal`], panics if not.
+    pub fn signal(self) -> S {
+        match self {
+            StoredNodeEvent::Network(..) => panic!("NodeEvent must be a Signal"),
+            StoredNodeEvent::Signal(signal) => signal,
+        }
+    }
+}
+
+impl<S> From<NodeEvent<'_, S>> for StoredNodeEvent<S> {
+    fn from(node_event: NodeEvent<'_, S>) -> Self {
+        match node_event {
+            NodeEvent::Network(net_event) => StoredNodeEvent::Network(net_event.into()),
+            NodeEvent::Signal(signal) => StoredNodeEvent::Signal(signal),
+        }
+    }
+}
+
+/// Analogous to [`NetEvent`] but without reference the data.
+/// This kind of event is dispatched by `NodeListener::to_event_queue()`.
+#[derive(Debug, Clone)]
+pub enum StoredNetEvent {
+    Connected(Endpoint, ResourceId),
+    Message(Endpoint, Vec<u8>),
+    Disconnected(Endpoint),
+}
+
+impl From<NetEvent<'_>> for StoredNetEvent {
+    fn from(net_event: NetEvent<'_>) -> Self {
+        match net_event {
+            NetEvent::Connected(endpoint, id) => Self::Connected(endpoint, id),
+            NetEvent::Message(endpoint, data) => Self::Message(endpoint, Vec::from(data)),
+            NetEvent::Disconnected(endpoint) => Self::Disconnected(endpoint),
+        }
+    }
+}
+
+impl StoredNetEvent {
+    /// Use this `StoredNetEvent` as a `NetEvent` referencing its data.
+    fn borrow(&self) -> NetEvent<'_> {
+        match self {
+            Self::Connected(endpoint, id) => NetEvent::Connected(*endpoint, *id),
+            Self::Message(endpoint, data) => NetEvent::Message(*endpoint, &data),
+            Self::Disconnected(endpoint) => NetEvent::Disconnected(*endpoint),
+        }
+    }
+}
+
 /// Creates a node already working.
 /// This function offers two instances: a [`NodeHandler`] to perform network and signals actions
 /// and a [`NodeListener`] to receive the events the node receives.
@@ -154,33 +236,6 @@ impl<S: Send + 'static> Clone for NodeHandler<S> {
     }
 }
 
-#[derive(Debug)]
-enum StoredNetEvent {
-    Connected(Endpoint, ResourceId),
-    Message(Endpoint, Vec<u8>),
-    Disconnected(Endpoint),
-}
-
-impl From<NetEvent<'_>> for StoredNetEvent {
-    fn from(net_event: NetEvent<'_>) -> Self {
-        match net_event {
-            NetEvent::Connected(endpoint, id) => Self::Connected(endpoint, id),
-            NetEvent::Message(endpoint, data) => Self::Message(endpoint, Vec::from(data)),
-            NetEvent::Disconnected(endpoint) => Self::Disconnected(endpoint),
-        }
-    }
-}
-
-impl StoredNetEvent {
-    fn borrow(&self) -> NetEvent<'_> {
-        match self {
-            Self::Connected(endpoint, id) => NetEvent::Connected(*endpoint, *id),
-            Self::Message(endpoint, data) => NetEvent::Message(*endpoint, &data),
-            Self::Disconnected(endpoint) => NetEvent::Disconnected(*endpoint),
-        }
-    }
-}
-
 struct SendableEventCallback<S>(Arc<Mutex<dyn FnMut(NodeEvent<S>)>>);
 
 // This struct is used to allow passing no Sendable objects into the listener jobs.
@@ -194,8 +249,7 @@ impl<S> Clone for SendableEventCallback<S> {
     }
 }
 
-/// Main entity to manipulates the network and signal events easily.
-/// The node run asynchronously.
+/// Listen events for network and signal events.
 pub struct NodeListener<S: Send + 'static> {
     network_cache_thread: NamespacedThread<(NetworkProcessor, VecDeque<StoredNetEvent>)>,
     cache_running: Arc<AtomicBool>,
@@ -231,7 +285,7 @@ impl<S: Send + 'static> NodeListener<S> {
     }
 
     /// Iterate indefinitely over all generated `NetEvent`.
-    /// This function will work until [`NodeHandler::stop`] was called.
+    /// This function will work until [`NodeHandler::stop()`] was called.
     ///
     /// Note that any events generated before calling this function (e.g. some connection was done)
     /// will be storage and offered once you call `for_each()`.
@@ -264,11 +318,12 @@ impl<S: Send + 'static> NodeListener<S> {
     /// after call it. The events would be processed asynchronously.
     /// A `NodeTask` representing this asynchronous job is returned.
     /// Destroying this object will result in blocking the current thread until
-    /// [`NodeHandler::stop`] was called.
+    /// [`NodeHandler::stop()`] was called.
     ///
     /// In order to allow the node working asynchronously, you can move the `NodeTask` to a
     /// an object with a longer lifetime.
     ///
+    /// # Example
     /// ```
     /// use message_io::node::{self, NodeEvent};
     /// use message_io::network::Transport;
@@ -358,6 +413,39 @@ impl<S: Send + 'static> NodeListener<S> {
 
         NodeTask { network_thread, signal_thread }
     }
+
+    /// Consumes the listener to create a `NodeTask` and an `EventReceiver` where the events
+    /// of this node will be sent.
+    /// The events will be sent to the `EventReceiver` during the `NodeTask` lifetime.
+    /// The aim of this method is to offer a synchronous way of working with a *node*,
+    /// without using a clousure.
+    /// This easier API management has a performance cost.
+    /// Compared to [`NodeListener::for_each()`], this function adds latency because the
+    /// node event must be copied and no longer reference data from the internal socket buffer.
+    ///
+    /// # Example
+    /// ```
+    /// use message_io::node::{self, StoredNodeEvent as NodeEvent};
+    /// use message_io::network::Transport;
+    ///
+    /// let (handler, listener) = node::split();
+    /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
+    /// handler.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    ///
+    /// let (task, mut receiver) = listener.enqueue();
+    ///
+    /// loop {
+    ///     match receiver.receive() {
+    ///         NodeEvent::Network(net_event) => { /* Your logic here */ },
+    ///         NodeEvent::Signal(_) => break handler.stop(),
+    ///     }
+    /// }
+    /// ```
+    pub fn enqueue(self) -> (NodeTask, EventReceiver<StoredNodeEvent<S>>) {
+        let (sender, receiver) = events::split::<StoredNodeEvent<S>>();
+        let task = self.for_each_async(move |node_event| sender.send(node_event.into()));
+        (task, receiver)
+    }
 }
 
 impl<S: Send + 'static> Drop for NodeListener<S> {
@@ -434,6 +522,22 @@ mod tests {
         assert!(checked.load(Ordering::Relaxed));
         assert!(handler.is_running());
         handler.signals().send("stop");
+    }
+
+    #[test]
+    fn enqueue() {
+        let (handler, listener) = split();
+        assert!(handler.is_running());
+        handler.signals().send_with_timer((), Duration::from_millis(1000));
+
+        let (mut task, mut receiver) = listener.enqueue();
+        assert!(handler.is_running());
+
+        receiver.receive_timeout(Duration::from_millis(2000)).unwrap().signal();
+        handler.stop();
+
+        assert!(!handler.is_running());
+        task.wait();
     }
 
     #[test]

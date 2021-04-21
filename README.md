@@ -54,7 +54,7 @@ You could change the transport of your application in literally one line.
     to manage all connections (connect, listen, remove, send) and signals (timers, priority).
     - a [`NodeListener`](https://docs.rs/message-io/latest/message_io/node/struct.NodeListener.html)
     to process all signals and events from the network.
-  - Forget concurrency problems: handle all connection and listeners from one thread;
+  - Forget concurrency problems: handle all connection and listeners from one thread:
     "One thread to rule them all".
   - Easy error handling:
     do not deal with dark internal `std::io::Error` when sending/receiving from the network.
@@ -64,6 +64,17 @@ You could change the transport of your application in literally one line.
     - Full duplex: simultaneous reading/writing operations over the same internal OS socket.
 - Customizable: `message-io` doesn't have the transport you need?
   Easily add an [adapter](#custom-adapter).
+
+## Documentation
+- [API documentation](https://docs.rs/message-io/)
+- [Basic concepts](docs/basic_concepts.md)
+- [Benchmarks](docs/performance_benchmarks.md)
+- [Examples](examples):
+  - [Ping Pong](examples/ping-pong) (a simple client/server example)
+  - [Multicast](examples/multicast)
+  - [Distributed network with discovery server](examples/distributed)
+  - [File transfer](examples/file-transfer)
+- [Open Source applications](#app-list)
 
 ## Getting started
 Add to your `Cargo.toml` (all transports included by default):
@@ -84,22 +95,11 @@ in order to reach [zero-copy write/read](https://github.com/lemunozm/message-io/
 If you find problems porting your application to this version,
 check the examples folder, API docs, and don't hesitate to open an issue.
 
-### Documentation
-- [API documentation](https://docs.rs/message-io/)
-- [Basic concepts](docs/basic_concepts.md)
-- [Benchmarks](docs/performance_benchmarks.md)
-- [Examples](examples):
-  - [Ping Pong](examples/ping-pong) (a simple client/server example)
-  - [Multicast](examples/multicast)
-  - [Distributed network with discovery server](examples/distributed)
-  - [File transfer](examples/file-transfer)
-- [Open Source applications](#app-list)
 
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds
-to them.
-It is able to manage several client connections and listen from 3 differents protocols
-at the same time.
+to them with the same message.
+It is able to offer the "service" for 3 differents protocols at the same time.
 
 ```rust,no_run
 use message_io::node::{self};
@@ -132,7 +132,6 @@ fn main() {
 The following example shows a client that can connect to the previous server.
 It sends a message each second to the server and listen its echo response.
 Changing the `Transport::FramedTcp` to `Udp` or `Ws` will change the underlying transport used.
-You can create the number of connections you want at the same time, without any extra thread.
 
 ```rust,no_run
 use message_io::node::{self, NodeEvent};
@@ -169,7 +168,7 @@ fn main() {
 }
 ```
 
-## Test it yourself!
+### Test it yourself!
 Clone the repository and test the *Ping Pong* example
 (similar to the *README* example but more vitaminized).
 

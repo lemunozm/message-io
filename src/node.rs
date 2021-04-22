@@ -176,31 +176,34 @@ impl StoredNetEvent {
 pub fn split<S: Send>() -> (NodeHandler<S>, NodeListener<S>) {
     let (network_controller, network_processor) = network::split();
     let (signal_sender, signal_receiver) = events::split();
-    let running = Arc::new(AtomicBool::new(true));
+    let running = AtomicBool::new(true);
 
-    let handler = NodeHandler::new(network_controller, signal_sender, running.clone());
-    let listener = NodeListener::new(network_processor, signal_receiver, running);
+    let handler = NodeHandler(Arc::new(NodeHandlerImpl {
+        network: network_controller,
+        signals: signal_sender,
+        running,
+    }));
+
+    let listener = NodeListener::new(network_processor, signal_receiver, handler.clone());
 
     (handler, listener)
 }
 
-/// A shareable and clonable entity that allows to deal with
-/// the network, send signals and stop the node.
-pub struct NodeHandler<S> {
-    network: Arc<NetworkController>,
+struct NodeHandlerImpl<S> {
+    network: NetworkController,
     signals: EventSender<S>,
-    running: Arc<AtomicBool>,
+    running: AtomicBool,
 }
 
-impl<S> NodeHandler<S> {
-    fn new(network: NetworkController, signals: EventSender<S>, running: Arc<AtomicBool>) -> Self {
-        Self { network: Arc::new(network), signals, running }
-    }
+/// A shareable and clonable entity that allows to deal with
+/// the network, send signals and stop the node.
+pub struct NodeHandler<S>(Arc<NodeHandlerImpl<S>>);
 
+impl<S> NodeHandler<S> {
     /// Returns a reference to the NetworkController to deal with the network.
     /// See [`NetworkController`]
     pub fn network(&self) -> &NetworkController {
-        &self.network
+        &self.0.network
     }
 
     /// Returns a reference to the EventSender to send signals to the node.
@@ -208,13 +211,13 @@ impl<S> NodeHandler<S> {
     /// to "wake up" the [`NodeListener`] to perform some action.
     /// See [`EventSender`].
     pub fn signals(&self) -> &EventSender<S> {
-        &self.signals
+        &self.0.signals
     }
 
     /// Finalizes the [`NodeListener`].
     /// After this call, no more events will be processed by [`NodeListener::for_each()`].
     pub fn stop(&self) {
-        self.running.store(false, Ordering::Relaxed);
+        self.0.running.store(false, Ordering::Relaxed);
     }
 
     /// Check if the node is running.
@@ -222,17 +225,13 @@ impl<S> NodeHandler<S> {
     /// not only once you call to [`NodeListener::for_each()`].
     /// Calling this function only will offer the event to the user to be processed.
     pub fn is_running(&self) -> bool {
-        self.running.load(Ordering::Relaxed)
+        self.0.running.load(Ordering::Relaxed)
     }
 }
 
 impl<S: Send + 'static> Clone for NodeHandler<S> {
     fn clone(&self) -> Self {
-        Self {
-            network: self.network.clone(),
-            signals: self.signals.clone(),
-            running: self.running.clone(),
-        }
+        Self(self.0.clone())
     }
 }
 
@@ -254,14 +253,14 @@ pub struct NodeListener<S: Send + 'static> {
     network_cache_thread: NamespacedThread<(NetworkProcessor, VecDeque<StoredNetEvent>)>,
     cache_running: Arc<AtomicBool>,
     signal_receiver: EventReceiver<S>,
-    running: Arc<AtomicBool>,
+    handler: NodeHandler<S>,
 }
 
 impl<S: Send + 'static> NodeListener<S> {
     fn new(
         mut network_processor: NetworkProcessor,
         signal_receiver: EventReceiver<S>,
-        running: Arc<AtomicBool>,
+        handler: NodeHandler<S>,
     ) -> NodeListener<S> {
         // Spawn the network thread to be able to perform correctly any network action before
         // for_each() call. Any generated event would be cached and offered to the user when they
@@ -281,7 +280,7 @@ impl<S: Send + 'static> NodeListener<S> {
             })
         };
 
-        NodeListener { network_cache_thread, cache_running, signal_receiver, running }
+        NodeListener { network_cache_thread, cache_running, signal_receiver, handler }
     }
 
     /// Iterate indefinitely over all generated `NetEvent`.
@@ -369,7 +368,7 @@ impl<S: Send + 'static> NodeListener<S> {
 
         let network_thread = {
             let multiplexed = multiplexed.clone();
-            let running = self.running.clone();
+            let handler = self.handler.clone();
 
             NamespacedThread::spawn("node-network-thread", move || {
                 // Dispatch the catched events first.
@@ -378,15 +377,15 @@ impl<S: Send + 'static> NodeListener<S> {
                     let net_event = event.borrow();
                     log::trace!("Read from cache {:?}", net_event);
                     event_callback(NodeEvent::Network(net_event));
-                    if !running.load(Ordering::Relaxed) {
+                    if !handler.is_running() {
                         return
                     }
                 }
 
-                while running.load(Ordering::Relaxed) {
+                while handler.is_running() {
                     network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), |net_event| {
                         let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
-                        if running.load(Ordering::Relaxed) {
+                        if handler.is_running() {
                             event_callback(NodeEvent::Network(net_event));
                         }
                     });
@@ -397,13 +396,13 @@ impl<S: Send + 'static> NodeListener<S> {
         let signal_thread = {
             let multiplexed = multiplexed.clone();
             let mut signal_receiver = std::mem::take(&mut self.signal_receiver);
-            let running = self.running.clone();
+            let handler = self.handler.clone();
 
             NamespacedThread::spawn("node-signal-thread", move || {
-                while running.load(Ordering::Relaxed) {
+                while handler.is_running() {
                     if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT) {
                         let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
-                        if running.load(Ordering::Relaxed) {
+                        if handler.is_running() {
                             event_callback(NodeEvent::Signal(signal));
                         }
                     }

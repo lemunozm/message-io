@@ -9,7 +9,6 @@ use crate::adapters::udp::{self, UdpAdapter};
 #[cfg(feature = "websocket")]
 use crate::adapters::ws::{self, WsAdapter};
 
-use strum::{EnumIter};
 use serde::{Serialize, Deserialize};
 
 /// Enum to identified the underlying transport used.
@@ -17,7 +16,7 @@ use serde::{Serialize, Deserialize};
 /// [`NetworkController::connect()`](crate::network::NetworkController::connect()) and
 /// [`NetworkController::listen()`](crate::network::NetworkController::connect()) methods
 /// to specify the transport used.
-#[derive(EnumIter, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(strum::EnumIter, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Transport {
     /// TCP protocol (available through the *tcp* feature).
     /// As stream protocol, receiving a message from TCP do not imply to read
@@ -123,7 +122,32 @@ impl Transport {
     /// Returns the adapter id used for this transport.
     /// It is equivalent to the position of the enum starting by 0
     pub const fn id(self) -> u8 {
-        self as u8
+        match self {
+            #[cfg(feature = "tcp")]
+            Transport::Tcp => 0,
+            #[cfg(feature = "tcp")]
+            Transport::FramedTcp => 1,
+            #[cfg(feature = "udp")]
+            Transport::Udp => 2,
+            #[cfg(feature = "websocket")]
+            Transport::Ws => 3,
+        }
+    }
+}
+
+impl From<u8> for Transport {
+    fn from(id: u8) -> Self {
+        match id {
+            #[cfg(feature = "tcp")]
+            0 => Transport::Tcp,
+            #[cfg(feature = "tcp")]
+            1 => Transport::FramedTcp,
+            #[cfg(feature = "udp")]
+            2 => Transport::Udp,
+            #[cfg(feature = "websocket")]
+            3 => Transport::Ws,
+            _ => panic!("Not available transport"),
+        }
     }
 }
 

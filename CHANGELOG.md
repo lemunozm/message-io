@@ -2,6 +2,7 @@
 
 ## Release 0.13.2
 - Faster compilation. reduced some dependencies.
+- Faster `NodeHandler` clone and less memory usage in each instance.
 
 ## Release 0.13.1
 - Added `NodeListener::enqueue()`.

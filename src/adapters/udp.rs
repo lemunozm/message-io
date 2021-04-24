@@ -24,8 +24,6 @@ pub const MAX_PAYLOAD_LEN: usize = 65535 - 20 - 8;
 // 9216: MTU of the OS with the minimun MTU: OSX
 pub const MAX_COMPATIBLE_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 
-const INPUT_BUFFER_SIZE: usize = 65535; // 2^16 - 1
-
 pub(crate) struct UdpAdapter;
 impl Adapter for UdpAdapter {
     type Remote = RemoteResource;
@@ -52,7 +50,7 @@ impl Remote for RemoteResource {
     }
 
     fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
-        let buffer: MaybeUninit<[u8; INPUT_BUFFER_SIZE]> = MaybeUninit::uninit();
+        let buffer: MaybeUninit<[u8; MAX_PAYLOAD_LEN]> = MaybeUninit::uninit();
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 
         loop {
@@ -108,7 +106,7 @@ impl Local for LocalResource {
     }
 
     fn accept(&self, mut accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
-        let buffer: MaybeUninit<[u8; INPUT_BUFFER_SIZE]> = MaybeUninit::uninit();
+        let buffer: MaybeUninit<[u8; MAX_PAYLOAD_LEN]> = MaybeUninit::uninit();
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 
         loop {

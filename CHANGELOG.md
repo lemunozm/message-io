@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.13.2
+- Faster compilation. reduced some dependencies.
+
 ## Release 0.13.1
 - Added `NodeListener::enqueue()`.
 

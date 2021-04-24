@@ -1,4 +1,4 @@
-use crossbeam::channel::{self, Sender, Receiver, select};
+use crossbeam_channel::{self, Sender, Receiver, select};
 
 use std::time::{Instant, Duration};
 use std::collections::{BTreeMap};
@@ -38,9 +38,9 @@ where E: Send + 'static
 {
     /// Creates a new event queue for generic incoming events.
     fn default() -> Self {
-        let (sender, receiver) = channel::unbounded();
-        let (timer_sender, timer_receiver) = channel::unbounded();
-        let (priority_sender, priority_receiver) = channel::unbounded();
+        let (sender, receiver) = crossbeam_channel::unbounded();
+        let (timer_sender, timer_receiver) = crossbeam_channel::unbounded();
+        let (priority_sender, priority_receiver) = crossbeam_channel::unbounded();
         EventReceiver {
             event_sender: EventSender::new(sender, timer_sender, priority_sender),
             receiver,
@@ -91,7 +91,7 @@ where E: Send + 'static
                 select! {
                     recv(self.receiver) -> event => event.unwrap(),
                     recv(self.priority_receiver) -> event => event.unwrap(),
-                    recv(channel::at(next_instant)) -> _ => {
+                    recv(crossbeam_channel::at(next_instant)) -> _ => {
                         self.timers.remove(&next_instant).unwrap()
                     }
                 }
@@ -123,7 +123,7 @@ where E: Send + 'static
                 select! {
                     recv(self.receiver) -> event => Some(event.unwrap()),
                     recv(self.priority_receiver) -> event => Some(event.unwrap()),
-                    recv(channel::at(next_instant)) -> _ => {
+                    recv(crossbeam_channel::at(next_instant)) -> _ => {
                         self.timers.remove(&next_instant)
                     }
                     default(timeout) => None

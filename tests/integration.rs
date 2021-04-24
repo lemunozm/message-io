@@ -67,7 +67,7 @@ fn start_echo_server(
     transport: Transport,
     expected_clients: usize,
 ) -> (NamespacedThread<()>, SocketAddr) {
-    let (tx, rx) = crossbeam::channel::bounded(1);
+    let (tx, rx) = crossbeam_channel::bounded(1);
     let thread = NamespacedThread::spawn("test-server", move || {
         let mut messages_received = 0;
         let mut disconnections = 0;
@@ -169,7 +169,7 @@ fn start_burst_receiver(
     transport: Transport,
     expected_count: usize,
 ) -> (NamespacedThread<()>, SocketAddr) {
-    let (tx, rx) = crossbeam::channel::bounded(1);
+    let (tx, rx) = crossbeam_channel::bounded(1);
     let thread = NamespacedThread::spawn("test-receiver", move || {
         let (node, listener) = node::split();
         node.signals().send_with_timer((), *TIMEOUT);

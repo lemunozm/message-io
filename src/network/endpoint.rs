@@ -36,12 +36,8 @@ impl Endpoint {
     /// handler.network().send(Endpoint::new(sender_id, addr_2), &[42]);
     ///
     /// let (mut msg_1, mut msg_2) = (0, 0);
-    /// listener.for_each(move |event| {
-    /// match event {
-    ///     NodeEvent::Signal(_) => {
-    ///         assert_eq!((msg_1, msg_2), (23, 42));
-    ///         handler.stop();
-    ///     }
+    /// listener.for_each(|event| match event {
+    ///     NodeEvent::Signal(_) => handler.stop(),
     ///     NodeEvent::Network(net_event) => match net_event {
     ///         NetEvent::Message(endpoint, message) => match endpoint.resource_id() {
     ///             id if id == receiver_id_1 => msg_1 = message[0],
@@ -49,8 +45,10 @@ impl Endpoint {
     ///             _ => unreachable!(),
     ///         }
     ///         _ => unreachable!(),
-    ///     }}
+    ///     }
     /// });
+    ///
+    /// assert_eq!((msg_1, msg_2), (23, 42));
     /// ```
     pub fn new(resource_id: ResourceId, addr: SocketAddr) -> Self {
         Self { resource_id, addr }

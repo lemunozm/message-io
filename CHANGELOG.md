@@ -1,6 +1,7 @@
 # Changelog
 
 ## Release 0.13.2
+- Added `Endpoint::from_listener()` that allows to send datagrams from listeners in non connection-oriented protocols (see the API docs).
 - Removed `'static` restriction in the `NodeListener::for_each()` callback.
 Now, you can pass references to the callback.
 - Faster compilation. Reduced some dependencies.

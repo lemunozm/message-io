@@ -14,9 +14,10 @@ impl Endpoint {
     /// Creates a new Endpoint to use in non connection oriented protocols.
     ///
     /// For non connection-oriented protocols, as *UDP*, the endpoint can be created manually
-    /// from a listener resource to send messages to different address without creating a connection.
+    /// from a **listener resource** to send messages to different address without
+    /// creating a connection.
     ///
-    /// For connection oriented protocol, to create manually and endpoint is not allowed.
+    /// For connection oriented protocol, creating manually an endpoint is not allowed.
     ///
     /// # Example
     /// ```rust
@@ -31,9 +32,9 @@ impl Endpoint {
     /// let (receiver_id_2, addr_2) = handler.network().listen(Transport::Udp, listen_addr).unwrap();
     /// let (sender_id, _) = handler.network().listen(Transport::Udp, listen_addr).unwrap();
     ///
-    /// //addr_1 and addr_2 contains the address with the listening port.
-    /// handler.network().send(Endpoint::new(sender_id, addr_1), &[23]);
-    /// handler.network().send(Endpoint::new(sender_id, addr_2), &[42]);
+    /// //addr_1 and addr_2 contain the addresses with the listening ports.
+    /// handler.network().send(Endpoint::from_listener(sender_id, addr_1), &[23]);
+    /// handler.network().send(Endpoint::from_listener(sender_id, addr_2), &[42]);
     ///
     /// let (mut msg_1, mut msg_2) = (0, 0);
     /// listener.for_each(|event| match event {
@@ -50,7 +51,17 @@ impl Endpoint {
     ///
     /// assert_eq!((msg_1, msg_2), (23, 42));
     /// ```
-    pub fn new(resource_id: ResourceId, addr: SocketAddr) -> Self {
+    pub fn from_listener(resource_id: ResourceId, addr: SocketAddr) -> Self {
+        // Only local resources allowed
+        assert_eq!(resource_id.resource_type(), super::resource_id::ResourceType::Local);
+
+        // Only packet based transport protocols allowed
+        assert!(super::transport::Transport::from(resource_id.adapter_id()).is_packet_based());
+
+        Endpoint::new(resource_id, addr)
+    }
+
+    pub(crate) fn new(resource_id: ResourceId, addr: SocketAddr) -> Self {
         Self { resource_id, addr }
     }
 

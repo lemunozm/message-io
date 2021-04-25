@@ -488,6 +488,7 @@ dependencies = [
  "chrono",
  "criterion",
  "crossbeam-channel",
+ "crossbeam-utils",
  "doc-comment",
  "fern",
  "httparse",

@@ -101,9 +101,10 @@ impl Transport {
         }
     }
 
-    /// Tell if the transport protocol is a packet based protocol.
+    /// Tell if the transport protocol is a packet-based protocol.
     /// It implies that any send call corresponds to a data message event.
-    /// The opossite of a packet based is a stream based transport (e.g Tcp).
+    /// It satisfies that the number of bytes sent are the same as received.
+    /// The opossite of a packet-based is a stream-based transport (e.g Tcp).
     /// In this case, reading a data message event do not imply reading the entire message sent.
     /// It is in change of the user to determinate how to read the data.
     pub const fn is_packet_based(self) -> bool {

@@ -235,19 +235,6 @@ impl<S: Send + 'static> Clone for NodeHandler<S> {
     }
 }
 
-struct SendableEventCallback<S>(Arc<Mutex<dyn FnMut(NodeEvent<S>)>>);
-
-// This struct is used to allow passing no Sendable objects into the listener jobs.
-// Although it is unsafe, it is safely handled by the for_each / for_each_async functions.
-// (see its internal comments)
-unsafe impl<S> Send for SendableEventCallback<S> {}
-
-impl<S> Clone for SendableEventCallback<S> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-
 /// Listen events for network and signal events.
 pub struct NodeListener<S: Send + 'static> {
     network_cache_thread: NamespacedThread<(NetworkProcessor, VecDeque<StoredNetEvent>)>,
@@ -304,13 +291,66 @@ impl<S: Send + 'static> NodeListener<S> {
     /// // Blocked here until handler.stop() was called (1 sec).
     /// println!("Node is stopped");
     /// ```
-    pub fn for_each(self, event_callback: impl FnMut(NodeEvent<S>) + 'static) {
-        let sendable_callback = SendableEventCallback(Arc::new(Mutex::new(event_callback)));
-        let mut task = self.for_each_impl(sendable_callback);
+    pub fn for_each(mut self, mut event_callback: impl FnMut(NodeEvent<S>)) {
+        // Stop cache events
+        self.cache_running.store(false, Ordering::Relaxed);
+        let (mut network_processor, mut cache) = self.network_cache_thread.join();
 
-        // Although the event_callback is not sync, we ensure with this wait() that no more events
-        // will be processed when the control is returned to the user.
-        task.wait();
+        // Dispatch the catched events first.
+        while let Some(event) = cache.pop_front() {
+            let net_event = event.borrow();
+            log::trace!("Read from cache {:?}", net_event);
+            event_callback(NodeEvent::Network(net_event));
+            if !self.handler.is_running() {
+                return
+            }
+        }
+
+        crossbeam_utils::thread::scope(|scope| {
+            let multiplexed = Arc::new(Mutex::new(event_callback));
+
+            let _signal_thread = {
+                let mut signal_receiver = std::mem::take(&mut self.signal_receiver);
+                let handler = self.handler.clone();
+
+                // This struct is used to allow passing the no sendable event_callback
+                // into the signal thread.
+                // It is safe because the thread are scoped and the callback is managed by a lock,
+                // so only one call is performed at the same time.
+                // It implies that any object moved into the callback do not have
+                // any concurrence issues.
+                struct SendableEventCallback<'a, S>(Arc<Mutex<dyn FnMut(NodeEvent<S>) + 'a>>);
+                unsafe impl<'a, S> Send for SendableEventCallback<'a, S> {}
+
+                let multiplexed = SendableEventCallback(multiplexed.clone());
+
+                scope
+                    .builder()
+                    .spawn(move |_| {
+                        while handler.is_running() {
+                            if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT)
+                            {
+                                let mut event_callback =
+                                    multiplexed.0.lock().expect(OTHER_THREAD_ERR);
+                                if handler.is_running() {
+                                    event_callback(NodeEvent::Signal(signal));
+                                }
+                            }
+                        }
+                    })
+                    .unwrap()
+            };
+
+            while self.handler.is_running() {
+                network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), |net_event| {
+                    let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
+                    if self.handler.is_running() {
+                        event_callback(NodeEvent::Network(net_event));
+                    }
+                });
+            }
+        })
+        .unwrap();
     }
 
     /// Similar to [`NodeListener::for_each()`] but it returns the control to the user
@@ -347,35 +387,28 @@ impl<S: Send + 'static> NodeListener<S> {
     /// println!("Node is stopped");
     /// ```
     pub fn for_each_async(
-        self,
+        mut self,
         event_callback: impl FnMut(NodeEvent<S>) + Send + 'static,
     ) -> NodeTask {
-        let sendable_callback = SendableEventCallback(Arc::new(Mutex::new(event_callback)));
-
-        // The signature of this functions add the `Send` to the `event_callback` that
-        // `SendableEventCallback` removed, so the usage is safe.
-        self.for_each_impl(sendable_callback)
-    }
-
-    fn for_each_impl(mut self, multiplexed: SendableEventCallback<S>) -> NodeTask {
         // Stop cache events
         self.cache_running.store(false, Ordering::Relaxed);
         let (mut network_processor, mut cache) = self.network_cache_thread.join();
 
+        let multiplexed = Arc::new(Mutex::new(event_callback));
+
         // To avoid processing stops while the node is configuring,
         // the user callback locked until the function ends.
-        let _locked = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
+        let _locked = multiplexed.lock().expect(OTHER_THREAD_ERR);
 
         let network_thread = {
             let multiplexed = multiplexed.clone();
             let handler = self.handler.clone();
 
             NamespacedThread::spawn("node-network-thread", move || {
-                // Dispatch the catched events first.
                 while let Some(event) = cache.pop_front() {
-                    let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
                     let net_event = event.borrow();
                     log::trace!("Read from cache {:?}", net_event);
+                    let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                     event_callback(NodeEvent::Network(net_event));
                     if !handler.is_running() {
                         return
@@ -384,7 +417,7 @@ impl<S: Send + 'static> NodeListener<S> {
 
                 while handler.is_running() {
                     network_processor.process_poll_event(Some(*SAMPLING_TIMEOUT), |net_event| {
-                        let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
+                        let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                         if handler.is_running() {
                             event_callback(NodeEvent::Network(net_event));
                         }
@@ -401,7 +434,7 @@ impl<S: Send + 'static> NodeListener<S> {
             NamespacedThread::spawn("node-signal-thread", move || {
                 while handler.is_running() {
                     if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT) {
-                        let mut event_callback = multiplexed.0.lock().expect(OTHER_THREAD_ERR);
+                        let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                         if handler.is_running() {
                             event_callback(NodeEvent::Signal(signal));
                         }

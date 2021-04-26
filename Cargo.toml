@@ -27,6 +27,7 @@ websocket = ["tungstenite", "url", "mio/tcp"]
 mio = { version = "0.7", features = ["os-poll"] }
 serde = { version = "1.0", features = ["derive"] }
 crossbeam-channel = "0.5"
+crossbeam-utils = "0.8"
 log = "0.4"
 net2 = "0.2.34"
 strum = { version = "0.20", features = ["derive"] }

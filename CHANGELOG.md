@@ -1,7 +1,9 @@
 # Changelog
 
 ## Release 0.13.2
-- Faster compilation. reduced some dependencies.
+- Removed `'static` restriction in the `NodeListener::for_each()` callback.
+Now, you can pass references to the callback.
+- Faster compilation. Reduced some dependencies.
 - Faster `NodeHandler` clone and less memory usage in each instance.
 
 ## Release 0.13.1

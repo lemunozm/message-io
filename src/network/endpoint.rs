@@ -51,14 +51,14 @@ impl Endpoint {
     ///
     /// assert_eq!((msg_1, msg_2), (23, 42));
     /// ```
-    pub fn from_listener(resource_id: ResourceId, addr: SocketAddr) -> Self {
+    pub fn from_listener(id: ResourceId, addr: SocketAddr) -> Self {
         // Only local resources allowed
-        assert_eq!(resource_id.resource_type(), super::resource_id::ResourceType::Local);
+        assert_eq!(id.resource_type(), super::resource_id::ResourceType::Local);
 
         // Only packet based transport protocols allowed
-        assert!(super::transport::Transport::from(resource_id.adapter_id()).is_packet_based());
+        assert!(!super::transport::Transport::from(id.adapter_id()).is_connection_oriented());
 
-        Endpoint::new(resource_id, addr)
+        Endpoint::new(id, addr)
     }
 
     pub(crate) fn new(resource_id: ResourceId, addr: SocketAddr) -> Self {
@@ -81,5 +81,35 @@ impl Endpoint {
 impl std::fmt::Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{} {}", self.resource_id, self.addr)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::resource_id::{ResourceType, ResourceIdGenerator};
+    use crate::network::transport::{Transport};
+
+    #[test]
+    #[should_panic]
+    fn from_remote_non_connection_oriented() {
+        let addr = "0.0.0.0:0".parse().unwrap();
+        let generator = ResourceIdGenerator::new(Transport::Udp.id(), ResourceType::Remote);
+        Endpoint::from_listener(generator.generate(), addr);
+    }
+
+    #[test]
+    #[should_panic]
+    fn from_local_connection_oriented() {
+        let addr = "0.0.0.0:0".parse().unwrap();
+        let generator = ResourceIdGenerator::new(Transport::Tcp.id(), ResourceType::Local);
+        Endpoint::from_listener(generator.generate(), addr);
+    }
+
+    #[test]
+    fn from_local_non_connection_oriented() {
+        let addr = "0.0.0.0:0".parse().unwrap();
+        let generator = ResourceIdGenerator::new(Transport::Udp.id(), ResourceType::Local);
+        Endpoint::from_listener(generator.generate(), addr);
     }
 }

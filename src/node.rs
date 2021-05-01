@@ -110,7 +110,8 @@ impl<S> From<NodeEvent<'_, S>> for StoredNodeEvent<S> {
 /// This kind of event is dispatched by `NodeListener::to_event_queue()`.
 #[derive(Debug, Clone)]
 pub enum StoredNetEvent {
-    Connected(Endpoint, ResourceId),
+    Connected(Endpoint, bool),
+    Accepted(Endpoint, ResourceId),
     Message(Endpoint, Vec<u8>),
     Disconnected(Endpoint),
 }
@@ -118,7 +119,8 @@ pub enum StoredNetEvent {
 impl From<NetEvent<'_>> for StoredNetEvent {
     fn from(net_event: NetEvent<'_>) -> Self {
         match net_event {
-            NetEvent::Connected(endpoint, id) => Self::Connected(endpoint, id),
+            NetEvent::Connected(endpoint, ok) => Self::Connected(endpoint, ok),
+            NetEvent::Accepted(endpoint, id) => Self::Accepted(endpoint, id),
             NetEvent::Message(endpoint, data) => Self::Message(endpoint, Vec::from(data)),
             NetEvent::Disconnected(endpoint) => Self::Disconnected(endpoint),
         }
@@ -129,8 +131,9 @@ impl StoredNetEvent {
     /// Use this `StoredNetEvent` as a `NetEvent` referencing its data.
     fn borrow(&self) -> NetEvent<'_> {
         match self {
-            Self::Connected(endpoint, id) => NetEvent::Connected(*endpoint, *id),
-            Self::Message(endpoint, data) => NetEvent::Message(*endpoint, &data),
+            Self::Connected(endpoint, ok) => NetEvent::Connected(*endpoint, *ok),
+            Self::Accepted(endpoint, id) => NetEvent::Accepted(*endpoint, *id),
+            Self::Message(endpoint, data) => NetEvent::Message(*endpoint, data),
             Self::Disconnected(endpoint) => NetEvent::Disconnected(*endpoint),
         }
     }

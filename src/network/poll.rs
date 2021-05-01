@@ -1,14 +1,19 @@
 use super::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
 
-use mio::{Poll as MioPoll, Interest, Token, Events, Registry, Waker};
+use mio::{Poll as MioPoll, Interest as MioInterest, Token, Events, Registry, Waker};
 use mio::event::{Source};
 
 use std::time::{Duration};
 use std::sync::{Arc};
 use std::io::{ErrorKind};
 
+pub enum Interest {
+    Readable,
+    Writable,
+}
+
 pub enum PollEvent {
-    Network(ResourceId),
+    Network(ResourceId, Interest),
     Waker,
 }
 
@@ -53,19 +58,21 @@ impl Poll {
             match self.mio_poll.poll(&mut self.events, timeout) {
                 Ok(_) => {
                     for mio_event in &self.events {
-                        let poll_event = match mio_event.token() {
-                            Self::WAKER_TOKEN => {
-                                log::trace!("POLL EVENT: waker");
-                                PollEvent::Waker
+                        if Self::WAKER_TOKEN == mio_event.token() {
+                            log::trace!("POLL WAKER EVENT");
+                            event_callback(PollEvent::Waker);
+                        }
+                        else {
+                            let resource_id = ResourceId::from(mio_event.token());
+                            if mio_event.is_readable() {
+                                log::trace!("POLL EVENT (R): {}", resource_id);
+                                event_callback(PollEvent::Network(resource_id, Interest::Readable));
                             }
-                            token => {
-                                let resource_id = ResourceId::from(token);
-                                log::trace!("POLL EVENT: {}", resource_id);
-                                PollEvent::Network(resource_id)
+                            if mio_event.is_writable() {
+                                log::trace!("POLL EVENT (W): {}", resource_id);
+                                event_callback(PollEvent::Network(resource_id, Interest::Writable));
                             }
-                        };
-
-                        event_callback(poll_event);
+                        }
                     }
                     break
                 }
@@ -100,7 +107,7 @@ impl PollRegistry {
 
     pub fn add(&self, source: &mut dyn Source) -> ResourceId {
         let id = self.id_generator.generate();
-        self.registry.register(source, id.into(), Interest::READABLE).unwrap();
+        self.registry.register(source, id.into(), MioInterest::READABLE | MioInterest::WRITABLE).unwrap();
         log::trace!("Register to poll: {}", id);
         id
     }

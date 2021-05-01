@@ -150,13 +150,14 @@ impl NetworkProcessor {
         let processors = &mut self.processors;
         self.poll.process_event(timeout, |poll_event| {
             match poll_event {
-                PollEvent::Network(resource_id) => {
-                    let adapter_id = resource_id.adapter_id() as usize;
-                    processors[adapter_id].process(resource_id, &mut |net_event| {
+                PollEvent::Network(resource_id, interest) => {
+                    let processor = &processors[resource_id.adapter_id() as usize];
+                    processor.process(resource_id, interest, &mut |net_event| {
                         log::trace!("Processed {:?}", net_event);
                         event_callback(net_event);
                     });
                 }
+
                 #[allow(dead_code)] //TODO: remove it with native event support
                 PollEvent::Waker => todo!(),
             }

@@ -1,6 +1,6 @@
 use super::endpoint::{Endpoint};
 use super::resource_id::{ResourceId};
-use super::poll::{Poll};
+use super::poll::{Poll, Interest};
 use super::remote_addr::{RemoteAddr};
 use super::driver::{NetEvent, Driver, ActionController, EventProcessor};
 use super::adapter::{Adapter, SendStatus};
@@ -80,7 +80,7 @@ impl ActionController for UnimplementedDriver {
 }
 
 impl EventProcessor for UnimplementedDriver {
-    fn process(&self, _: ResourceId, _: &mut dyn FnMut(NetEvent<'_>)) {
+    fn process(&self, _: ResourceId, _: Interest, _: &mut dyn FnMut(NetEvent<'_>)) {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
     }
 }

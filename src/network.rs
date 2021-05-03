@@ -186,8 +186,6 @@ mod tests {
         let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
         let (endpoint, _) = controller.connect(Transport::Tcp, RemoteAddr::Socket(addr)).unwrap();
 
-        dbg!(addr);
-
         let mut was_connected = 0;
         let mut was_accepted = 0;
         for _ in 0..2 {

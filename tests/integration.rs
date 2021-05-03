@@ -82,6 +82,14 @@ fn start_echo_server(
         listener.for_each(move |event| match event {
             NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
             NodeEvent::Network(net_event) => match net_event {
+                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Accepted(endpoint, id) => {
+                    assert_eq!(listener_id, id);
+                    match transport.is_connection_oriented() {
+                        true => assert!(clients.insert(endpoint)),
+                        false => unreachable!(),
+                    }
+                }
                 NetEvent::Message(endpoint, data) => {
                     assert_eq!(MIN_MESSAGE, data);
 
@@ -98,14 +106,6 @@ fn start_echo_server(
                         if messages_received == expected_clients {
                             node.stop() //Exit from thread.
                         }
-                    }
-                }
-                NetEvent::Connected(..) => unreachable!(),
-                NetEvent::Accepted(endpoint, id) => {
-                    assert_eq!(listener_id, id);
-                    match transport.is_connection_oriented() {
-                        true => assert!(clients.insert(endpoint)),
-                        false => unreachable!(),
                     }
                 }
                 NetEvent::Disconnected(endpoint) => {
@@ -140,6 +140,7 @@ fn start_echo_client_manager(
         node.signals().send_with_timer((), *TIMEOUT);
 
         let mut clients = HashSet::new();
+        let mut received = 0;
 
         for _ in 0..clients_number {
             node.network().connect(transport, server_addr).unwrap();
@@ -148,18 +149,20 @@ fn start_echo_client_manager(
         listener.for_each(move |event| match event {
             NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
             NodeEvent::Network(net_event) => match net_event {
-                NetEvent::Message(endpoint, data) => {
-                    assert!(clients.remove(&endpoint));
-                    assert_eq!(MIN_MESSAGE, data);
-                    node.network().remove(endpoint.resource_id());
-                    if clients.len() == 0 {
-                        node.stop(); //Exit from thread.
-                    }
-                }
                 NetEvent::Connected(server) => {
                     let status = node.network().send(server, MIN_MESSAGE);
                     assert_eq!(SendStatus::Sent, status);
                     assert!(clients.insert(server));
+                }
+                NetEvent::Message(endpoint, data) => {
+                    assert!(clients.remove(&endpoint));
+                    assert_eq!(MIN_MESSAGE, data);
+                    node.network().remove(endpoint.resource_id());
+
+                    received += 1;
+                    if received == clients_number {
+                        node.stop(); //Exit from thread.
+                    }
                 }
                 NetEvent::Accepted(..) => unreachable!(),
                 NetEvent::Disconnected(_) => unreachable!(),
@@ -184,6 +187,8 @@ fn start_burst_receiver(
         listener.for_each(move |event| match event {
             NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
             NodeEvent::Network(net_event) => match net_event {
+                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Accepted(..) => (),
                 NetEvent::Message(_, data) => {
                     let expected_message = format!("{}: {}", SMALL_MESSAGE, count);
                     assert_eq!(expected_message, String::from_utf8_lossy(&data));
@@ -192,8 +197,6 @@ fn start_burst_receiver(
                         node.stop();
                     }
                 }
-                NetEvent::Connected(..) => unreachable!(),
-                NetEvent::Accepted(..) => (),
                 NetEvent::Disconnected(_) => (),
             },
         });
@@ -281,16 +284,6 @@ fn message_size(transport: Transport, message_size: usize) {
     listener.for_each(move |event| match event {
         NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
         NodeEvent::Network(net_event) => match net_event {
-            NetEvent::Message(_, data) => {
-                if transport.is_packet_based() {
-                    received_message = data.to_vec();
-                    assert_eq!(sent_message, received_message);
-                    node.stop();
-                }
-                else {
-                    received_message.extend_from_slice(&data);
-                }
-            }
             NetEvent::Connected(endpoint) => {
                 assert_eq!(receiver, endpoint);
 
@@ -306,6 +299,16 @@ fn message_size(transport: Transport, message_size: usize) {
                 }));
             }
             NetEvent::Accepted(..) => (),
+            NetEvent::Message(_, data) => {
+                if transport.is_packet_based() {
+                    received_message = data.to_vec();
+                    assert_eq!(sent_message, received_message);
+                    node.stop();
+                }
+                else {
+                    received_message.extend_from_slice(&data);
+                }
+            }
             NetEvent::Disconnected(_) => {
                 assert_eq!(sent_message.len(), received_message.len());
                 assert_eq!(sent_message, received_message);

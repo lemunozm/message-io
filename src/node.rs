@@ -106,8 +106,9 @@ impl<S> From<NodeEvent<'_, S>> for StoredNodeEvent<S> {
     }
 }
 
-/// Analogous to [`NetEvent`] but without reference the data.
-/// This kind of event is dispatched by `NodeListener::to_event_queue()`.
+/// Analogous to [`NetEvent`] but with static lifetime (without reference the data).
+/// This kind of event is dispatched by `NodeListener::to_event_queue()`
+/// and can be easily stored in any container.
 #[derive(Debug, Clone)]
 pub enum StoredNetEvent {
     Connected(Endpoint),

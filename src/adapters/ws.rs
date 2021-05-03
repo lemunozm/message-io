@@ -20,7 +20,7 @@ use tungstenite::error::{Error};
 use url::Url;
 
 use std::sync::{Mutex};
-use std::net::{SocketAddr, TcpStream as StdTcpStream};
+use std::net::{SocketAddr};
 use std::io::{self, ErrorKind};
 use std::ops::{DerefMut};
 
@@ -77,13 +77,8 @@ impl Remote for RemoteResource {
             }
         };
 
-        // Synchronous tcp handshake
-        let stream = StdTcpStream::connect(peer_addr)?;
+        let stream = TcpStream::connect(peer_addr)?;
         let local_addr = stream.local_addr()?;
-
-        // Make it an asynchronous mio TcpStream
-        stream.set_nonblocking(true)?;
-        let stream = TcpStream::from_std(stream);
 
         // Synchronous waiting for web socket handshake
         let mut handshake_result = ws_connect(url, stream);

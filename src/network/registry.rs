@@ -6,17 +6,30 @@ use crate::util::thread::{OTHER_THREAD_ERR};
 
 use std::collections::{HashMap};
 use std::net::{SocketAddr};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, atomic::{AtomicBool, Ordering}};
 
 pub struct Register<S: Resource> {
     pub resource: S,
+
+    // Most significant addr of the resource
+    // If the resource is a remote resource, the addr will be the peer addr.
+    // If the resource is a local resource, the addr will be the local addr.
     pub addr: SocketAddr,
+    ready: AtomicBool,
     poll_registry: Arc<PollRegistry>,
 }
 
 impl<S: Resource> Register<S> {
-    fn new(resource: S, addr: SocketAddr, poll_registry: Arc<PollRegistry>) -> Self {
-        Self { resource, addr, poll_registry }
+    fn new(resource: S, addr: SocketAddr, ready: bool, poll_registry: Arc<PollRegistry>) -> Self {
+        Self { resource, addr, ready: AtomicBool::new(ready), poll_registry }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.ready.load(Ordering::Relaxed)
+    }
+
+    pub fn mark_as_ready(&self) {
+        self.ready.store(true, Ordering::Relaxed);
     }
 }
 
@@ -27,10 +40,6 @@ impl<S: Resource> Drop for Register<S> {
 }
 
 pub struct ResourceRegistry<S: Resource> {
-    // We store the most significant addr of the resource because if the resource disconnects,
-    // it can not be retrieved.
-    // If the resource is a remote resource, the addr will be the peer addr.
-    // If the resource is a local resource, the addr will be the local addr.
     resources: RwLock<HashMap<ResourceId, Arc<Register<S>>>>,
     poll_registry: Arc<PollRegistry>,
 }
@@ -44,9 +53,9 @@ impl<S: Resource> ResourceRegistry<S> {
     }
 
     /// Add a resource into the registry.
-    pub fn add(&self, mut resource: S, addr: SocketAddr) -> ResourceId {
+    pub fn add(&self, mut resource: S, addr: SocketAddr, ready: bool) -> ResourceId {
         let id = self.poll_registry.add(resource.source());
-        let register = Register::new(resource, addr, self.poll_registry.clone());
+        let register = Register::new(resource, addr, ready, self.poll_registry.clone());
         self.resources.write().expect(OTHER_THREAD_ERR).insert(id, Arc::new(register));
         id
     }

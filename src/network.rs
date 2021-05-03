@@ -174,37 +174,87 @@ mod tests {
         static ref TIMEOUT: Duration = Duration::from_millis(1000);
     }
 
-    #[test]
-    fn create_remove_listener() {
-        let (controller, mut processor) = self::split();
-        let (listener_id, _) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
-        assert!(controller.remove(listener_id)); // Do not generate an event
-        assert!(!controller.remove(listener_id));
-
+    fn no_more_events(mut processor: NetworkProcessor) {
         let mut was_event = false;
         processor.process_poll_event(Some(*TIMEOUT), |_| was_event = true);
         assert!(!was_event);
     }
 
     #[test]
+    fn successful_connection() {
+        let (controller, mut processor) = self::split();
+        let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        let (endpoint, _) = controller.connect(Transport::Tcp, RemoteAddr::Socket(addr)).unwrap();
+
+        dbg!(addr);
+
+        let mut was_connected = 0;
+        let mut was_accepted = 0;
+        for _ in 0..2 {
+            processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
+                NetEvent::Connected(net_endpoint) => {
+                    assert_eq!(endpoint, net_endpoint);
+                    was_connected += 1;
+                }
+                NetEvent::Accepted(_, net_listener_id) => {
+                    assert_eq!(listener_id, net_listener_id);
+                    was_accepted += 1;
+                }
+                _ => unreachable!()
+            });
+        }
+        assert_eq!(was_connected, 1);
+        assert_eq!(was_accepted, 1);
+
+        no_more_events(processor);
+    }
+
+    #[test]
+    fn unreachable_connection() {
+        let (controller, mut processor) = self::split();
+        let (endpoint, _) = controller.connect(Transport::Tcp, "127.0.0.1:5555").unwrap();
+
+        let mut was_disconnected = false;
+        processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
+            NetEvent::Disconnected(net_endpoint) => {
+                assert_eq!(endpoint, net_endpoint);
+                was_disconnected = true;
+            }
+            _ => unreachable!()
+        });
+        assert!(was_disconnected);
+
+        no_more_events(processor);
+    }
+
+    #[test]
+    fn create_remove_listener() {
+        let (controller, processor) = self::split();
+        let (listener_id, _) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        assert!(controller.remove(listener_id)); // Do not generate an event
+        assert!(!controller.remove(listener_id));
+
+        no_more_events(processor);
+    }
+
+    #[test]
     fn create_remove_listener_with_connection() {
         let (controller, mut processor) = self::split();
         let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
-        controller.connect(Transport::Tcp, addr).unwrap();
+        controller.connect(Transport::Tcp, RemoteAddr::Socket(addr)).unwrap();
 
-        let mut was_event = false;
-        processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
-            NetEvent::Connected(_, _) => {
-                assert!(controller.remove(listener_id));
-                assert!(!controller.remove(listener_id));
-                was_event = true;
-            }
-            _ => unreachable!(),
-        });
-        assert!(was_event);
+        for _ in 0..2 {
+            // We expect two events
+            processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
+                NetEvent::Connected(_) => (),
+                NetEvent::Accepted(_, _) => {
+                    assert!(controller.remove(listener_id));
+                    assert!(!controller.remove(listener_id));
+                }
+                _ => unreachable!(),
+            });
+        }
 
-        let mut was_event = false;
-        processor.process_poll_event(Some(*TIMEOUT), |_| was_event = true);
-        assert!(!was_event);
+        no_more_events(processor);
     }
 }

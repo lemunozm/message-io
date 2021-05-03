@@ -100,7 +100,8 @@ fn start_echo_server(
                         }
                     }
                 }
-                NetEvent::Connected(endpoint, id) => {
+                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Accepted(endpoint, id) => {
                     assert_eq!(listener_id, id);
                     match transport.is_connection_oriented() {
                         true => assert!(clients.insert(endpoint)),
@@ -141,10 +142,7 @@ fn start_echo_client_manager(
         let mut clients = HashSet::new();
 
         for _ in 0..clients_number {
-            let (server, _) = node.network().connect(transport, server_addr).unwrap();
-            let status = node.network().send(server, MIN_MESSAGE);
-            assert_eq!(SendStatus::Sent, status);
-            assert!(clients.insert(server));
+            node.network().connect(transport, server_addr).unwrap();
         }
 
         listener.for_each(move |event| match event {
@@ -158,7 +156,12 @@ fn start_echo_client_manager(
                         node.stop(); //Exit from thread.
                     }
                 }
-                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Connected(server) => {
+                    let status = node.network().send(server, MIN_MESSAGE);
+                    assert_eq!(SendStatus::Sent, status);
+                    assert!(clients.insert(server));
+                }
+                NetEvent::Accepted(..) => unreachable!(),
                 NetEvent::Disconnected(_) => unreachable!(),
             },
         });
@@ -189,7 +192,8 @@ fn start_burst_receiver(
                         node.stop();
                     }
                 }
-                NetEvent::Connected(..) => (),
+                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Accepted(..) => (),
                 NetEvent::Disconnected(_) => (),
             },
         });
@@ -271,7 +275,6 @@ fn message_size(transport: Transport, message_size: usize) {
         assert_eq!(status, SendStatus::Sent);
     }
 
-    // Protocols as TCP blocks the sender if the receiver is not reading data and its buffer is fill.
     let mut _async_sender: Option<NamespacedThread<()>> = None;
 
     let mut received_message = Vec::new();
@@ -288,20 +291,21 @@ fn message_size(transport: Transport, message_size: usize) {
                     received_message.extend_from_slice(&data);
                 }
             }
-            NetEvent::Connected(..) => {
-                if transport.is_connection_oriented() {
-                    let node = node.clone();
-                    let sent_message = sent_message.clone();
-                    _async_sender = Some(NamespacedThread::spawn("test-sender", move || {
-                        let status = node.network().send(receiver, &sent_message);
-                        assert_eq!(status, SendStatus::Sent);
-                        assert!(node.network().remove(receiver.resource_id()));
-                    }));
-                }
-                else {
-                    unreachable!();
-                }
+            NetEvent::Connected(endpoint) => {
+                assert_eq!(receiver, endpoint);
+
+                let node = node.clone();
+                let sent_message = sent_message.clone();
+
+                // Protocols as TCP blocks the sender if the receiver is not reading data
+                // and its buffer is fill.
+                _async_sender = Some(NamespacedThread::spawn("test-sender", move || {
+                    let status = node.network().send(receiver, &sent_message);
+                    assert_eq!(status, SendStatus::Sent);
+                    assert!(node.network().remove(receiver.resource_id()));
+                }));
             }
+            NetEvent::Accepted(..) => (),
             NetEvent::Disconnected(_) => {
                 assert_eq!(sent_message.len(), received_message.len());
                 assert_eq!(sent_message, received_message);

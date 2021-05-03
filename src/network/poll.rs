@@ -107,7 +107,9 @@ impl PollRegistry {
 
     pub fn add(&self, source: &mut dyn Source) -> ResourceId {
         let id = self.id_generator.generate();
-        self.registry.register(source, id.into(), MioInterest::READABLE | MioInterest::WRITABLE).unwrap();
+        self.registry
+            .register(source, id.into(), MioInterest::READABLE | MioInterest::WRITABLE)
+            .unwrap();
         log::trace!("Register to poll: {}", id);
         id
     }

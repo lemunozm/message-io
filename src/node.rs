@@ -111,7 +111,7 @@ impl<S> From<NodeEvent<'_, S>> for StoredNodeEvent<S> {
 /// and can be easily stored in any container.
 #[derive(Debug, Clone)]
 pub enum StoredNetEvent {
-    Connected(Endpoint),
+    Ready(Endpoint, bool),
     Accepted(Endpoint, ResourceId),
     Message(Endpoint, Vec<u8>),
     Disconnected(Endpoint),
@@ -120,7 +120,7 @@ pub enum StoredNetEvent {
 impl From<NetEvent<'_>> for StoredNetEvent {
     fn from(net_event: NetEvent<'_>) -> Self {
         match net_event {
-            NetEvent::Connected(endpoint) => Self::Connected(endpoint),
+            NetEvent::Ready(endpoint, status) => Self::Ready(endpoint, status),
             NetEvent::Accepted(endpoint, id) => Self::Accepted(endpoint, id),
             NetEvent::Message(endpoint, data) => Self::Message(endpoint, Vec::from(data)),
             NetEvent::Disconnected(endpoint) => Self::Disconnected(endpoint),
@@ -132,7 +132,7 @@ impl StoredNetEvent {
     /// Use this `StoredNetEvent` as a `NetEvent` referencing its data.
     fn borrow(&self) -> NetEvent<'_> {
         match self {
-            Self::Connected(endpoint) => NetEvent::Connected(*endpoint),
+            Self::Ready(endpoint, status) => NetEvent::Ready(*endpoint, *status),
             Self::Accepted(endpoint, id) => NetEvent::Accepted(*endpoint, *id),
             Self::Message(endpoint, data) => NetEvent::Message(*endpoint, data),
             Self::Disconnected(endpoint) => NetEvent::Disconnected(*endpoint),

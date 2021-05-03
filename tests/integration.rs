@@ -82,7 +82,7 @@ fn start_echo_server(
         listener.for_each(move |event| match event {
             NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
             NodeEvent::Network(net_event) => match net_event {
-                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Ready(..) => unreachable!(),
                 NetEvent::Accepted(endpoint, id) => {
                     assert_eq!(listener_id, id);
                     match transport.is_connection_oriented() {
@@ -149,7 +149,8 @@ fn start_echo_client_manager(
         listener.for_each(move |event| match event {
             NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
             NodeEvent::Network(net_event) => match net_event {
-                NetEvent::Connected(server) => {
+                NetEvent::Ready(server, status) => {
+                    assert!(status);
                     let status = node.network().send(server, MIN_MESSAGE);
                     assert_eq!(SendStatus::Sent, status);
                     assert!(clients.insert(server));
@@ -187,7 +188,7 @@ fn start_burst_receiver(
         listener.for_each(move |event| match event {
             NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
             NodeEvent::Network(net_event) => match net_event {
-                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Ready(..) => unreachable!(),
                 NetEvent::Accepted(..) => (),
                 NetEvent::Message(_, data) => {
                     let expected_message = format!("{}: {}", SMALL_MESSAGE, count);
@@ -210,19 +211,40 @@ fn start_burst_sender(
     expected_count: usize,
 ) -> NamespacedThread<()> {
     NamespacedThread::spawn("test-sender", move || {
-        let (node, _) = node::split::<()>();
+        let (node, listener) = node::split::<()>();
 
         let (receiver, _) = node.network().connect(transport, receiver_addr).unwrap();
 
-        for count in 0..expected_count {
-            let message = format!("{}: {}", SMALL_MESSAGE, count);
-            let status = node.network().send(receiver, message.as_bytes());
-            assert_eq!(SendStatus::Sent, status);
-            if !transport.is_connection_oriented() {
-                // We need a rate to not lose packet.
-                std::thread::sleep(Duration::from_micros(20));
+        let mut count = 0;
+        listener.for_each(move |event| match event {
+            NodeEvent::Signal(_) => {
+                if count < expected_count {
+                    let message = format!("{}: {}", SMALL_MESSAGE, count);
+                    let status = node.network().send(receiver, message.as_bytes());
+                    assert_eq!(SendStatus::Sent, status);
+
+                    count += 1;
+                    if !transport.is_connection_oriented() {
+                        // We need a rate to not lose packet.
+                        node.signals().send_with_timer((), Duration::from_micros(20));
+                    }
+                    else {
+                        node.signals().send(());
+                    }
+                }
+                else {
+                    node.stop();
+                }
+            },
+            NodeEvent::Network(net_event) => match net_event {
+                NetEvent::Ready(_, status) => {
+                    assert!(status);
+                    node.signals().send(());
+                },
+                NetEvent::Disconnected(_) => (),
+                _ => unreachable!(),
             }
-        }
+        });
     })
 }
 
@@ -284,7 +306,8 @@ fn message_size(transport: Transport, message_size: usize) {
     listener.for_each(move |event| match event {
         NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
         NodeEvent::Network(net_event) => match net_event {
-            NetEvent::Connected(endpoint) => {
+            NetEvent::Ready(endpoint, status) => {
+                assert!(status);
                 assert_eq!(receiver, endpoint);
 
                 let node = node.clone();

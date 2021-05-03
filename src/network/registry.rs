@@ -54,9 +54,12 @@ impl<S: Resource> ResourceRegistry<S> {
 
     /// Add a resource into the registry.
     pub fn add(&self, mut resource: S, addr: SocketAddr, ready: bool) -> ResourceId {
+        // The registry must be locked for the entire implementation to avoid
+        // poll to generate events over false unregistered resources.
+        let mut registry = self.resources.write().expect(OTHER_THREAD_ERR);
         let id = self.poll_registry.add(resource.source());
         let register = Register::new(resource, addr, ready, self.poll_registry.clone());
-        self.resources.write().expect(OTHER_THREAD_ERR).insert(id, Arc::new(register));
+        registry.insert(id, Arc::new(register));
         id
     }
 

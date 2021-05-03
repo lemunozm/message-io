@@ -110,7 +110,6 @@ impl PollRegistry {
         self.registry
             .register(source, id.into(), MioInterest::READABLE | MioInterest::WRITABLE)
             .unwrap();
-        log::trace!("Register to poll: {}", id);
         id
     }
 

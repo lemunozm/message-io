@@ -19,6 +19,7 @@ pub use endpoint::{Endpoint};
 pub use remote_addr::{RemoteAddr, ToRemoteAddr};
 pub use transport::{Transport};
 pub use driver::{NetEvent};
+pub use poll::{Readiness};
 
 use loader::{DriverLoader, ActionControllerList, EventProcessorList};
 use poll::{Poll, PollEvent};

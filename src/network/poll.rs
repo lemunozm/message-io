@@ -8,8 +8,13 @@ use std::sync::{Arc};
 use std::io::{ErrorKind};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+/// Used for the adapter implementation.
+/// Specify the kind of event that is available for a resource.
 pub enum Readiness {
+    /// The resource is available to write
     Write,
+
+    /// The resource is available to read (has any content to read).
     Read,
 }
 

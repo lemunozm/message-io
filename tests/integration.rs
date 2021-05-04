@@ -254,8 +254,8 @@ fn start_burst_sender(
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 100))]
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, 1))]
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, 100))]
-//#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 1))]
-//#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 100))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 1))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 100))]
 // NOTE: A medium-high `clients` value can exceeds the "open file" limits of an OS in CI
 // with an obfuscated error message.
 fn echo(transport: Transport, clients: usize) {
@@ -268,7 +268,7 @@ fn echo(transport: Transport, clients: usize) {
 // Tcp: Does not apply: it's stream based
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, 2000))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, 200000))]
-//#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, 200000))]
 fn burst(transport: Transport, messages_count: usize) {
     //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 
@@ -279,7 +279,7 @@ fn burst(transport: Transport, messages_count: usize) {
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, BIG_MESSAGE_SIZE))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, BIG_MESSAGE_SIZE))]
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, udp::MAX_COMPATIBLE_PAYLOAD_LEN))]
-//#[cfg_attr(feature = "websocket", test_case(Transport::Ws, BIG_MESSAGE_SIZE))]
+#[cfg_attr(feature = "websocket", test_case(Transport::Ws, BIG_MESSAGE_SIZE))]
 fn message_size(transport: Transport, message_size: usize) {
     //util::init_logger(LogThread::Enabled); // Enable it for better debugging
 

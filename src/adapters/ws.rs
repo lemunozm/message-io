@@ -1,8 +1,8 @@
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
-    ListeningInfo,
+    ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr};
+use crate::network::{RemoteAddr, Readiness};
 use crate::util::thread::{OTHER_THREAD_ERR};
 
 use mio::event::{Source};
@@ -138,68 +138,81 @@ impl Remote for RemoteResource {
                         break ReadStatus::Disconnected // should not happen
                     }
                 },
-                RemoteState::Handshake(pending) => match pending.take().unwrap() {
-                    PendingHandshake::Client(mid_handshake) => match mid_handshake.handshake() {
-                        Ok((web_socket, _)) => {
-                            *state = RemoteState::WebSocket(web_socket);
-                        }
-                        Err(HandshakeError::Interrupted(mid_handshake)) => {
-                            *state = RemoteState::Handshake(Some(PendingHandshake::Client(
-                                mid_handshake,
-                            )))
-                        }
-                        Err(HandshakeError::Failure(err)) => {
-                            //CHECK: give to the user an io::Error?
-                            panic!("WS connect handshake error: {}", err)
-                        }
-                    },
-                    PendingHandshake::Server(mid_handshake) => match mid_handshake.handshake() {
-                        Ok(web_socket) => {
-                            *state = RemoteState::WebSocket(web_socket);
-                        }
-                        Err(HandshakeError::Interrupted(mid_handshake)) => {
-                            *pending = Some(PendingHandshake::Server(mid_handshake));
-                            break ReadStatus::WaitNextEvent
-                        }
-                        Err(HandshakeError::Failure(ref err)) => {
-                            log::error!("WS accept handshake error: {}", err);
-                            break ReadStatus::Disconnected // should not happen
-                        }
-                    },
-                },
+                RemoteState::Handshake(_) => unreachable!(),
             }
+        }
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
+        match state.deref_mut() {
+            RemoteState::WebSocket(_) => PendingStatus::Ready,
+            RemoteState::Handshake(pending) => match pending.take().unwrap() {
+                PendingHandshake::Client(mid_handshake) => match mid_handshake.handshake() {
+                    Ok((web_socket, _)) => {
+                        *state = RemoteState::WebSocket(web_socket);
+                        PendingStatus::Ready
+                    }
+                    Err(HandshakeError::Interrupted(mid_handshake)) => {
+                        *pending = Some(PendingHandshake::Client(mid_handshake));
+                        PendingStatus::Incomplete
+                    }
+                    Err(HandshakeError::Failure(Error::Io(_))) => {
+                        PendingStatus::Disconnected
+                    },
+                    Err(HandshakeError::Failure(err)) => {
+                        log::error!("WS connect handshake error: {}", err);
+                        PendingStatus::Disconnected // should not happen
+                    }
+                },
+                PendingHandshake::Server(mid_handshake) => match mid_handshake.handshake() {
+                    Ok(web_socket) => {
+                        *state = RemoteState::WebSocket(web_socket);
+                        PendingStatus::Ready
+                    }
+                    Err(HandshakeError::Interrupted(mid_handshake)) => {
+                        *pending = Some(PendingHandshake::Server(mid_handshake));
+                        PendingStatus::Incomplete
+                    }
+                    Err(HandshakeError::Failure(Error::Io(_))) => {
+                        PendingStatus::Disconnected
+                    },
+                    Err(HandshakeError::Failure(err)) => {
+                        log::error!("WS accept handshake error: {}", err);
+                        PendingStatus::Disconnected // should not happen
+                    }
+                },
+            },
         }
     }
 
     fn send(&self, data: &[u8]) -> SendStatus {
         match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
-            RemoteState::WebSocket(web_socket) => Self::send_by_socket(web_socket, data),
-            RemoteState::Handshake(_) => SendStatus::Sent,
+            RemoteState::WebSocket(web_socket) => {
+                let message = Message::Binary(data.to_vec());
+                let mut result = web_socket.write_message(message);
+                loop {
+                    match result {
+                        Ok(_) => break SendStatus::Sent,
+                        Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
+                            result = web_socket.write_pending();
+                        }
+                        Err(Error::Capacity(_)) => {
+                            break SendStatus::MaxPacketSizeExceeded(data.len(), MAX_PAYLOAD_LEN)
+                        }
+                        Err(err) => {
+                            log::error!("WS send error: {}", err);
+                            break SendStatus::ResourceNotFound // should not happen
+                        }
+                    }
+                }
+            },
+            RemoteState::Handshake(_) => unreachable!(),
         }
     }
 }
 
 impl RemoteResource {
-    fn send_by_socket(web_socket: &mut WebSocket<TcpStream>, data: &[u8]) -> SendStatus {
-        let message = Message::Binary(data.to_vec());
-        let mut result = web_socket.write_message(message);
-        loop {
-            match result {
-                Ok(_) => break SendStatus::Sent,
-                Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
-                    result = web_socket.write_pending();
-                }
-                Err(Error::Capacity(_)) => {
-                    break SendStatus::MaxPacketSizeExceeded(data.len(), MAX_PAYLOAD_LEN)
-                }
-                Err(err) => {
-                    log::error!("WS send error: {}", err);
-                    break SendStatus::ResourceNotFound // should not happen
-                }
-            }
-        }
-    }
-
     fn io_error_to_read_status(err: &io::Error) -> ReadStatus {
         if err.kind() == io::ErrorKind::WouldBlock {
             ReadStatus::WaitNextEvent

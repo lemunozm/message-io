@@ -56,7 +56,7 @@ impl Resource for RemoteResource {
             RemoteState::Handshake(Some(handshake)) => match handshake {
                 PendingHandshake::Client(mid_handshake) => mid_handshake.get_mut().get_mut(),
                 PendingHandshake::Server(mid_handshake) => mid_handshake.get_mut().get_mut(),
-            }
+            },
             RemoteState::Handshake(None) => unreachable!(),
         }
     }
@@ -85,9 +85,7 @@ impl Remote for RemoteResource {
         let local_addr = stream.local_addr()?;
 
         let remote = match ws_connect(url, stream) {
-            Ok((web_socket, _)) => {
-                RemoteState::WebSocket(web_socket)
-            }
+            Ok((web_socket, _)) => RemoteState::WebSocket(web_socket),
             Err(HandshakeError::Interrupted(mid_handshake)) => {
                 RemoteState::Handshake(Some(PendingHandshake::Client(mid_handshake)))
             }
@@ -98,11 +96,9 @@ impl Remote for RemoteResource {
         };
 
         Ok(ConnectionInfo {
-            remote: RemoteResource {
-                state: Mutex::new(remote)
-            },
+            remote: RemoteResource { state: Mutex::new(remote) },
             local_addr,
-            peer_addr
+            peer_addr,
         })
     }
 
@@ -148,13 +144,15 @@ impl Remote for RemoteResource {
                             *state = RemoteState::WebSocket(web_socket);
                         }
                         Err(HandshakeError::Interrupted(mid_handshake)) => {
-                            *state = RemoteState::Handshake(Some(PendingHandshake::Client(mid_handshake)))
+                            *state = RemoteState::Handshake(Some(PendingHandshake::Client(
+                                mid_handshake,
+                            )))
                         }
                         Err(HandshakeError::Failure(err)) => {
                             //CHECK: give to the user an io::Error?
                             panic!("WS connect handshake error: {}", err)
                         }
-                    }
+                    },
                     PendingHandshake::Server(mid_handshake) => match mid_handshake.handshake() {
                         Ok(web_socket) => {
                             *state = RemoteState::WebSocket(web_socket);
@@ -167,8 +165,8 @@ impl Remote for RemoteResource {
                             log::error!("WS accept handshake error: {}", err);
                             break ReadStatus::Disconnected // should not happen
                         }
-                    }
-                }
+                    },
+                },
             }
         }
     }
@@ -176,7 +174,7 @@ impl Remote for RemoteResource {
     fn send(&self, data: &[u8]) -> SendStatus {
         match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
             RemoteState::WebSocket(web_socket) => Self::send_by_socket(web_socket, data),
-            RemoteState::Handshake(handshake) => SendStatus::Sent,
+            RemoteState::Handshake(_) => SendStatus::Sent,
         }
     }
 }
@@ -241,9 +239,9 @@ impl Local for LocalResource {
                 Ok((stream, addr)) => {
                     let remote_state = match ws_accept(stream) {
                         Ok(web_socket) => Some(RemoteState::WebSocket(web_socket)),
-                        Err(HandshakeError::Interrupted(mid_handshake)) => {
-                            Some(RemoteState::Handshake(Some(PendingHandshake::Server(mid_handshake))))
-                        }
+                        Err(HandshakeError::Interrupted(mid_handshake)) => Some(
+                            RemoteState::Handshake(Some(PendingHandshake::Server(mid_handshake))),
+                        ),
                         Err(HandshakeError::Failure(ref err)) => {
                             log::error!("WS accept handshake error: {}", err);
                             None

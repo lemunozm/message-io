@@ -1,12 +1,15 @@
 use super::endpoint::{Endpoint};
 use super::resource_id::{ResourceId, ResourceType};
-use super::poll::{Poll, Interest};
-use super::registry::{ResourceRegistry};
+use super::poll::{Poll, Readiness};
+use super::registry::{ResourceRegistry, Register};
 use super::remote_addr::{RemoteAddr};
-use super::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus};
+use super::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus, PendingStatus};
 
 use std::net::{SocketAddr};
-use std::sync::{Arc};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::io::{self};
 
 #[cfg(doctest)]
@@ -14,18 +17,18 @@ use super::transport::{Transport};
 
 /// Enum used to describe a network event that an internal transport adapter has produced.
 pub enum NetEvent<'a> {
-    /// New endpoint is ready to use.
+    /// Connection result.
     /// This event is only generated after a [`crate::network::NetworkController::connect()`]
     /// call.
     /// The event contains the endpoint of the connection
     /// (same endpoint returned by the `connect()` method),
-    /// and a boolean indication if the *status*.
+    /// and a boolean indicating the *status* of that connection.
     /// In *non connection-oriented transports* as *UDP* it simply means that the resource
     /// is ready to use, and the status will be always `true`.
     /// In connection-oriented transports it means that the handshake has been performed, and the
-    /// connection is established and ready for its usage.
+    /// connection is established and ready to use.
     /// Since this handshake could fail, the status could be `false`.
-    Ready(Endpoint, bool),
+    Connected(Endpoint, bool),
 
     /// New endpoint has been accepted by a listener and considered ready to use.
     /// The event contains the resource id of the listener that accepted this connection.
@@ -55,7 +58,7 @@ pub enum NetEvent<'a> {
 impl std::fmt::Debug for NetEvent<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            Self::Ready(endpoint, status) => format!("Ready({}, {})", endpoint, status),
+            Self::Connected(endpoint, status) => format!("Connected({}, {})", endpoint, status),
             Self::Accepted(endpoint, id) => format!("Accepted({}, {})", endpoint, id),
             Self::Message(endpoint, data) => format!("Message({}, {})", endpoint, data.len()),
             Self::Disconnected(endpoint) => format!("Disconnected({})", endpoint),
@@ -72,12 +75,34 @@ pub trait ActionController: Send + Sync {
 }
 
 pub trait EventProcessor: Send + Sync {
-    fn process(&self, id: ResourceId, interest: Interest, callback: &mut dyn FnMut(NetEvent<'_>));
+    fn process(&self, id: ResourceId, readiness: Readiness, callback: &mut dyn FnMut(NetEvent<'_>));
 }
 
+struct RemoteProperties {
+    peer_addr: SocketAddr,
+    local: Option<ResourceId>,
+    ready: AtomicBool,
+}
+
+impl RemoteProperties {
+    fn new(peer_addr: SocketAddr, local: Option<ResourceId>) -> Self {
+        Self { peer_addr, local, ready: AtomicBool::new(false) }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        self.ready.load(Ordering::Relaxed)
+    }
+
+    pub fn mark_as_ready(&self) {
+        self.ready.store(true, Ordering::Relaxed);
+    }
+}
+
+struct LocalProperties;
+
 pub struct Driver<R: Remote, L: Local> {
-    remote_registry: Arc<ResourceRegistry<R>>,
-    local_registry: Arc<ResourceRegistry<L>>,
+    remote_registry: Arc<ResourceRegistry<R, RemoteProperties>>,
+    local_registry: Arc<ResourceRegistry<L, LocalProperties>>,
 }
 
 impl<R: Remote, L: Local> Driver<R, L> {
@@ -90,8 +115,12 @@ impl<R: Remote, L: Local> Driver<R, L> {
         let local_poll_registry = poll.create_registry(adapter_id, ResourceType::Local);
 
         Driver {
-            remote_registry: Arc::new(ResourceRegistry::<R>::new(remote_poll_registry)),
-            local_registry: Arc::new(ResourceRegistry::<L>::new(local_poll_registry)),
+            remote_registry: Arc::new(ResourceRegistry::<R, RemoteProperties>::new(
+                remote_poll_registry,
+            )),
+            local_registry: Arc::new(ResourceRegistry::<L, LocalProperties>::new(
+                local_poll_registry,
+            )),
         }
     }
 }
@@ -108,19 +137,20 @@ impl<R: Remote, L: Local> Clone for Driver<R, L> {
 impl<R: Remote, L: Local> ActionController for Driver<R, L> {
     fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         R::connect(addr).map(|info| {
-            (
-                Endpoint::new(
-                    self.remote_registry.add(info.remote, info.peer_addr, false),
-                    info.peer_addr,
-                ),
-                info.local_addr,
-            )
+            let endpoint = Endpoint::new(
+                self.remote_registry
+                    .register(info.remote, RemoteProperties::new(info.peer_addr, None)),
+                info.peer_addr,
+            );
+            (endpoint, info.local_addr)
         })
     }
 
     fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        L::listen(addr)
-            .map(|info| (self.local_registry.add(info.local, info.local_addr, true), info.local_addr))
+        L::listen(addr).map(|info| {
+            let id = self.local_registry.register(info.local, LocalProperties);
+            (id, info.local_addr)
+        })
     }
 
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
@@ -138,90 +168,136 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
 
     fn remove(&self, id: ResourceId) -> bool {
         match id.resource_type() {
-            ResourceType::Remote => self.remote_registry.remove(id),
-            ResourceType::Local => self.local_registry.remove(id),
+            ResourceType::Remote => self.remote_registry.deregister(id),
+            ResourceType::Local => self.local_registry.deregister(id),
         }
     }
 }
 
 impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
-    fn process(&self, id: ResourceId, interest: Interest, callback: &mut dyn FnMut(NetEvent<'_>)) {
+    fn process(
+        &self,
+        id: ResourceId,
+        readiness: Readiness,
+        event_callback: &mut dyn FnMut(NetEvent<'_>),
+    ) {
         match id.resource_type() {
-            ResourceType::Remote => match interest {
-                Interest::Readable => self.process_remote_read(id, callback),
-                Interest::Writable => self.process_remote_write(id, callback),
-            },
-            ResourceType::Local => match interest {
-                Interest::Readable => self.process_local_read(id, callback),
-                Interest::Writable => (),
-            },
+            ResourceType::Remote => {
+                if let Some(remote) = self.remote_registry.get(id) {
+                    let endpoint = Endpoint::new(id, remote.properties.peer_addr);
+                    log::trace!("Processed remote for {}", endpoint);
+
+                    if !remote.properties.is_ready() {
+                        self.process_pending_remote(remote, endpoint, readiness, event_callback);
+                    }
+                    else {
+                        match readiness {
+                            Readiness::Write => {
+                                () //TODO: non-blocking send
+                                   //self.write_to_remote(remote, endpoint, event_callback);
+                            }
+                            Readiness::Read => {
+                                self.read_from_remote(remote, endpoint, event_callback);
+                            }
+                        }
+                    }
+                }
+            }
+            ResourceType::Local => {
+                if let Some(local) = self.local_registry.get(id) {
+                    log::trace!("Processed local for {}", id);
+                    match readiness {
+                        Readiness::Write => (), // TODO: non-blocking send
+                        Readiness::Read => self.read_from_local(local, id, event_callback),
+                    }
+                }
+            }
         }
     }
 }
 
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
-    fn process_remote_write(&self, id: ResourceId, mut event_callback: impl FnMut(NetEvent<'_>)) {
-        if let Some(remote) = self.remote_registry.get(id) {
-            let endpoint = Endpoint::new(id, remote.addr);
-            log::trace!("Processed remote for {}", endpoint);
-            if !remote.is_ready() {
-                remote.mark_as_ready();
-                event_callback(NetEvent::Ready(endpoint, true));
+    fn process_pending_remote(
+        &self,
+        remote: Arc<Register<R, RemoteProperties>>,
+        endpoint: Endpoint,
+        readiness: Readiness,
+        mut event_callback: impl FnMut(NetEvent<'_>),
+    ) {
+        match remote.resource.pending(readiness) {
+            PendingStatus::Ready => {
+                remote.properties.mark_as_ready();
+                match remote.properties.local {
+                    Some(listener_id) => event_callback(NetEvent::Accepted(endpoint, listener_id)),
+                    None => event_callback(NetEvent::Connected(endpoint, true)),
+                }
             }
-        }
-    }
-
-    fn process_remote_read(&self, id: ResourceId, mut event_callback: impl FnMut(NetEvent<'_>)) {
-        if let Some(remote) = self.remote_registry.get(id) {
-            let endpoint = Endpoint::new(id, remote.addr);
-            log::trace!("Processed remote for {}", endpoint);
-            let status = remote.resource.receive(|data| {
-                event_callback(NetEvent::Message(endpoint, data));
-            });
-            log::trace!("Processed remote receive status {}", status);
-
-            if let ReadStatus::Disconnected = status {
-                // Checked becasue, the user in the callback could have removed the same resource.
-                if self.remote_registry.remove(id) {
-                    if remote.is_ready() {
-                        event_callback(NetEvent::Disconnected(endpoint));
-                    }
-                    else {
-                        event_callback(NetEvent::Ready(endpoint, false));
-                    }
+            PendingStatus::Incomplete => (),
+            PendingStatus::Disconnected => {
+                self.remote_registry.deregister(endpoint.resource_id());
+                if remote.properties.local.is_none() {
+                    event_callback(NetEvent::Connected(endpoint, false));
                 }
             }
         }
     }
 
-    fn process_local_read(&self, id: ResourceId, mut event_callback: impl FnMut(NetEvent<'_>)) {
-        if let Some(local) = self.local_registry.get(id) {
-            log::trace!("Processed local for {}", id);
-            local.resource.accept(|accepted| {
-                log::trace!("Processed local accepted type {}", accepted);
-                match accepted {
-                    AcceptedType::Remote(addr, remote) => {
-                        let remote_id = self.remote_registry.add(remote, addr, true);
-                        let endpoint = Endpoint::new(remote_id, addr);
-                        event_callback(NetEvent::Accepted(endpoint, id));
-                    }
-                    AcceptedType::Data(addr, data) => {
-                        let endpoint = Endpoint::new(id, addr);
-                        event_callback(NetEvent::Message(endpoint, data));
-                    }
-                }
-            });
+    /*
+    fn write_to_remote(
+        &self,
+        remote: Arc<Register<R, RemoteProperties>>,
+        endpoint: Endpoint,
+        mut event_callback: impl FnMut(NetEvent<'_>)
+    ) {
+        todo!()
+    }
+    */
+
+    fn read_from_remote(
+        &self,
+        remote: Arc<Register<R, RemoteProperties>>,
+        endpoint: Endpoint,
+        mut event_callback: impl FnMut(NetEvent<'_>),
+    ) {
+        let status =
+            remote.resource.receive(|data| event_callback(NetEvent::Message(endpoint, data)));
+        log::trace!("Receive status: {:?}", status);
+        if let ReadStatus::Disconnected = status {
+            // Checked because, the user in the callback could have removed the same resource.
+            if self.remote_registry.deregister(endpoint.resource_id()) {
+                event_callback(NetEvent::Disconnected(endpoint));
+            }
         }
     }
-}
 
-impl std::fmt::Display for ReadStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let string = match self {
-            ReadStatus::Disconnected => "Disconnected",
-            ReadStatus::WaitNextEvent => "WaitNextEvent",
-        };
-        write!(f, "ReadStatus::{}", string)
+    fn read_from_local(
+        &self,
+        local: Arc<Register<L, LocalProperties>>,
+        id: ResourceId,
+        mut event_callback: impl FnMut(NetEvent<'_>),
+    ) {
+        local.resource.accept(|accepted| {
+            log::trace!("Accepted type: {}", accepted);
+            match accepted {
+                AcceptedType::Remote(addr, remote) => {
+                    let remote_id = self
+                        .remote_registry
+                        .register(remote, RemoteProperties::new(addr, Some(id)));
+
+                    // We Manually generate a Poll Write event, because an accepted connection
+                    // is ready to write.
+                    let remote = self.remote_registry.get(remote_id).unwrap();
+                    let endpoint = Endpoint::new(remote_id, addr);
+                    self.process_pending_remote(remote, endpoint, Readiness::Write, |net_event| {
+                        event_callback(net_event)
+                    });
+                }
+                AcceptedType::Data(addr, data) => {
+                    let endpoint = Endpoint::new(id, addr);
+                    event_callback(NetEvent::Message(endpoint, data));
+                }
+            }
+        });
     }
 }
 

@@ -1,19 +1,20 @@
 use super::resource_id::{ResourceId, ResourceType, ResourceIdGenerator};
 
-use mio::{Poll as MioPoll, Interest as MioInterest, Token, Events, Registry, Waker};
+use mio::{Poll as MioPoll, Interest, Token, Events, Registry, Waker};
 use mio::event::{Source};
 
 use std::time::{Duration};
 use std::sync::{Arc};
 use std::io::{ErrorKind};
 
-pub enum Interest {
-    Readable,
-    Writable,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Readiness {
+    Write,
+    Read,
 }
 
 pub enum PollEvent {
-    Network(ResourceId, Interest),
+    Network(ResourceId, Readiness),
     Waker,
 }
 
@@ -63,14 +64,14 @@ impl Poll {
                             event_callback(PollEvent::Waker);
                         }
                         else {
-                            let resource_id = ResourceId::from(mio_event.token());
+                            let id = ResourceId::from(mio_event.token());
                             if mio_event.is_readable() {
-                                log::trace!("POLL EVENT (R): {}", resource_id);
-                                event_callback(PollEvent::Network(resource_id, Interest::Readable));
+                                log::trace!("POLL EVENT (R): {}", id);
+                                event_callback(PollEvent::Network(id, Readiness::Read));
                             }
                             if mio_event.is_writable() {
-                                log::trace!("POLL EVENT (W): {}", resource_id);
-                                event_callback(PollEvent::Network(resource_id, Interest::Writable));
+                                log::trace!("POLL EVENT (W): {}", id);
+                                event_callback(PollEvent::Network(id, Readiness::Write));
                             }
                         }
                     }
@@ -107,9 +108,7 @@ impl PollRegistry {
 
     pub fn add(&self, source: &mut dyn Source) -> ResourceId {
         let id = self.id_generator.generate();
-        self.registry
-            .register(source, id.into(), MioInterest::READABLE | MioInterest::WRITABLE)
-            .unwrap();
+        self.registry.register(source, id.into(), Interest::READABLE | Interest::WRITABLE).unwrap();
         id
     }
 
@@ -142,5 +141,11 @@ impl PollWaker {
     pub fn wake(&self) {
         self.waker.wake().unwrap();
         log::trace!("Wake poll...");
+    }
+}
+
+impl Clone for PollWaker {
+    fn clone(&self) -> Self {
+        Self { waker: self.waker.clone() }
     }
 }

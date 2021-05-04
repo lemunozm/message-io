@@ -190,7 +190,7 @@ mod tests {
         let mut was_accepted = 0;
         for _ in 0..2 {
             processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
-                NetEvent::Ready(net_endpoint, status) => {
+                NetEvent::Connected(net_endpoint, status) => {
                     assert!(status);
                     assert_eq!(endpoint, net_endpoint);
                     was_connected += 1;
@@ -199,7 +199,7 @@ mod tests {
                     assert_eq!(listener_id, net_listener_id);
                     was_accepted += 1;
                 }
-                _ => unreachable!()
+                _ => unreachable!(),
             });
         }
         assert_eq!(was_connected, 1);
@@ -215,12 +215,12 @@ mod tests {
 
         let mut was_disconnected = false;
         processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
-            NetEvent::Ready(net_endpoint, status) => {
+            NetEvent::Connected(net_endpoint, status) => {
                 assert!(!status);
                 assert_eq!(endpoint, net_endpoint);
                 was_disconnected = true;
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         });
         assert!(was_disconnected);
 
@@ -246,7 +246,7 @@ mod tests {
         for _ in 0..2 {
             // We expect two events
             processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
-                NetEvent::Ready(..) => (),
+                NetEvent::Connected(..) => (),
                 NetEvent::Accepted(_, _) => {
                     assert!(controller.remove(listener_id));
                     assert!(!controller.remove(listener_id));

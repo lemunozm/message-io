@@ -22,12 +22,12 @@ pub enum NetEvent<'a> {
     /// call.
     /// The event contains the endpoint of the connection
     /// (same endpoint returned by the `connect()` method),
-    /// and a boolean indicating the *status* of that connection.
+    /// and a boolean indicating the *result* of that connection.
     /// In *non connection-oriented transports* as *UDP* it simply means that the resource
-    /// is ready to use, and the status will be always `true`.
+    /// is ready to use, and the boolean will be always `true`.
     /// In connection-oriented transports it means that the handshake has been performed, and the
     /// connection is established and ready to use.
-    /// Since this handshake could fail, the status could be `false`.
+    /// Since this handshake could fail, the boolean could be `false`.
     Connected(Endpoint, bool),
 
     /// New endpoint has been accepted by a listener and considered ready to use.
@@ -192,10 +192,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                     }
                     else {
                         match readiness {
-                            Readiness::Write => {
-                                () //TODO: non-blocking send
-                                   //self.write_to_remote(remote, endpoint, event_callback);
-                            }
+                            Readiness::Write => remote.resource.ready_to_write(),
                             Readiness::Read => {
                                 self.read_from_remote(remote, endpoint, event_callback);
                             }
@@ -207,7 +204,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                 if let Some(local) = self.local_registry.get(id) {
                     log::trace!("Processed local for {}", id);
                     match readiness {
-                        Readiness::Write => (), // TODO: non-blocking send
+                        Readiness::Write => (),
                         Readiness::Read => self.read_from_local(local, id, event_callback),
                     }
                 }
@@ -231,6 +228,7 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
                     Some(listener_id) => event_callback(NetEvent::Accepted(endpoint, listener_id)),
                     None => event_callback(NetEvent::Connected(endpoint, true)),
                 }
+                remote.resource.ready_to_write();
             }
             PendingStatus::Incomplete => (),
             PendingStatus::Disconnected => {
@@ -241,17 +239,6 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
             }
         }
     }
-
-    /*
-    fn write_to_remote(
-        &self,
-        remote: Arc<Register<R, RemoteProperties>>,
-        endpoint: Endpoint,
-        mut event_callback: impl FnMut(NetEvent<'_>)
-    ) {
-        todo!()
-    }
-    */
 
     fn read_from_remote(
         &self,

@@ -120,8 +120,9 @@ pub trait Remote: Resource + Sized {
     /// It also must return the extracted address as `SocketAddr`.
     fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>>;
 
-    /// Called when a remote endpoint received an event.
-    /// It means that the resource has available data to read,
+    /// Called when a remote resource received an event.
+    /// The resource must be *ready* to receive this call.
+    /// It means that it has available data to read,
     /// or there is some connection related issue, as a disconnection.
     /// The **implementator** is in charge of processing that action and returns a [`ReadStatus`].
     ///
@@ -133,9 +134,15 @@ pub trait Remote: Resource + Sized {
     fn receive(&self, process_data: impl FnMut(&[u8])) -> ReadStatus;
 
     /// Sends raw data from a resource.
+    /// The resource must be *ready* to receive this call.
     /// The **implementator** is in charge to send the entire `data`.
     /// The [`SendStatus`] will contain the status of this attempt.
     fn send(&self, data: &[u8]) -> SendStatus;
+
+    /// The resource is available to write.
+    /// It must be *ready* to receive this call.
+    /// Here the **implementator** optionally can try to write any pending data.
+    fn ready_to_write(&self) {}
 
     /// Called when a `Remote` is created (explicity of by a listener) or when it is not considered
     /// read but it has Read/Write readiness.
@@ -151,6 +158,9 @@ pub trait Remote: Resource + Sized {
     fn pending(&self, readiness: Readiness) -> PendingStatus {
         match readiness {
             Readiness::Write => PendingStatus::Ready,
+
+            // If before getting a Write readiness it obtains a Read readiness
+            // means that a disconnection or a connection error has been produced.
             Readiness::Read => PendingStatus::Disconnected,
         }
     }

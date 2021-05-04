@@ -226,7 +226,7 @@ fn start_burst_sender(
                     count += 1;
                     if !transport.is_connection_oriented() {
                         // We need a rate to not lose packet.
-                        node.signals().send_with_timer((), Duration::from_micros(20));
+                        node.signals().send_with_timer((), Duration::from_micros(50));
                     }
                     else {
                         node.signals().send(());

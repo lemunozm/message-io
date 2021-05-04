@@ -111,9 +111,13 @@ impl PollRegistry {
         }
     }
 
-    pub fn add(&self, source: &mut dyn Source) -> ResourceId {
+    pub fn add(&self, source: &mut dyn Source, write_readiness: bool) -> ResourceId {
         let id = self.id_generator.generate();
-        self.registry.register(source, id.into(), Interest::READABLE | Interest::WRITABLE).unwrap();
+        let interest  = match write_readiness {
+            true => Interest::READABLE | Interest::WRITABLE,
+            false => Interest::READABLE,
+        };
+        self.registry.register(source, id.into(), interest).unwrap();
         id
     }
 

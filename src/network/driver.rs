@@ -139,7 +139,7 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
         R::connect(addr).map(|info| {
             let endpoint = Endpoint::new(
                 self.remote_registry
-                    .register(info.remote, RemoteProperties::new(info.peer_addr, None)),
+                    .register(info.remote, RemoteProperties::new(info.peer_addr, None), true),
                 info.peer_addr,
             );
             (endpoint, info.local_addr)
@@ -148,7 +148,7 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
 
     fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
         L::listen(addr).map(|info| {
-            let id = self.local_registry.register(info.local, LocalProperties);
+            let id = self.local_registry.register(info.local, LocalProperties, false);
             (id, info.local_addr)
         })
     }
@@ -269,7 +269,7 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
                 AcceptedType::Remote(addr, remote) => {
                     let remote_id = self
                         .remote_registry
-                        .register(remote, RemoteProperties::new(addr, Some(id)));
+                        .register(remote, RemoteProperties::new(addr, Some(id)), true);
 
                     // We Manually generate a Poll Write event, because an accepted connection
                     // is ready to write.

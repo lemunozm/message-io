@@ -40,11 +40,11 @@ impl<S: Resource, P> ResourceRegistry<S, P> {
     }
 
     /// Add a resource into the registry.
-    pub fn register(&self, mut resource: S, properties: P) -> ResourceId {
+    pub fn register(&self, mut resource: S, properties: P, write_readiness: bool) -> ResourceId {
         // The registry must be locked for the entire implementation to avoid the poll
         // to generate events over not yet registered resources.
         let mut registry = self.resources.write().expect(OTHER_THREAD_ERR);
-        let id = self.poll_registry.add(resource.source());
+        let id = self.poll_registry.add(resource.source(), write_readiness);
         let register = Register::new(resource, properties, self.poll_registry.clone());
         registry.insert(id, Arc::new(register));
         id

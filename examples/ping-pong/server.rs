@@ -16,13 +16,17 @@ pub fn run(transport: Transport, addr: SocketAddr) {
     let mut clients: HashMap<Endpoint, ClientInfo> = HashMap::new();
 
     match handler.network().listen(transport, addr) {
-        Ok((_resource_id, real_addr)) => {
-            println!("Server running at {} by {}", real_addr, transport)
-        }
+        Ok((_id, real_addr)) => println!("Server running at {} by {}", real_addr, transport),
         Err(_) => return println!("Can not listening at {} by {}", addr, transport),
     }
 
     listener.for_each(move |event| match event.network() {
+        NetEvent::Connected(_, _) => (), // Only generated at connect() calls.
+        NetEvent::Accepted(endpoint, _listener_id) => {
+            // Only connection oriented protocols will generate this event
+            clients.insert(endpoint, ClientInfo { count: 0 });
+            println!("Client ({}) connected (total clients: {})", endpoint.addr(), clients.len());
+        }
         NetEvent::Message(endpoint, input_data) => {
             let message: FromClientMessage = bincode::deserialize(&input_data).unwrap();
             match message {
@@ -44,11 +48,6 @@ pub fn run(transport: Transport, addr: SocketAddr) {
                     handler.network().send(endpoint, &output_data);
                 }
             }
-        }
-        NetEvent::Connected(endpoint, _) => {
-            // Only connection oriented protocols will generate this event
-            clients.insert(endpoint, ClientInfo { count: 0 });
-            println!("Client ({}) connected (total clients: {})", endpoint.addr(), clients.len());
         }
         NetEvent::Disconnected(endpoint) => {
             // Only connection oriented protocols will generate this event

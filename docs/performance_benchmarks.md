@@ -40,7 +40,7 @@ The following results are measured for the transmision of 1GB of data by localho
 |  Transport |  native  | message-io | efficiency |
 |:----------:|:--------:|:----------:|:----------:|
 |     UDP    | 7.1 GB/s |  5.9 GB/s  |    ~83%    |
-|     TCP    | 6.4 GB/s |  5.4 GB/s  |    ~84%    |
+|     TCP    | 6.4 GB/s |  5.2 GB/s  |    ~81%    |
 | Framed TCP | 5.5 GB/s |  5.0 GB/s  |    ~91%    |
 | Web Socket | 590 MB/s |  560 MB/s  |    ~95%    |
 
@@ -71,9 +71,9 @@ The following results are measured by transferring 1-byte by localhost:
 |     UDP    | 1.2 us |   2.1 us   |  + ~0.9 us |
 |     TCP    | 2.6 us |   3.5 us   |  + ~0.9 us |
 | Framed TCP | 5.2 us |   6.6 us   |  + ~1.4 us |
-| Web Socket | 9.1 us |   11.2 us  |  + ~2.1 us |
+| Web Socket | 9.1 us |   10.1 us  |  + ~1.0 us |
 
-Depending on the transport used, `message-io` adds around `1-2us` of overhead per chunk of data transsmision.
+Depending on the transport used, `message-io` adds around `1us` of overhead per chunk of data transsmision.
 Because it is zero-copy at reading/writing messages,
 this overhead is constant and independently of the size of that chunk of data.
 The library only copies the pointer to the data.

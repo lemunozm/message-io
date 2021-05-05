@@ -5,67 +5,78 @@ use message_io::node::{self, NodeHandler, NodeListener};
 
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
+use std::io::{self};
 
 pub struct Participant {
     handler: NodeHandler<()>,
-    listener: Option<NodeListener<()>>,
+    node_listener: Option<NodeListener<()>>,
     name: String,
     discovery_endpoint: Endpoint,
     public_addr: SocketAddr,
     known_participants: HashMap<String, Endpoint>, // Used only for free resources later
+    grettings: HashMap<Endpoint, (String, String)>,
 }
 
 impl Participant {
-    pub fn new(name: &str) -> Option<Participant> {
-        let (handler, listener) = node::split();
+    pub fn new(name: &str) -> io::Result<Participant> {
+        let (handler, node_listener) = node::split();
 
-        // A listener for any other participant that want to establish connection.
-        // 'addr' contains the port that the OS gives for us when we put a 0.
+        // A node_listener for any other participant that want to establish connection.
+        // Returned 'listen_addr' contains the port that the OS gives for us when we put a 0.
         let listen_addr = "127.0.0.1:0";
-        let listen_addr = match handler.network().listen(Transport::Udp, listen_addr) {
-            Ok((_, addr)) => addr,
-            Err(_) => {
-                println!("Can not listen on {}", listen_addr);
-                return None
-            }
-        };
+        let (_, listen_addr) = handler.network().listen(Transport::FramedTcp, listen_addr)?;
 
         let discovery_addr = "127.0.0.1:5000"; // Connection to the discovery server.
-        match handler.network().connect(Transport::FramedTcp, discovery_addr) {
-            Ok((endpoint, _)) => Some(Participant {
-                handler,
-                listener: Some(listener),
-                name: name.to_string(),
-                discovery_endpoint: endpoint,
-                public_addr: listen_addr,
-                known_participants: HashMap::new(),
-            }),
-            Err(_) => {
-                println!("Can not connect to the discovery server at {}", discovery_addr);
-                return None
-            }
-        }
+        let (endpoint, _) = handler.network().connect(Transport::FramedTcp, discovery_addr)?;
+
+        Ok(Participant {
+            handler,
+            node_listener: Some(node_listener),
+            name: name.to_string(),
+            discovery_endpoint: endpoint,
+            public_addr: listen_addr,
+            known_participants: HashMap::new(),
+            grettings: HashMap::new(),
+        })
     }
 
     pub fn run(mut self) {
         // Register this participant into the discovery server
-        let message = Message::RegisterParticipant(self.name.clone(), self.public_addr);
-        let output_data = bincode::serialize(&message).unwrap();
-        self.handler.network().send(self.discovery_endpoint, &output_data);
-
-        let listener = self.listener.take().unwrap();
-        listener.for_each(move |event| match event.network() {
+        let node_listener = self.node_listener.take().unwrap();
+        node_listener.for_each(move |event| match event.network() {
+            NetEvent::Connected(endpoint, established) => {
+                if endpoint == self.discovery_endpoint {
+                    if established {
+                        let message =
+                            Message::RegisterParticipant(self.name.clone(), self.public_addr);
+                        let output_data = bincode::serialize(&message).unwrap();
+                        self.handler.network().send(self.discovery_endpoint, &output_data);
+                    }
+                    else {
+                        println!("Can not connect to the discovery server");
+                    }
+                }
+                else {
+                    // Participant endpoint
+                    let (name, message) = self.grettings.remove(&endpoint).unwrap();
+                    if established {
+                        let gretings = format!("Hi '{}', {}", name, message);
+                        let message = Message::Gretings(self.name.clone(), gretings);
+                        let output_data = bincode::serialize(&message).unwrap();
+                        self.handler.network().send(endpoint, &output_data);
+                        self.known_participants.insert(name.clone(), endpoint);
+                    }
+                }
+            }
+            NetEvent::Accepted(_, _) => (),
             NetEvent::Message(_, input_data) => {
                 let message: Message = bincode::deserialize(&input_data).unwrap();
                 match message {
                     Message::ParticipantList(participants) => {
                         println!("Participant list received ({} participants)", participants.len());
                         for (name, addr) in participants {
-                            self.discovered_participant(
-                                &name,
-                                addr,
-                                "I see you in the participant list",
-                            );
+                            let text = "I see you in the participant list";
+                            self.discovered_participant(&name, addr, text);
                         }
                     }
                     Message::ParticipantNotificationAdded(name, addr) => {
@@ -74,12 +85,6 @@ impl Participant {
                     }
                     Message::ParticipantNotificationRemoved(name) => {
                         println!("Removed participant '{}' from the network", name);
-
-                        // Free network resource.
-                        // It is only necessary because the connections among participants
-                        // are done by UDP,
-                        // UDP is not connection-oriented protocol, and the
-                        // Connected/Disconnected events are not generated by UDP.
                         if let Some(endpoint) = self.known_participants.remove(&name) {
                             self.handler.network().remove(endpoint.resource_id());
                         }
@@ -90,7 +95,6 @@ impl Participant {
                     _ => unreachable!(),
                 }
             }
-            NetEvent::Connected(_, _) => (),
             NetEvent::Disconnected(endpoint) => {
                 if endpoint == self.discovery_endpoint {
                     println!("Discovery server disconnected, closing");
@@ -100,13 +104,9 @@ impl Participant {
         });
     }
 
-    fn discovered_participant(&mut self, name: &str, addr: SocketAddr, message: &str) {
-        if let Ok((endpoint, _)) = self.handler.network().connect(Transport::Udp, addr) {
-            let gretings = format!("Hi '{}', {}", name, message);
-            let message = Message::Gretings(self.name.clone(), gretings);
-            let output_data = bincode::serialize(&message).unwrap();
-            self.handler.network().send(endpoint, &output_data);
-            self.known_participants.insert(name.to_string(), endpoint);
-        }
+    fn discovered_participant(&mut self, name: &str, addr: SocketAddr, text: &str) {
+        let (endpoint, _) = self.handler.network().connect(Transport::FramedTcp, addr).unwrap();
+        // Save the necessary info to send the message when the connection is established.
+        self.grettings.insert(endpoint, (name.into(), text.into()));
     }
 }

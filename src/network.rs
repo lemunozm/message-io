@@ -55,9 +55,14 @@ impl NetworkController {
 
     /// Creates a connection to the specific address.
     /// The endpoint, an identifier of the new connection, will be returned.
-    /// If the connection can not be performed (e.g. the address is not reached)
-    /// the corresponding IO error is returned.
-    /// This function blocks until the resource has been connected and is ready to use.
+    /// This function will generate a [`NetEvent::Connected`] event with the result of the connection.
+    /// This call will **NOT** block to perform the connection.
+    ///
+    /// Note that this function can return an error in the case the internal socket
+    /// could not be binded or open in the OS, but never will return an error an regarding
+    /// the connection itself.
+    /// If you want to check if the connection has been established or not you have to read the
+    /// boolean indicator in the [`NetEvent::Connected`] event.
     pub fn connect(
         &self,
         transport: Transport,

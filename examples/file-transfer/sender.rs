@@ -18,25 +18,27 @@ pub fn run(file_path: String) {
     let (handler, listener) = node::split();
 
     let server_addr = "127.0.0.1:3005";
-    let (server_id, _) = match handler.network().connect(Transport::FramedTcp, server_addr) {
-        Ok(server_id) => {
-            println!("Sender connected by TCP at {}", server_addr);
-            server_id
-        }
-        Err(_) => return println!("Can not connect to the receiver by TCP to {}", server_addr),
-    };
+    let (server_id, _) = handler.network().connect(Transport::FramedTcp, server_addr).unwrap();
 
     let file_size = fs::metadata(&file_path).unwrap().len() as usize;
     let mut file = File::open(&file_path).unwrap();
     let file_name: String = file_path.rsplit('/').into_iter().next().unwrap_or(&file_path).into();
 
-    let request = SenderMsg::FileRequest(file_name.clone(), file_size);
-    let output_data = bincode::serialize(&request).unwrap();
-    handler.network().send(server_id, &output_data);
-
     let mut file_bytes_sent = 0;
     listener.for_each(move |event| match event {
         NodeEvent::Network(net_event) => match net_event {
+            NetEvent::Connected(_, established) => {
+                if established {
+                    println!("Sender connected by TCP at {}", server_addr);
+                    let request = SenderMsg::FileRequest(file_name.clone(), file_size);
+                    let output_data = bincode::serialize(&request).unwrap();
+                    handler.network().send(server_id, &output_data);
+                }
+                else {
+                    println!("Can not connect to the receiver by TCP to {}", server_addr)
+                }
+            },
+            NetEvent::Accepted(_, _) => unreachable!(),
             NetEvent::Message(_, input_data) => {
                 let message: ReceiverMsg = bincode::deserialize(&input_data).unwrap();
                 match message {
@@ -49,7 +51,6 @@ pub fn run(file_path: String) {
                     },
                 }
             }
-            NetEvent::Connected(_, _) => unreachable!(),
             NetEvent::Disconnected(_) => {
                 handler.stop();
                 println!("\nReceiver disconnected");

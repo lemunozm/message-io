@@ -18,14 +18,14 @@ pub fn run() {
     let (handler, listener) = node::split::<()>();
 
     let listen_addr = "127.0.0.1:3005";
-    match handler.network().listen(Transport::FramedTcp, listen_addr) {
-        Ok(_) => println!("Receiver running by TCP at {}", listen_addr),
-        Err(_) => return println!("Can not listening by TCP at {}", listen_addr),
-    }
+    handler.network().listen(Transport::FramedTcp, listen_addr).unwrap();
+    println!("Receiver running by TCP at {}", listen_addr);
 
     let mut transfers: HashMap<Endpoint, Transfer> = HashMap::new();
 
     listener.for_each(move |event| match event.network() {
+        NetEvent::Connected(_, _) => unreachable!(),
+        NetEvent::Accepted(_, _) => (),
         NetEvent::Message(endpoint, input_data) => {
             let message: SenderMsg = bincode::deserialize(&input_data).unwrap();
             match message {
@@ -64,7 +64,6 @@ pub fn run() {
                 }
             }
         }
-        NetEvent::Connected(_, _) => {}
         NetEvent::Disconnected(endpoint) => {
             // Unexpected sender disconnection. Cleaninig.
             if transfers.contains_key(&endpoint) {

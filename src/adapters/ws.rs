@@ -157,9 +157,7 @@ impl Remote for RemoteResource {
                         *pending = Some(PendingHandshake::Client(mid_handshake));
                         PendingStatus::Incomplete
                     }
-                    Err(HandshakeError::Failure(Error::Io(_))) => {
-                        PendingStatus::Disconnected
-                    },
+                    Err(HandshakeError::Failure(Error::Io(_))) => PendingStatus::Disconnected,
                     Err(HandshakeError::Failure(err)) => {
                         log::error!("WS connect handshake error: {}", err);
                         PendingStatus::Disconnected // should not happen
@@ -174,9 +172,7 @@ impl Remote for RemoteResource {
                         *pending = Some(PendingHandshake::Server(mid_handshake));
                         PendingStatus::Incomplete
                     }
-                    Err(HandshakeError::Failure(Error::Io(_))) => {
-                        PendingStatus::Disconnected
-                    },
+                    Err(HandshakeError::Failure(Error::Io(_))) => PendingStatus::Disconnected,
                     Err(HandshakeError::Failure(err)) => {
                         log::error!("WS accept handshake error: {}", err);
                         PendingStatus::Disconnected // should not happen
@@ -206,7 +202,7 @@ impl Remote for RemoteResource {
                         }
                     }
                 }
-            },
+            }
             RemoteState::Handshake(_) => unreachable!(),
         }
     }

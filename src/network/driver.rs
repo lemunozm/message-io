@@ -137,12 +137,12 @@ impl<R: Remote, L: Local> Clone for Driver<R, L> {
 impl<R: Remote, L: Local> ActionController for Driver<R, L> {
     fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
         R::connect(addr).map(|info| {
-            let endpoint = Endpoint::new(
-                self.remote_registry
-                    .register(info.remote, RemoteProperties::new(info.peer_addr, None), true),
-                info.peer_addr,
+            let id = self.remote_registry.register(
+                info.remote,
+                RemoteProperties::new(info.peer_addr, None),
+                true,
             );
-            (endpoint, info.local_addr)
+            (Endpoint::new(id, info.peer_addr), info.local_addr)
         })
     }
 
@@ -156,7 +156,10 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         match endpoint.resource_id().resource_type() {
             ResourceType::Remote => match self.remote_registry.get(endpoint.resource_id()) {
-                Some(remote) => remote.resource.send(data),
+                Some(remote) => match remote.properties.is_ready() {
+                    true => remote.resource.send(data),
+                    false => SendStatus::ResourceNotFound,
+                },
                 None => SendStatus::ResourceNotFound,
             },
             ResourceType::Local => match self.local_registry.get(endpoint.resource_id()) {
@@ -267,9 +270,11 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
             log::trace!("Accepted type: {}", accepted);
             match accepted {
                 AcceptedType::Remote(addr, remote) => {
-                    let remote_id = self
-                        .remote_registry
-                        .register(remote, RemoteProperties::new(addr, Some(id)), true);
+                    let remote_id = self.remote_registry.register(
+                        remote,
+                        RemoteProperties::new(addr, Some(id)),
+                        true,
+                    );
 
                     // We Manually generate a Poll Write event, because an accepted connection
                     // is ready to write.

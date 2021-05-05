@@ -113,7 +113,7 @@ impl PollRegistry {
 
     pub fn add(&self, source: &mut dyn Source, write_readiness: bool) -> ResourceId {
         let id = self.id_generator.generate();
-        let interest  = match write_readiness {
+        let interest = match write_readiness {
             true => Interest::READABLE | Interest::WRITABLE,
             false => Interest::READABLE,
         };

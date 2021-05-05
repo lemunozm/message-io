@@ -292,17 +292,11 @@ fn message_size(transport: Transport, message_size: usize) {
     node.signals().send_with_timer((), *TIMEOUT);
 
     let (_, receiver_addr) = node.network().listen(transport, LOCAL_ADDR).unwrap();
-
     let (receiver, _) = node.network().connect(transport, receiver_addr).unwrap();
 
-    if !transport.is_connection_oriented() {
-        let status = node.network().send(receiver, &sent_message);
-        assert_eq!(status, SendStatus::Sent);
-    }
-
     let mut _async_sender: Option<NamespacedThread<()>> = None;
-
     let mut received_message = Vec::new();
+
     listener.for_each(move |event| match event {
         NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
         NodeEvent::Network(net_event) => match net_event {

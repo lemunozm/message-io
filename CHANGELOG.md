@@ -1,5 +1,13 @@
 # Changelog
 
+## Release 0.14.0
+- Asynchronous connections: `NetworkController::connect()` behaviour modified.
+Now it performs a non-blocking connection.
+- Reduced slightly the websocket latency.
+- Adapter API modified to handle easily handshakes.
+- Fixed websocket issue that could offer an accepted websocket that was not valid (the websocket handshake could have failed).
+- Added `NetworkController::is_ready()`
+
 ## Release 0.13.3
 - Fixed a bad internal assert.
 

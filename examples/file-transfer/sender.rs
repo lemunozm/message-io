@@ -37,7 +37,7 @@ pub fn run(file_path: String) {
                 else {
                     println!("Can not connect to the receiver by TCP to {}", server_addr)
                 }
-            },
+            }
             NetEvent::Accepted(_, _) => unreachable!(),
             NetEvent::Message(_, input_data) => {
                 let message: ReceiverMsg = bincode::deserialize(&input_data).unwrap();

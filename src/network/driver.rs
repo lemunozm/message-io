@@ -72,6 +72,7 @@ pub trait ActionController: Send + Sync {
     fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
     fn remove(&self, id: ResourceId) -> bool;
+    fn is_ready(&self, id: ResourceId) -> Option<bool>;
 }
 
 pub trait EventProcessor: Send + Sync {
@@ -173,6 +174,13 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
         match id.resource_type() {
             ResourceType::Remote => self.remote_registry.deregister(id),
             ResourceType::Local => self.local_registry.deregister(id),
+        }
+    }
+
+    fn is_ready(&self, id: ResourceId) -> Option<bool> {
+        match id.resource_type() {
+            ResourceType::Remote => self.remote_registry.get(id).map(|r| r.properties.is_ready()),
+            ResourceType::Local => self.local_registry.get(id).map(|_| true),
         }
     }
 }

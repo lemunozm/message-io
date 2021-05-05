@@ -53,7 +53,7 @@ impl NetworkController {
         Self { controllers }
     }
 
-    /// Creates a connection to the specific address.
+    /// Creates a connection to the specified address.
     /// The endpoint, an identifier of the new connection, will be returned.
     /// This function will generate a [`NetEvent::Connected`] event with the result of the connection.
     /// This call will **NOT** block to perform the connection.
@@ -69,11 +69,45 @@ impl NetworkController {
         addr: impl ToRemoteAddr,
     ) -> io::Result<(Endpoint, SocketAddr)> {
         let addr = addr.to_remote_addr().unwrap();
-        log::trace!("Connect to {} by adapter: {}", addr, transport.id());
         self.controllers[transport.id() as usize].connect(addr).map(|(endpoint, addr)| {
-            log::trace!("Connected to {}", endpoint);
+            log::trace!("Connect to {}", endpoint);
             (endpoint, addr)
         })
+    }
+
+    /// Creates a connection to the specified address.
+    /// This function is similar to [`NetworkController::connect()`] but will block
+    /// to perform the connection, waiting until for the connection is ready.
+    /// If the connection can not be established, a `ConnectionRefused` error will be returned.
+    ///
+    /// Note that the `Connect` event will be also generated.
+    ///
+    /// Since this function blocks the current thread, it must not be used inside
+    /// the network callback.
+    /// In order to get the best scalability and performance, use the non-blocking
+    /// [`NetworkController::connect()`] version.
+    pub fn connect_sync(
+        &self,
+        transport: Transport,
+        addr: impl ToRemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)> {
+        let (endpoint, addr) = self.connect(transport, addr)?;
+        loop {
+            std::thread::sleep(Duration::from_millis(1));
+            match self.is_ready(endpoint.resource_id()) {
+                Some(status) => {
+                    if status {
+                        return Ok((endpoint, addr))
+                    }
+                }
+                None => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::ConnectionRefused,
+                        "Connection refused",
+                    ))
+                }
+            }
+        }
     }
 
     /// Listen messages from specified transport.
@@ -88,11 +122,25 @@ impl NetworkController {
         addr: impl ToSocketAddrs,
     ) -> io::Result<(ResourceId, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        log::trace!("Listen by {} by adapter: {}", addr, transport.id());
         self.controllers[transport.id() as usize].listen(addr).map(|(resource_id, addr)| {
-            log::trace!("Listening by {}", resource_id);
+            log::trace!("Listening at {} by {}", addr, resource_id);
             (resource_id, addr)
         })
+    }
+
+    /// Send the data message thought the connection represented by the given endpoint.
+    /// This function returns a [`SendStatus`] indicating the status of this send.
+    /// There is no guarantee that send over a correct connection generates a [`SendStatus::Sent`]
+    /// because any time a connection can be disconnected (even while you are sending).
+    /// Except cases where you need to be sure that the message has been sent,
+    /// you will want to process a [`NetEvent::Disconnected`] to determine if the connection +
+    /// is *alive* instead of check if `send()` returned [`SendStatus::ResourceNotFound`].
+    pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
+        log::trace!("Send {} bytes to {}", data.len(), endpoint);
+        let status =
+            self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
+        log::trace!("Send status: {:?}", status);
+        status
     }
 
     /// Remove a network resource.
@@ -114,19 +162,14 @@ impl NetworkController {
         value
     }
 
-    /// Send the data message thought the connection represented by the given endpoint.
-    /// This function returns a [`SendStatus`] indicating the status of this send.
-    /// There is no guarantee that send over a correct connection generates a [`SendStatus::Sent`]
-    /// because any time a connection can be disconnected (even while you are sending).
-    /// Except cases where you need to be sure that the message has been sent,
-    /// you will want to process a [`NetEvent::Disconnected`] to determine if the connection +
-    /// is *alive* instead of check if `send()` returned [`SendStatus::ResourceNotFound`].
-    pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
-        log::trace!("Send {} bytes to {}", data.len(), endpoint);
-        let status =
-            self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
-        log::trace!("Send status: {:?}", status);
-        status
+    /// Check a resource specified by `resource_id` is ready.
+    /// If the status is `true` means that the resource is ready to use.
+    /// In connection oriented transports, it implies the resource is connected.
+    /// If the status is `false` it means that the resource is not yet ready to use.
+    /// If the resource has been removed, disconnected, or does not exists in the network,
+    /// a `None` is returned.
+    pub fn is_ready(&self, resource_id: ResourceId) -> Option<bool> {
+        self.controllers[resource_id.adapter_id() as usize].is_ready(resource_id)
     }
 }
 
@@ -175,6 +218,7 @@ impl NetworkProcessor {
 mod tests {
     use super::*;
     use std::time::{Duration};
+    use crate::util::thread::{NamespacedThread};
 
     lazy_static::lazy_static! {
         static ref TIMEOUT: Duration = Duration::from_millis(1000);
@@ -190,7 +234,7 @@ mod tests {
     fn successful_connection() {
         let (controller, mut processor) = self::split();
         let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
-        let (endpoint, _) = controller.connect(Transport::Tcp, RemoteAddr::Socket(addr)).unwrap();
+        let (endpoint, _) = controller.connect(Transport::Tcp, addr).unwrap();
 
         let mut was_connected = 0;
         let mut was_accepted = 0;
@@ -215,6 +259,23 @@ mod tests {
     }
 
     #[test]
+    fn successful_connection_sync() {
+        let (controller, mut processor) = self::split();
+        let (_, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+
+        let mut thread = NamespacedThread::spawn("test", move || {
+            let (endpoint, _) = controller.connect_sync(Transport::Tcp, addr).unwrap();
+            assert!(controller.is_ready(endpoint.resource_id()).unwrap());
+        });
+
+        for _ in 0..2 {
+            processor.process_poll_event(Some(*TIMEOUT), |_| ());
+        }
+
+        thread.join();
+    }
+
+    #[test]
     fn unreachable_connection() {
         let (controller, mut processor) = self::split();
         let (endpoint, _) = controller.connect(Transport::Tcp, "127.0.0.1:5555").unwrap();
@@ -234,6 +295,20 @@ mod tests {
     }
 
     #[test]
+    fn unreachable_connection_sync() {
+        let (controller, mut processor) = self::split();
+
+        let mut thread = NamespacedThread::spawn("test", move || {
+            let err = controller.connect_sync(Transport::Tcp, "127.0.0.1:5555").unwrap_err();
+            assert!(err.kind() == io::ErrorKind::ConnectionRefused);
+        });
+
+        processor.process_poll_event(Some(*TIMEOUT), |_| ());
+
+        thread.join();
+    }
+
+    #[test]
     fn create_remove_listener() {
         let (controller, processor) = self::split();
         let (listener_id, _) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
@@ -247,7 +322,7 @@ mod tests {
     fn create_remove_listener_with_connection() {
         let (controller, mut processor) = self::split();
         let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
-        controller.connect(Transport::Tcp, RemoteAddr::Socket(addr)).unwrap();
+        controller.connect(Transport::Tcp, addr).unwrap();
 
         for _ in 0..2 {
             // We expect two events

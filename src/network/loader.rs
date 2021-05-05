@@ -77,6 +77,10 @@ impl ActionController for UnimplementedDriver {
     fn remove(&self, _: ResourceId) -> bool {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
     }
+
+    fn is_ready(&self, _: ResourceId) -> Option<bool> {
+        panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
+    }
 }
 
 impl EventProcessor for UnimplementedDriver {

@@ -24,8 +24,8 @@ pub trait Adapter: Send + Sync {
 /// asynchronously from events.
 /// Your [`Remote`] and [`Local`] entities must implement `Resource`.
 pub trait Resource: Send + Sync {
-    /// This is the only method required to make your element a resource.
-    /// Note: Any `mio` network element implements [`Source`], you probably wants to use
+    /// Returns a mutable reference to the internal `Source`.
+    /// Note: All `mio` network element implements [`Source`], you probably wants to use
     /// one of them as a base for your non-blocking transport.
     /// See [`Source`].
     fn source(&mut self) -> &mut dyn Source;
@@ -94,7 +94,7 @@ pub enum ReadStatus {
     WaitNextEvent,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PendingStatus {
     /// The resource is no longer considered as a pending resource.
     /// It it came from a listener, a [`crate::network::NetEvent::Accepted`] event will be generated.
@@ -159,15 +159,7 @@ pub trait Remote: Resource + Sized {
     /// resource ready to use.
     /// The **implementator** is in charge to write or read from the resource
     /// (depending of the readiness) until it obtains an internal [`std::io::ErrorKind::WouldBlock`].
-    fn pending(&self, readiness: Readiness) -> PendingStatus {
-        match readiness {
-            Readiness::Write => PendingStatus::Ready,
-
-            // If before getting a Write readiness it obtains a Read readiness
-            // means that a disconnection or a connection error has been produced.
-            Readiness::Read => PendingStatus::Disconnected,
-        }
-    }
+    fn pending(&self, readiness: Readiness) -> PendingStatus;
 }
 
 /// Used as a parameter callback in [`Local::accept()`]

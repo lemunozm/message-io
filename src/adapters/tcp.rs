@@ -1,8 +1,8 @@
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
-    ListeningInfo,
+    ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr};
+use crate::network::{RemoteAddr, Readiness};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
@@ -96,6 +96,22 @@ impl Remote for RemoteResource {
                 }
             }
         }
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        check_stream_ready(&self.stream)
+    }
+}
+
+pub fn check_stream_ready(stream: &TcpStream) -> PendingStatus {
+    if let Ok(Some(_)) = stream.take_error() {
+        return PendingStatus::Disconnected
+    }
+    match stream.peer_addr() {
+        Ok(_) => PendingStatus::Ready,
+        Err(err) if err.kind() == io::ErrorKind::NotConnected => PendingStatus::Incomplete,
+        Err(err) if err.kind() == io::ErrorKind::InvalidInput => PendingStatus::Incomplete,
+        Err(_) => PendingStatus::Disconnected,
     }
 }
 

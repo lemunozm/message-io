@@ -36,6 +36,7 @@ impl Adapter for WsAdapter {
 }
 
 enum PendingHandshake {
+    Connect(Url, TcpStream),
     Client(MidHandshake<ClientHandshake<TcpStream>>),
     Server(MidHandshake<ServerHandshake<TcpStream, NoCallback>>),
 }
@@ -54,6 +55,7 @@ impl Resource for RemoteResource {
         match self.state.get_mut().unwrap() {
             RemoteState::WebSocket(web_socket) => web_socket.get_mut(),
             RemoteState::Handshake(Some(handshake)) => match handshake {
+                PendingHandshake::Connect(_, stream) => stream,
                 PendingHandshake::Client(mid_handshake) => mid_handshake.get_mut().get_mut(),
                 PendingHandshake::Server(mid_handshake) => mid_handshake.get_mut().get_mut(),
             },
@@ -84,19 +86,15 @@ impl Remote for RemoteResource {
         let stream = TcpStream::connect(peer_addr)?;
         let local_addr = stream.local_addr()?;
 
-        let remote = match ws_connect(url, stream) {
-            Ok((web_socket, _)) => RemoteState::WebSocket(web_socket),
-            Err(HandshakeError::Interrupted(mid_handshake)) => {
-                RemoteState::Handshake(Some(PendingHandshake::Client(mid_handshake)))
-            }
-            Err(HandshakeError::Failure(Error::Io(err))) => return Err(err),
-            Err(HandshakeError::Failure(err)) => {
-                panic!("WS connect handshake error: {}", err)
-            }
-        };
+        /*
+         */
 
         Ok(ConnectionInfo {
-            remote: RemoteResource { state: Mutex::new(remote) },
+            remote: RemoteResource {
+                state: Mutex::new(RemoteState::Handshake(Some(PendingHandshake::Connect(
+                    url, stream,
+                )))),
+            },
             local_addr,
             peer_addr,
         })
@@ -143,45 +141,6 @@ impl Remote for RemoteResource {
         }
     }
 
-    fn pending(&self, _readiness: Readiness) -> PendingStatus {
-        let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
-        match state.deref_mut() {
-            RemoteState::WebSocket(_) => PendingStatus::Ready,
-            RemoteState::Handshake(pending) => match pending.take().unwrap() {
-                PendingHandshake::Client(mid_handshake) => match mid_handshake.handshake() {
-                    Ok((web_socket, _)) => {
-                        *state = RemoteState::WebSocket(web_socket);
-                        PendingStatus::Ready
-                    }
-                    Err(HandshakeError::Interrupted(mid_handshake)) => {
-                        *pending = Some(PendingHandshake::Client(mid_handshake));
-                        PendingStatus::Incomplete
-                    }
-                    Err(HandshakeError::Failure(Error::Io(_))) => PendingStatus::Disconnected,
-                    Err(HandshakeError::Failure(err)) => {
-                        log::error!("WS connect handshake error: {}", err);
-                        PendingStatus::Disconnected // should not happen
-                    }
-                },
-                PendingHandshake::Server(mid_handshake) => match mid_handshake.handshake() {
-                    Ok(web_socket) => {
-                        *state = RemoteState::WebSocket(web_socket);
-                        PendingStatus::Ready
-                    }
-                    Err(HandshakeError::Interrupted(mid_handshake)) => {
-                        *pending = Some(PendingHandshake::Server(mid_handshake));
-                        PendingStatus::Incomplete
-                    }
-                    Err(HandshakeError::Failure(Error::Io(_))) => PendingStatus::Disconnected,
-                    Err(HandshakeError::Failure(err)) => {
-                        log::error!("WS accept handshake error: {}", err);
-                        PendingStatus::Disconnected // should not happen
-                    }
-                },
-            },
-        }
-    }
-
     fn send(&self, data: &[u8]) -> SendStatus {
         match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
             RemoteState::WebSocket(web_socket) => {
@@ -204,6 +163,67 @@ impl Remote for RemoteResource {
                 }
             }
             RemoteState::Handshake(_) => unreachable!(),
+        }
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
+        match state.deref_mut() {
+            RemoteState::WebSocket(_) => PendingStatus::Ready,
+            RemoteState::Handshake(pending) => match pending.take().unwrap() {
+                PendingHandshake::Connect(url, stream) => {
+                    match super::tcp::check_stream_ready(&stream) {
+                        PendingStatus::Ready => match ws_connect(url, stream) {
+                            Ok((web_socket, _)) => {
+                                *state = RemoteState::WebSocket(web_socket);
+                                PendingStatus::Ready
+                            }
+                            Err(HandshakeError::Interrupted(mid_handshake)) => {
+                                *pending = Some(PendingHandshake::Client(mid_handshake));
+                                PendingStatus::Incomplete
+                            }
+                            Err(HandshakeError::Failure(Error::Io(_))) => {
+                                PendingStatus::Disconnected
+                            }
+                            Err(HandshakeError::Failure(err)) => {
+                                log::error!("WS connect handshake error: {}", err);
+                                PendingStatus::Disconnected // should not happen
+                            }
+                        },
+                        other => other,
+                    }
+                }
+                PendingHandshake::Client(mid_handshake) => match mid_handshake.handshake() {
+                    Ok((web_socket, _)) => {
+                        *state = RemoteState::WebSocket(web_socket);
+                        PendingStatus::Ready
+                    }
+                    Err(HandshakeError::Interrupted(mid_handshake)) => {
+                        *pending = Some(PendingHandshake::Client(mid_handshake));
+                        PendingStatus::Incomplete
+                    }
+                    Err(HandshakeError::Failure(Error::Io(_))) => PendingStatus::Disconnected,
+                    Err(HandshakeError::Failure(err)) => {
+                        log::error!("WS client handshake error: {}", err);
+                        PendingStatus::Disconnected // should not happen
+                    }
+                },
+                PendingHandshake::Server(mid_handshake) => match mid_handshake.handshake() {
+                    Ok(web_socket) => {
+                        *state = RemoteState::WebSocket(web_socket);
+                        PendingStatus::Ready
+                    }
+                    Err(HandshakeError::Interrupted(mid_handshake)) => {
+                        *pending = Some(PendingHandshake::Server(mid_handshake));
+                        PendingStatus::Incomplete
+                    }
+                    Err(HandshakeError::Failure(Error::Io(_))) => PendingStatus::Disconnected,
+                    Err(HandshakeError::Failure(err)) => {
+                        log::error!("WS server handshake error: {}", err);
+                        PendingStatus::Disconnected // should not happen
+                    }
+                },
+            },
         }
     }
 }

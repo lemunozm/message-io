@@ -2,9 +2,9 @@
 
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
-    ListeningInfo,
+    ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr};
+use crate::network::{RemoteAddr, Readiness};
 
 use mio::event::{Source};
 
@@ -20,28 +20,32 @@ impl Adapter for MyAdapter {
 pub(crate) struct RemoteResource;
 impl Resource for RemoteResource {
     fn source(&mut self) -> &mut dyn Source {
-        todo!();
+        todo!()
     }
 }
 
 impl Remote for RemoteResource {
     fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
-        todo!();
+        todo!()
     }
 
     fn receive(&self, process_data: impl FnMut(&[u8])) -> ReadStatus {
-        todo!();
+        todo!()
     }
 
     fn send(&self, data: &[u8]) -> SendStatus {
-        todo!();
+        todo!()
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        todo!()
     }
 }
 
 pub(crate) struct LocalResource;
 impl Resource for LocalResource {
     fn source(&mut self) -> &mut dyn Source {
-        todo!();
+        todo!()
     }
 }
 
@@ -49,10 +53,10 @@ impl Local for LocalResource {
     type Remote = RemoteResource;
 
     fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
-        todo!();
+        todo!()
     }
 
     fn accept(&self, accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
-        todo!();
+        todo!()
     }
 }

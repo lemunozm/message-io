@@ -222,6 +222,7 @@ mod tests {
 
     lazy_static::lazy_static! {
         static ref TIMEOUT: Duration = Duration::from_millis(1000);
+        static ref LOCALHOST_CONN_TIMEOUT: Duration = Duration::from_millis(5000);
     }
 
     fn no_more_events(mut processor: NetworkProcessor) {
@@ -238,19 +239,22 @@ mod tests {
 
         let mut was_connected = 0;
         let mut was_accepted = 0;
-        for _ in 0..2 {
-            processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
-                NetEvent::Connected(net_endpoint, status) => {
-                    assert!(status);
-                    assert_eq!(endpoint, net_endpoint);
-                    was_connected += 1;
-                }
-                NetEvent::Accepted(_, net_listener_id) => {
-                    assert_eq!(listener_id, net_listener_id);
-                    was_accepted += 1;
-                }
-                _ => unreachable!(),
-            });
+        for _ in 0..5 {
+            processor.process_poll_event(
+                Some(*TIMEOUT),
+                |net_event| match net_event {
+                    NetEvent::Connected(net_endpoint, status) => {
+                        assert!(status);
+                        assert_eq!(endpoint, net_endpoint);
+                        was_connected += 1;
+                    }
+                    NetEvent::Accepted(_, net_listener_id) => {
+                        assert_eq!(listener_id, net_listener_id);
+                        was_accepted += 1;
+                    }
+                    _ => unreachable!(),
+                },
+            );
         }
         assert_eq!(was_connected, 1);
         assert_eq!(was_accepted, 1);
@@ -268,8 +272,8 @@ mod tests {
             assert!(controller.is_ready(endpoint.resource_id()).unwrap());
         });
 
-        for _ in 0..2 {
-            processor.process_poll_event(Some(*TIMEOUT), |_| ());
+        for _ in 0..5 {
+            processor.process_poll_event(Some(*LOCALHOST_CONN_TIMEOUT), |_| ());
         }
 
         thread.join();
@@ -278,10 +282,15 @@ mod tests {
     #[test]
     fn unreachable_connection() {
         let (controller, mut processor) = self::split();
-        let (endpoint, _) = controller.connect(Transport::Tcp, "127.0.0.1:5555").unwrap();
+
+        // Ensure that addr is not using by other process because it takes some secs to be reusable.
+        let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        controller.remove(listener_id);
+
+        let (endpoint, _) = controller.connect(Transport::Tcp, addr).unwrap();
 
         let mut was_disconnected = false;
-        processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
+        processor.process_poll_event(Some(*LOCALHOST_CONN_TIMEOUT), |net_event| match net_event {
             NetEvent::Connected(net_endpoint, status) => {
                 assert!(!status);
                 assert_eq!(endpoint, net_endpoint);
@@ -298,12 +307,16 @@ mod tests {
     fn unreachable_connection_sync() {
         let (controller, mut processor) = self::split();
 
+        // Ensure that addr is not using by other process because it takes some secs to be reusable.
+        let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        controller.remove(listener_id);
+
         let mut thread = NamespacedThread::spawn("test", move || {
-            let err = controller.connect_sync(Transport::Tcp, "127.0.0.1:5555").unwrap_err();
+            let err = controller.connect_sync(Transport::Tcp, addr).unwrap_err();
             assert!(err.kind() == io::ErrorKind::ConnectionRefused);
         });
 
-        processor.process_poll_event(Some(*TIMEOUT), |_| ());
+        processor.process_poll_event(Some(*LOCALHOST_CONN_TIMEOUT), |_| ());
 
         thread.join();
     }

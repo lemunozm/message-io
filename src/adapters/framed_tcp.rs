@@ -1,8 +1,8 @@
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
-    ListeningInfo,
+    ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr};
+use crate::network::{RemoteAddr, Readiness};
 use crate::util::encoding::{self, Decoder, MAX_ENCODED_SIZE};
 
 use mio::net::{TcpListener, TcpStream};
@@ -110,6 +110,10 @@ impl Remote for RemoteResource {
                 }
             }
         }
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        super::tcp::check_stream_ready(&self.stream)
     }
 }
 

@@ -7,6 +7,7 @@ Now it performs a non-blocking connection.
 - Adapter API modified to handle easily handshakes.
 - Fixed websocket issue that could offer an accepted websocket that was not valid (the websocket handshake could have failed).
 - Added `NetworkController::is_ready()`
+- Added `SendStatus::ResourceNotAvailable`
 
 ## Release 0.13.3
 - Fixed a bad internal assert.

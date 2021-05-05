@@ -55,7 +55,7 @@ impl Endpoint {
         // Only local resources allowed
         assert_eq!(id.resource_type(), super::resource_id::ResourceType::Local);
 
-        // Only packet based transport protocols allowed
+        // Only non connection-oriented transport protocols allowed
         assert!(!super::transport::Transport::from(id.adapter_id()).is_connection_oriented());
 
         Endpoint::new(id, addr)

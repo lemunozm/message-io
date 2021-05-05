@@ -90,10 +90,14 @@ For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
 message-io = { version = "0.14", default-features = false, features = ["tcp", "udp"] }
 ```
 
-***Warning**: Version **0.14** modifies the [`connect()`]() behaviour to perform
-[**non**-blocking connections](https://github.com/lemunozm/message-io/issues/61).
+***Read before update to 0.14**: Version **0.14** modifies the [`connect()`]() behaviour to perform a
+[**non**-blocking connections](https://github.com/lemunozm/message-io/issues/61) instead.
 It is recommended to use this non-blocking mode in order to get the
-best scalability and performance in your application, but if you need to perform a similar blocking connection as before, you can use [`connect_sync()`]().*
+best scalability and performance in your application. If you need to perform
+a similar blocking connection as before (version 0.13), you can call to [`connect_sync()`]().
+Note also that the previous `NetEvent::Connect` has been renamed to `NetEvent::Accepted`.
+The current `NetEvent::Connect` is a new event to deal with the new non-blocking connections.
+See [`NetEvent`]() docs for more info.*
 
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds

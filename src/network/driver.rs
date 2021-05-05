@@ -41,7 +41,7 @@ pub enum NetEvent<'a> {
     /// event. This one-to-one relation is not conserved in stream-based transports as *TCP*.
     ///
     /// If you want a packet-based protocol over *TCP* use
-    /// [`crate::transport::Transport::FramedTcp`].
+    /// [`crate::network::Transport::FramedTcp`].
     Message(Endpoint, &'a [u8]),
 
     /// This event is only dispatched when a connection is lost.
@@ -159,7 +159,7 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
             ResourceType::Remote => match self.remote_registry.get(endpoint.resource_id()) {
                 Some(remote) => match remote.properties.is_ready() {
                     true => remote.resource.send(data),
-                    false => SendStatus::ResourceNotFound,
+                    false => SendStatus::ResourceNotAvailable,
                 },
                 None => SendStatus::ResourceNotFound,
             },

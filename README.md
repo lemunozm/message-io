@@ -90,14 +90,14 @@ For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
 message-io = { version = "0.14", default-features = false, features = ["tcp", "udp"] }
 ```
 
-***Read before update to 0.14**: Version **0.14** modifies the [`connect()`]() behaviour to perform a
+***Read before update to 0.14**: Version **0.14** modifies the [`connect()`](https://docs.rs/message-io/latest/message_io/network/struct.NetworkController.html#method.connect) behaviour to perform a
 [**non**-blocking connections](https://github.com/lemunozm/message-io/issues/61) instead.
 It is recommended to use this non-blocking mode in order to get the
 best scalability and performance in your application. If you need to perform
-a similar blocking connection as before (version 0.13), you can call to [`connect_sync()`]().
+a similar blocking connection as before (version 0.13), you can call to [`connect_sync()`](https://docs.rs/message-io/latest/message_io/network/struct.NetworkController.html#method.connect_sync).
 Note also that the previous `NetEvent::Connect` has been renamed to `NetEvent::Accepted`.
 The current `NetEvent::Connect` is a new event to deal with the new non-blocking connections.
-See [`NetEvent`]() docs for more info.*
+See [`NetEvent`](https://docs.rs/message-io/latest/message_io/network/enum.NetEvent.html) docs for more info.*
 
 ### All in one: TCP, UDP and WebSocket echo server
 The following example is the simplest server that reads messages from the clients and responds
@@ -203,8 +203,8 @@ If a transport protocol can be built in top of [`mio`](https://github.com/tokio-
 
 1. Add your *adapter* file in `src/adapters/<my-transport-protocol>.rs` that implements the
   traits that you find [here](https://docs.rs/message-io/latest/message_io/network/adapter/index.html).
-  It contains only 7 mandatory functions to implement (see the [template](src/adapters/template.rs)),
-  and it takes little more than 150 lines to implement an adapter.
+  It contains only 8 mandatory functions to implement (see the [template](src/adapters/template.rs)),
+  and it takes arround 150 lines to implement an adapter.
 
 1. Add a new field in the `Transport` enum found in
 [src/network/transport.rs](src/network/transport.rs) to register your new adapter.

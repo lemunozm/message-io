@@ -63,6 +63,40 @@ impl NetworkController {
     /// the connection itself.
     /// If you want to check if the connection has been established or not you have to read the
     /// boolean indicator in the [`NetEvent::Connected`] event.
+    ///
+    /// Example
+    /// ```
+    /// use message_io::node::{self, NodeEvent};
+    /// use message_io::network::{Transport, NetEvent};
+    ///
+    /// let (handler, listener) = node::split();
+    /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
+    ///
+    /// let (id, addr) = handler.network().listen(Transport::FramedTcp, "127.0.0.1:0").unwrap();
+    /// let (conn_endpoint, _) = handler.network().connect(Transport::FramedTcp, addr).unwrap();
+    /// // The socket could not be able to send yet.
+    ///
+    /// listener.for_each(move |event| match event {
+    ///     NodeEvent::Network(net_event) => match net_event {
+    ///         NetEvent::Connected(endpoint, established) => {
+    ///             assert_eq!(conn_endpoint, endpoint);
+    ///             if established {
+    ///                 println!("Connected!");
+    ///                 handler.network().send(endpoint, &[42]);
+    ///             }
+    ///             else {
+    ///                 println!("Could not connect");
+    ///             }
+    ///         },
+    ///         NetEvent::Accepted(endpoint, listening_id) => {
+    ///             assert_eq!(id, listening_id);
+    ///             println!("New connected endpoint: {}", endpoint.addr());
+    ///         },
+    ///         _ => (),
+    ///     }
+    ///     NodeEvent::Signal(_) => handler.stop(),
+    /// });
+    /// ```
     pub fn connect(
         &self,
         transport: Transport,
@@ -86,6 +120,27 @@ impl NetworkController {
     /// the network callback.
     /// In order to get the best scalability and performance, use the non-blocking
     /// [`NetworkController::connect()`] version.
+    ///
+    /// Example
+    /// ```
+    /// use message_io::node::{self, NodeEvent};
+    /// use message_io::network::{Transport, NetEvent};
+    ///
+    /// let (handler, listener) = node::split();
+    /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
+    ///
+    /// let (id, addr) = handler.network().listen(Transport::FramedTcp, "127.0.0.1:0").unwrap();
+    /// match handler.network().connect_sync(Transport::FramedTcp, addr) {
+    ///     Ok((endpoint, _)) => {
+    ///         println!("Connected!");
+    ///         handler.network().send(endpoint, &[42]);
+    ///     }
+    ///     Err(err) if err.kind() == std::io::ErrorKind::ConnectionRefused => {
+    ///         println!("Could not connect");
+    ///     }
+    ///     Err(err) => println!("An OS error creating the socket"),
+    /// }
+    /// ```
     pub fn connect_sync(
         &self,
         transport: Transport,

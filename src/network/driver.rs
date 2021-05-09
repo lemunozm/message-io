@@ -199,13 +199,15 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                     log::trace!("Processed remote for {}", endpoint);
 
                     if !remote.properties.is_ready() {
-                        self.process_pending_remote(remote, endpoint, readiness, event_callback);
+                        self.process_pending_remote(&remote, endpoint, readiness, |e| {
+                            event_callback(e)
+                        });
                     }
-                    else {
+                    if remote.properties.is_ready() {
                         match readiness {
                             Readiness::Write => remote.resource.ready_to_write(),
                             Readiness::Read => {
-                                self.read_from_remote(remote, endpoint, event_callback);
+                                self.read_from_remote(&remote, endpoint, event_callback);
                             }
                         }
                     }
@@ -216,7 +218,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                     log::trace!("Processed local for {}", id);
                     match readiness {
                         Readiness::Write => (),
-                        Readiness::Read => self.read_from_local(local, id, event_callback),
+                        Readiness::Read => self.read_from_local(&local, id, event_callback),
                     }
                 }
             }
@@ -227,7 +229,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
     fn process_pending_remote(
         &self,
-        remote: Arc<Register<R, RemoteProperties>>,
+        remote: &Arc<Register<R, RemoteProperties>>,
         endpoint: Endpoint,
         readiness: Readiness,
         mut event_callback: impl FnMut(NetEvent<'_>),
@@ -253,7 +255,7 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
 
     fn read_from_remote(
         &self,
-        remote: Arc<Register<R, RemoteProperties>>,
+        remote: &Arc<Register<R, RemoteProperties>>,
         endpoint: Endpoint,
         mut event_callback: impl FnMut(NetEvent<'_>),
     ) {
@@ -270,7 +272,7 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
 
     fn read_from_local(
         &self,
-        local: Arc<Register<L, LocalProperties>>,
+        local: &Arc<Register<L, LocalProperties>>,
         id: ResourceId,
         mut event_callback: impl FnMut(NetEvent<'_>),
     ) {
@@ -278,19 +280,11 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
             log::trace!("Accepted type: {}", accepted);
             match accepted {
                 AcceptedType::Remote(addr, remote) => {
-                    let remote_id = self.remote_registry.register(
+                    self.remote_registry.register(
                         remote,
                         RemoteProperties::new(addr, Some(id)),
                         true,
                     );
-
-                    // We Manually generate a Poll Write event, because an accepted connection
-                    // is ready to write.
-                    let remote = self.remote_registry.get(remote_id).unwrap();
-                    let endpoint = Endpoint::new(remote_id, addr);
-                    self.process_pending_remote(remote, endpoint, Readiness::Write, |net_event| {
-                        event_callback(net_event)
-                    });
                 }
                 AcceptedType::Data(addr, data) => {
                     let endpoint = Endpoint::new(id, addr);

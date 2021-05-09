@@ -199,13 +199,15 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
                     log::trace!("Processed remote for {}", endpoint);
 
                     if !remote.properties.is_ready() {
-                        self.process_pending_remote(&remote, endpoint, readiness, |e| {
+                        self.resolve_pending_remote(&remote, endpoint, readiness, |e| {
                             event_callback(e)
                         });
                     }
                     if remote.properties.is_ready() {
                         match readiness {
-                            Readiness::Write => remote.resource.ready_to_write(),
+                            Readiness::Write => {
+                                self.write_to_remote(&remote, endpoint, event_callback);
+                            }
                             Readiness::Read => {
                                 self.read_from_remote(&remote, endpoint, event_callback);
                             }
@@ -227,7 +229,7 @@ impl<R: Remote, L: Local<Remote = R>> EventProcessor for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
-    fn process_pending_remote(
+    fn resolve_pending_remote(
         &self,
         remote: &Arc<Register<R, RemoteProperties>>,
         endpoint: Endpoint,
@@ -250,6 +252,17 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
                     event_callback(NetEvent::Connected(endpoint, false));
                 }
             }
+        }
+    }
+
+    fn write_to_remote(
+        &self,
+        remote: &Arc<Register<R, RemoteProperties>>,
+        endpoint: Endpoint,
+        mut event_callback: impl FnMut(NetEvent<'_>),
+    ) {
+        if !remote.resource.ready_to_write() {
+            event_callback(NetEvent::Disconnected(endpoint));
         }
     }
 

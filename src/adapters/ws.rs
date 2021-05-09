@@ -223,6 +223,18 @@ impl Remote for RemoteResource {
             },
         }
     }
+
+    fn ready_to_write(&self) -> bool {
+        match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
+            RemoteState::WebSocket(web_socket) => match web_socket.write_pending() {
+                Ok(_) => true,
+                Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => true,
+                Err(_) => false, // Will be disconnected,
+            }
+            // This function is only call on ready resources.
+            RemoteState::Handshake(_) => unreachable!(),
+        }
+    }
 }
 
 impl RemoteResource {

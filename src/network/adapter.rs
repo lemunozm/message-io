@@ -143,23 +143,28 @@ pub trait Remote: Resource + Sized {
     /// The [`SendStatus`] will contain the status of this attempt.
     fn send(&self, data: &[u8]) -> SendStatus;
 
+    /// Called when a `Remote` is created (explicity of by a listener)
+    /// and it is not consider ready yet.
+    /// A remote resource **is considered ready** when it is totally connected
+    /// and can be used for writing data.
+    /// It implies that the user has received the `Connected` or `Accepted` method for that resource.
+    ///
+    /// This method is in charge to determine if a resource is ready or not.
+    /// No `Connected` or `Accepted` events will be generated until this function return
+    /// `PendingStatus::Ready`.
+    /// The method wil be called several times with different `Readiness` until the **implementator**
+    /// returns a `PendingStatus::Ready` or `PendingStatus::Disconnected`.
+    fn pending(&self, readiness: Readiness) -> PendingStatus;
+
     /// The resource is available to write.
     /// It must be *ready* to receive this call.
     /// Here the **implementator** optionally can try to write any pending data.
-    fn ready_to_write(&self) {}
-
-    /// Called when a `Remote` is created (explicity of by a listener) or when it is not considered
-    /// read but it has Read/Write readiness.
-    /// No `Connected` or `Accepted` events will be generated until this function return
-    /// `PendingStatus::Ready`.
-    ///
-    /// Implementing this function is optional.
-    /// The default implementation will consider ready the socket when it was ready to write into it.
-    /// Yo need to implement it if youtr protocol needs some necessary handshake for consider the
-    /// resource ready to use.
-    /// The **implementator** is in charge to write or read from the resource
-    /// (depending of the readiness) until it obtains an internal [`std::io::ErrorKind::WouldBlock`].
-    fn pending(&self, readiness: Readiness) -> PendingStatus;
+    /// The return value is an identification of the operation result.
+    /// If the method returns `true`, the operation was successful, otherwise, the resource will
+    /// be disconnected and removed.
+    fn ready_to_write(&self) -> bool {
+        true
+    }
 }
 
 /// Used as a parameter callback in [`Local::accept()`]

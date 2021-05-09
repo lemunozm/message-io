@@ -62,7 +62,7 @@ impl Poll {
     where C: FnMut(PollEvent) {
         loop {
             match self.mio_poll.poll(&mut self.events, timeout) {
-                Ok(_) => {
+                Ok(()) => {
                     for mio_event in &self.events {
                         if Self::WAKER_TOKEN == mio_event.token() {
                             log::trace!("POLL WAKER EVENT");

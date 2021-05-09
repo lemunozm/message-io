@@ -86,9 +86,6 @@ impl Remote for RemoteResource {
         let stream = TcpStream::connect(peer_addr)?;
         let local_addr = stream.local_addr()?;
 
-        /*
-         */
-
         Ok(ConnectionInfo {
             remote: RemoteResource {
                 state: Mutex::new(RemoteState::Handshake(Some(PendingHandshake::Connect(

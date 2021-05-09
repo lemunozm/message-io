@@ -27,7 +27,7 @@ use poll::{Poll, PollEvent};
 use strum::{IntoEnumIterator};
 
 use std::net::{SocketAddr, ToSocketAddrs};
-use std::time::{Duration};
+use std::time::{Duration, Instant};
 use std::io::{self};
 
 /// Create a network instance giving its controller and processor.
@@ -186,7 +186,7 @@ impl NetworkProcessor {
     }
 
     /// Process the next poll event.
-    /// This functions waits the timeout specified until the poll event is generated.
+    /// This method waits the timeout specified until the poll event is generated.
     /// If `None` is passed as timeout, it will wait indefinitely.
     /// Note that there is no 1-1 relation between an internal poll event and a [`NetEvent`].
     /// You need to assume that process an internal poll event could call 0 or N times to
@@ -212,6 +212,22 @@ impl NetworkProcessor {
             }
         });
     }
+
+    /// Process poll events until there is no more events during a `timeout` duration.
+    /// This method makes succesive calls to [`NetworkProcessor::process_poll_event()`].
+    pub fn process_poll_events_until_timeout(
+        &mut self,
+        timeout: Duration,
+        mut event_callback: impl FnMut(NetEvent<'_>),
+    ) {
+        loop {
+            let now = Instant::now();
+            self.process_poll_event(Some(timeout), |e| event_callback(e));
+            if now.elapsed() > timeout {
+                break
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -220,115 +236,112 @@ mod tests {
     use std::time::{Duration};
     use crate::util::thread::{NamespacedThread};
 
+    use test_case::test_case;
+
     lazy_static::lazy_static! {
         static ref TIMEOUT: Duration = Duration::from_millis(1000);
         static ref LOCALHOST_CONN_TIMEOUT: Duration = Duration::from_millis(5000);
     }
 
-    fn no_more_events(mut processor: NetworkProcessor) {
-        let mut was_event = false;
-        processor.process_poll_event(Some(*TIMEOUT), |_| was_event = true);
-        assert!(!was_event);
-    }
-
-    #[test]
-    fn successful_connection() {
+    #[cfg_attr(feature = "tcp", test_case(Transport::Tcp))]
+    #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp))]
+    #[cfg_attr(feature = "websocket", test_case(Transport::Ws))]
+    fn successful_connection(transport: Transport) {
         let (controller, mut processor) = self::split();
-        let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
-        let (endpoint, _) = controller.connect(Transport::Tcp, addr).unwrap();
+        let (listener_id, addr) = controller.listen(transport, "127.0.0.1:0").unwrap();
+        let (endpoint, _) = controller.connect(transport, addr).unwrap();
 
         let mut was_connected = 0;
         let mut was_accepted = 0;
-        for _ in 0..5 {
-            processor.process_poll_event(
-                Some(*TIMEOUT),
-                |net_event| match net_event {
-                    NetEvent::Connected(net_endpoint, status) => {
-                        assert!(status);
-                        assert_eq!(endpoint, net_endpoint);
-                        was_connected += 1;
-                    }
-                    NetEvent::Accepted(_, net_listener_id) => {
-                        assert_eq!(listener_id, net_listener_id);
-                        was_accepted += 1;
-                    }
-                    _ => unreachable!(),
-                },
-            );
-        }
-        assert_eq!(was_connected, 1);
+        processor.process_poll_events_until_timeout(*TIMEOUT, |net_event| match net_event {
+            NetEvent::Connected(net_endpoint, status) => {
+                assert!(status);
+                assert_eq!(endpoint, net_endpoint);
+                was_connected += 1;
+            }
+            NetEvent::Accepted(_, net_listener_id) => {
+                assert_eq!(listener_id, net_listener_id);
+                was_accepted += 1;
+            }
+            _ => unreachable!(),
+        });
         assert_eq!(was_accepted, 1);
-
-        no_more_events(processor);
+        assert_eq!(was_connected, 1);
     }
 
-    #[test]
-    fn successful_connection_sync() {
+    #[cfg_attr(feature = "tcp", test_case(Transport::Tcp))]
+    #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp))]
+    #[cfg_attr(feature = "websocket", test_case(Transport::Ws))]
+    fn successful_connection_sync(transport: Transport) {
         let (controller, mut processor) = self::split();
-        let (_, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        let (_, addr) = controller.listen(transport, "127.0.0.1:0").unwrap();
 
         let mut thread = NamespacedThread::spawn("test", move || {
-            let (endpoint, _) = controller.connect_sync(Transport::Tcp, addr).unwrap();
+            let (endpoint, _) = controller.connect_sync(transport, addr).unwrap();
             assert!(controller.is_ready(endpoint.resource_id()).unwrap());
         });
 
-        for _ in 0..5 {
-            processor.process_poll_event(Some(*LOCALHOST_CONN_TIMEOUT), |_| ());
-        }
+        processor.process_poll_events_until_timeout(*TIMEOUT, |_| ());
 
         thread.join();
     }
 
-    #[test]
-    fn unreachable_connection() {
+    #[cfg_attr(feature = "tcp", test_case(Transport::Tcp))]
+    #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp))]
+    #[cfg_attr(feature = "websocket", test_case(Transport::Ws))]
+    fn unreachable_connection(transport: Transport) {
         let (controller, mut processor) = self::split();
 
-        // Ensure that addr is not using by other process because it takes some secs to be reusable.
-        let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        // Ensure that addr is not using by other process
+        // because it takes some secs to be reusable.
+        let (listener_id, addr) = controller.listen(transport, "127.0.0.1:0").unwrap();
         controller.remove(listener_id);
 
-        let (endpoint, _) = controller.connect(Transport::Tcp, addr).unwrap();
+        let (endpoint, _) = controller.connect(transport, addr).unwrap();
 
         let mut was_disconnected = false;
-        processor.process_poll_event(Some(*LOCALHOST_CONN_TIMEOUT), |net_event| match net_event {
-            NetEvent::Connected(net_endpoint, status) => {
-                assert!(!status);
-                assert_eq!(endpoint, net_endpoint);
-                was_disconnected = true;
+        processor.process_poll_events_until_timeout(*LOCALHOST_CONN_TIMEOUT, |net_event| {
+            match net_event {
+                NetEvent::Connected(net_endpoint, status) => {
+                    assert!(!status);
+                    assert_eq!(endpoint, net_endpoint);
+                    was_disconnected = true;
+                }
+                _ => unreachable!(),
             }
-            _ => unreachable!(),
         });
         assert!(was_disconnected);
-
-        no_more_events(processor);
     }
 
-    #[test]
-    fn unreachable_connection_sync() {
+    #[cfg_attr(feature = "tcp", test_case(Transport::Tcp))]
+    #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp))]
+    #[cfg_attr(feature = "websocket", test_case(Transport::Ws))]
+    fn unreachable_connection_sync(transport: Transport) {
         let (controller, mut processor) = self::split();
 
-        // Ensure that addr is not using by other process because it takes some secs to be reusable.
-        let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
+        // Ensure that addr is not using by other process
+        // because it takes some secs to be reusable.
+        let (listener_id, addr) = controller.listen(transport, "127.0.0.1:0").unwrap();
         controller.remove(listener_id);
 
         let mut thread = NamespacedThread::spawn("test", move || {
-            let err = controller.connect_sync(Transport::Tcp, addr).unwrap_err();
+            let err = controller.connect_sync(transport, addr).unwrap_err();
             assert!(err.kind() == io::ErrorKind::ConnectionRefused);
         });
 
-        processor.process_poll_event(Some(*LOCALHOST_CONN_TIMEOUT), |_| ());
+        processor.process_poll_events_until_timeout(*LOCALHOST_CONN_TIMEOUT, |_| ());
 
         thread.join();
     }
 
     #[test]
     fn create_remove_listener() {
-        let (controller, processor) = self::split();
+        let (controller, mut processor) = self::split();
         let (listener_id, _) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
         assert!(controller.remove(listener_id)); // Do not generate an event
         assert!(!controller.remove(listener_id));
 
-        no_more_events(processor);
+        processor.process_poll_events_until_timeout(*TIMEOUT, |_| unreachable!());
     }
 
     #[test]
@@ -337,18 +350,16 @@ mod tests {
         let (listener_id, addr) = controller.listen(Transport::Tcp, "127.0.0.1:0").unwrap();
         controller.connect(Transport::Tcp, addr).unwrap();
 
-        for _ in 0..2 {
-            // We expect two events
-            processor.process_poll_event(Some(*TIMEOUT), |net_event| match net_event {
-                NetEvent::Connected(..) => (),
-                NetEvent::Accepted(_, _) => {
-                    assert!(controller.remove(listener_id));
-                    assert!(!controller.remove(listener_id));
-                }
-                _ => unreachable!(),
-            });
-        }
-
-        no_more_events(processor);
+        let mut was_accepted = false;
+        processor.process_poll_events_until_timeout(*TIMEOUT, |net_event| match net_event {
+            NetEvent::Connected(..) => (),
+            NetEvent::Accepted(_, _) => {
+                assert!(controller.remove(listener_id));
+                assert!(!controller.remove(listener_id));
+                was_accepted = true;
+            }
+            _ => unreachable!(),
+        });
+        assert!(was_accepted);
     }
 }

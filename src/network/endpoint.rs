@@ -91,22 +91,6 @@ mod tests {
     use crate::network::transport::{Transport};
 
     #[test]
-    #[should_panic]
-    fn from_remote_non_connection_oriented() {
-        let addr = "0.0.0.0:0".parse().unwrap();
-        let generator = ResourceIdGenerator::new(Transport::Udp.id(), ResourceType::Remote);
-        Endpoint::from_listener(generator.generate(), addr);
-    }
-
-    #[test]
-    #[should_panic]
-    fn from_local_connection_oriented() {
-        let addr = "0.0.0.0:0".parse().unwrap();
-        let generator = ResourceIdGenerator::new(Transport::Tcp.id(), ResourceType::Local);
-        Endpoint::from_listener(generator.generate(), addr);
-    }
-
-    #[test]
     fn from_local_non_connection_oriented() {
         let addr = "0.0.0.0:0".parse().unwrap();
         let generator = ResourceIdGenerator::new(Transport::Udp.id(), ResourceType::Local);

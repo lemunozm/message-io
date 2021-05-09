@@ -28,7 +28,7 @@ pub trait Resource: Send + Sync {
     /// Note: All `mio` network element implements [`Source`], you probably wants to use
     /// one of them as a base for your non-blocking transport.
     /// See [`Source`].
-    fn source(&mut self) -> &mut dyn Source;
+    fn source(&mut self) -> Option<&mut dyn Source>;
 }
 
 /// Plain struct used as a returned value of [`Remote::connect()`]

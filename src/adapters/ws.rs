@@ -51,15 +51,15 @@ pub(crate) struct RemoteResource {
 }
 
 impl Resource for RemoteResource {
-    fn source(&mut self) -> &mut dyn Source {
+    fn source(&mut self) -> Option<&mut dyn Source> {
         match self.state.get_mut().unwrap() {
-            RemoteState::WebSocket(web_socket) => web_socket.get_mut(),
+            RemoteState::WebSocket(web_socket) => Some(web_socket.get_mut()),
             RemoteState::Handshake(Some(handshake)) => match handshake {
-                PendingHandshake::Connect(_, stream) => stream,
-                PendingHandshake::Client(mid_handshake) => mid_handshake.get_mut().get_mut(),
-                PendingHandshake::Server(mid_handshake) => mid_handshake.get_mut().get_mut(),
+                PendingHandshake::Connect(_, stream) => Some(stream),
+                PendingHandshake::Client(mid_handshake) => Some(mid_handshake.get_mut().get_mut()),
+                PendingHandshake::Server(mid_handshake) => Some(mid_handshake.get_mut().get_mut()),
             },
-            RemoteState::Handshake(None) => unreachable!(),
+            RemoteState::Handshake(None) => None,
         }
     }
 }
@@ -245,8 +245,8 @@ pub(crate) struct LocalResource {
 }
 
 impl Resource for LocalResource {
-    fn source(&mut self) -> &mut dyn Source {
-        &mut self.listener
+    fn source(&mut self) -> Option<&mut dyn Source> {
+        Some(&mut self.listener)
     }
 }
 

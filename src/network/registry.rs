@@ -22,7 +22,9 @@ impl<S: Resource, P> Register<S, P> {
 
 impl<S: Resource, P> Drop for Register<S, P> {
     fn drop(&mut self) {
-        self.poll_registry.remove(self.resource.source());
+        if let Some(source) = self.resource.source() {
+            self.poll_registry.remove(source);
+        }
     }
 }
 
@@ -44,7 +46,7 @@ impl<S: Resource, P> ResourceRegistry<S, P> {
         // The registry must be locked for the entire implementation to avoid the poll
         // to generate events over not yet registered resources.
         let mut registry = self.resources.write().expect(OTHER_THREAD_ERR);
-        let id = self.poll_registry.add(resource.source(), write_readiness);
+        let id = self.poll_registry.add(resource.source().unwrap(), write_readiness);
         let register = Register::new(resource, properties, self.poll_registry.clone());
         registry.insert(id, Arc::new(register));
         id

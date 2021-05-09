@@ -19,7 +19,7 @@ impl Adapter for MyAdapter {
 
 pub(crate) struct RemoteResource;
 impl Resource for RemoteResource {
-    fn source(&mut self) -> &mut dyn Source {
+    fn source(&mut self) -> Option<&mut dyn Source> {
         todo!()
     }
 }
@@ -44,7 +44,7 @@ impl Remote for RemoteResource {
 
 pub(crate) struct LocalResource;
 impl Resource for LocalResource {
-    fn source(&mut self) -> &mut dyn Source {
+    fn source(&mut self) -> Option<&mut dyn Source> {
         todo!()
     }
 }

@@ -35,8 +35,8 @@ pub(crate) struct RemoteResource {
 }
 
 impl Resource for RemoteResource {
-    fn source(&mut self) -> Option<&mut dyn Source> {
-        Some(&mut self.socket)
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.socket
     }
 }
 
@@ -85,8 +85,8 @@ pub(crate) struct LocalResource {
 }
 
 impl Resource for LocalResource {
-    fn source(&mut self) -> Option<&mut dyn Source> {
-        Some(&mut self.socket)
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.socket
     }
 }
 

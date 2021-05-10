@@ -39,8 +39,8 @@ impl From<TcpStream> for RemoteResource {
 }
 
 impl Resource for RemoteResource {
-    fn source(&mut self) -> Option<&mut dyn Source> {
-        Some(&mut self.stream)
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.stream
     }
 }
 
@@ -122,8 +122,8 @@ pub(crate) struct LocalResource {
 }
 
 impl Resource for LocalResource {
-    fn source(&mut self) -> Option<&mut dyn Source> {
-        Some(&mut self.listener)
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.listener
     }
 }
 

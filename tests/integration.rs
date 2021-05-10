@@ -281,7 +281,7 @@ fn burst(transport: Transport, messages_count: usize) {
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, udp::MAX_COMPATIBLE_PAYLOAD_LEN))]
 #[cfg_attr(feature = "websocket", test_case(Transport::Ws, BIG_MESSAGE_SIZE))]
 fn message_size(transport: Transport, message_size: usize) {
-    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
+    //util::init_logger(LogThread::Disabled); // Enable it for better debugging
 
     assert!(message_size <= transport.max_message_size());
 

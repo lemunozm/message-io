@@ -37,6 +37,7 @@ impl Adapter for WsAdapter {
 
 enum PendingHandshake {
     Connect(Url, ArcTcpStream),
+    Accept(ArcTcpStream),
     Client(MidHandshake<ClientHandshake<ArcTcpStream>>),
     Server(MidHandshake<ServerHandshake<ArcTcpStream, NoCallback>>),
 }
@@ -59,6 +60,7 @@ impl Resource for RemoteResource {
             }
             RemoteState::Handshake(Some(handshake)) => match handshake {
                 PendingHandshake::Connect(_, stream) => Arc::get_mut(&mut stream.0).unwrap(),
+                PendingHandshake::Accept(stream) => Arc::get_mut(&mut stream.0).unwrap(),
                 PendingHandshake::Client(handshake) => {
                     Arc::get_mut(&mut handshake.get_mut().get_mut().0).unwrap()
                 }
@@ -180,13 +182,13 @@ impl Remote for RemoteResource {
             RemoteState::WebSocket(_) => PendingStatus::Ready,
             RemoteState::Handshake(pending) => match pending.take().unwrap() {
                 PendingHandshake::Connect(url, stream) => {
-                    let stream_backup = stream.clone();
                     let tcp_status = super::tcp::check_stream_ready(&stream.0);
                     if tcp_status != PendingStatus::Ready {
                         // TCP handshake not ready yet.
                         *pending = Some(PendingHandshake::Connect(url, stream));
                         return tcp_status
                     }
+                    let stream_backup = stream.clone();
                     match ws_connect(url, stream) {
                         Ok((web_socket, _)) => {
                             *state = RemoteState::WebSocket(web_socket);
@@ -204,6 +206,28 @@ impl Remote for RemoteResource {
                             *state = RemoteState::Error(stream_backup);
                             log::error!("WS connect handshake error: {}", err);
                             PendingStatus::Disconnected // should not happen
+                        }
+                    }
+                }
+                PendingHandshake::Accept(stream) => {
+                    let stream_backup = stream.clone();
+                    match ws_accept(stream.into()) {
+                        Ok(web_socket) => {
+                            *state = RemoteState::WebSocket(web_socket);
+                            PendingStatus::Ready
+                        }
+                        Err(HandshakeError::Interrupted(mid_handshake)) => {
+                            *pending = Some(PendingHandshake::Server(mid_handshake));
+                            PendingStatus::Incomplete
+                        }
+                        Err(HandshakeError::Failure(Error::Io(_))) => {
+                            *state = RemoteState::Error(stream_backup);
+                            PendingStatus::Disconnected
+                        }
+                        Err(HandshakeError::Failure(err)) => {
+                            *state = RemoteState::Error(stream_backup);
+                            log::error!("WS accept handshake error: {}", err);
+                            PendingStatus::Disconnected
                         }
                     }
                 }
@@ -257,6 +281,8 @@ impl Remote for RemoteResource {
     }
 
     fn ready_to_write(&self) -> bool {
+        true
+        /* Is this needed?
         match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
             RemoteState::WebSocket(web_socket) => match web_socket.write_pending() {
                 Ok(_) => true,
@@ -267,6 +293,7 @@ impl Remote for RemoteResource {
             RemoteState::Handshake(_) => unreachable!(),
             RemoteState::Error(_) => unreachable!(),
         }
+        */
     }
 }
 
@@ -308,21 +335,12 @@ impl Local for LocalResource {
         loop {
             match self.listener.accept() {
                 Ok((stream, addr)) => {
-                    let remote_state = match ws_accept(stream.into()) {
-                        Ok(web_socket) => Some(RemoteState::WebSocket(web_socket)),
-                        Err(HandshakeError::Interrupted(mid_handshake)) => Some(
-                            RemoteState::Handshake(Some(PendingHandshake::Server(mid_handshake))),
-                        ),
-                        Err(HandshakeError::Failure(ref err)) => {
-                            log::error!("WS accept handshake error: {}", err);
-                            None
-                        }
+                    let remote = RemoteResource {
+                        state: Mutex::new(RemoteState::Handshake(Some(PendingHandshake::Accept(
+                            stream.into(),
+                        )))),
                     };
-
-                    if let Some(remote_state) = remote_state {
-                        let remote = RemoteResource { state: Mutex::new(remote_state) };
-                        accept_remote(AcceptedType::Remote(addr, remote));
-                    }
+                    accept_remote(AcceptedType::Remote(addr, remote));
                 }
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,

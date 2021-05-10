@@ -236,7 +236,9 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
         readiness: Readiness,
         mut event_callback: impl FnMut(NetEvent<'_>),
     ) {
-        match remote.resource.pending(readiness) {
+        let status = remote.resource.pending(readiness);
+        log::trace!("Resolve pending for {}: {:?}", endpoint, status);
+        match status {
             PendingStatus::Ready => {
                 remote.properties.mark_as_ready();
                 match remote.properties.local {

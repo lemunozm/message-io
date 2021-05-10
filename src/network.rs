@@ -191,7 +191,7 @@ impl NetworkController {
     /// you will want to process a [`NetEvent::Disconnected`] to determine if the connection +
     /// is *alive* instead of check if `send()` returned [`SendStatus::ResourceNotFound`].
     pub fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
-        log::trace!("Send {} bytes to {}", data.len(), endpoint);
+        log::trace!("Sending {} bytes to {}...", data.len(), endpoint);
         let status =
             self.controllers[endpoint.resource_id().adapter_id() as usize].send(endpoint, data);
         log::trace!("Send status: {:?}", status);

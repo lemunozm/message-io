@@ -211,7 +211,7 @@ impl Remote for RemoteResource {
                 }
                 PendingHandshake::Accept(stream) => {
                     let stream_backup = stream.clone();
-                    match ws_accept(stream.into()) {
+                    match ws_accept(stream) {
                         Ok(web_socket) => {
                             *state = RemoteState::WebSocket(web_socket);
                             PendingStatus::Ready

@@ -2,10 +2,10 @@
 
 ## Release 0.14.0
 - Asynchronous connections: `NetworkController::connect()` behaviour modified.
-Now it performs a non-blocking connection.
+Now it performs a non-blocking connection. Previous behaviour with `connect_sync` version.
 - Reduced slightly the websocket latency.
 - Adapter API modified to handle easily handshakes.
-- Fixed websocket issue that could offer an accepted websocket that was not valid (the websocket handshake could have failed).
+- Fixed websocket issue that could offer an accepted connection that was yet not valid.
 - Added `NetworkController::is_ready()`
 - Added `SendStatus::ResourceNotAvailable`
 

@@ -130,7 +130,7 @@ impl From<NetEvent<'_>> for StoredNetEvent {
 
 impl StoredNetEvent {
     /// Use this `StoredNetEvent` as a `NetEvent` referencing its data.
-    fn borrow(&self) -> NetEvent<'_> {
+    pub fn borrow(&self) -> NetEvent<'_> {
         match self {
             Self::Connected(endpoint, status) => NetEvent::Connected(*endpoint, *status),
             Self::Accepted(endpoint, id) => NetEvent::Accepted(*endpoint, *id),
@@ -533,8 +533,6 @@ mod tests {
         let inner_handler = handler.clone();
         listener.for_each(move |_| inner_handler.stop());
 
-        // Since here `NodeTask` is already dropped just after listener call,
-        // the node is considered not running.
         assert!(!handler.is_running());
     }
 

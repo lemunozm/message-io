@@ -9,6 +9,7 @@ Now it performs a non-blocking connection. Previous behaviour with `connect_sync
 - Added `NetworkController::is_ready()`
 - Added `SendStatus::ResourceNotAvailable`
 - Added `borrow()` method for `StoredNetEvent` to transform in into `NetEvent`.
+- Added `is_local()` and `is_remote()` helpers to `ResourceId`.
 
 ## Release 0.13.3
 - Fixed a bad internal assert.

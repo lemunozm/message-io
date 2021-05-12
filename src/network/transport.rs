@@ -1,4 +1,5 @@
 use super::loader::{DriverLoader};
+use super::resource_id::{ResourceId};
 
 #[cfg(feature = "tcp")]
 use crate::adapters::tcp::{TcpAdapter};
@@ -152,8 +153,29 @@ impl From<u8> for Transport {
     }
 }
 
+impl From<ResourceId> for Transport {
+    fn from(id: ResourceId) -> Self {
+        id.adapter_id().into()
+    }
+}
+
 impl std::fmt::Display for Transport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use strum::{IntoEnumIterator};
+
+    #[test]
+    fn id_equivalence() {
+        Transport::iter().for_each(|transport| {
+            assert!(transport == Transport::from(transport.id()));
+        });
     }
 }

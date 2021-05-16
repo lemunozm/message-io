@@ -103,7 +103,10 @@ impl Remote for RemoteResource {
     }
 }
 
+/// Check if a TcpStream can be considered connected.
 pub fn check_stream_ready(stream: &TcpStream) -> PendingStatus {
+    // A multiplatform non-blocking way to determine if the TCP stream is connected:
+    // Extracted from: https://github.com/tokio-rs/mio/issues/1486
     if let Ok(Some(_)) = stream.take_error() {
         return PendingStatus::Disconnected
     }

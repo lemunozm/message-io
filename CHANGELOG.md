@@ -7,9 +7,9 @@ Now it performs a non-blocking connection. Previous behaviour with `connect_sync
 - Adapter API modified to handle easily handshakes.
 - Fixed websocket issue that could offer an accepted connection that was yet not valid.
 - Added `NetworkController::is_ready()`
-- Added `SendStatus::ResourceNotAvailable`
 - Added `borrow()` method for `StoredNetEvent` to transform in into `NetEvent`.
 - Added `is_local()` and `is_remote()` helpers to `ResourceId`.
+- Modified `SendStatus::MaxPacketSizeExceeded`, now it not contains lengths info.
 
 ## Release 0.13.3
 - Fixed a bad internal assert.

@@ -157,10 +157,7 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus {
         match endpoint.resource_id().resource_type() {
             ResourceType::Remote => match self.remote_registry.get(endpoint.resource_id()) {
-                Some(remote) => match remote.properties.is_ready() {
-                    true => remote.resource.send(data),
-                    false => SendStatus::ResourceNotAvailable,
-                },
+                Some(remote) => remote.resource.send(data), // Resource always ready at this point
                 None => SendStatus::ResourceNotFound,
             },
             ResourceType::Local => match self.local_registry.get(endpoint.resource_id()) {

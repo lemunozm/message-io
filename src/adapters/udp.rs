@@ -150,14 +150,7 @@ fn send_packet(data: &[u8], send_method: impl Fn(&[u8]) -> io::Result<usize>) ->
             }
             Err(ref err) if err.kind() == ErrorKind::WouldBlock => continue,
             Err(ref err) if err.kind() == ErrorKind::Other => {
-                let expected_assumption = if data.len() > MAX_PAYLOAD_LEN {
-                    MAX_PAYLOAD_LEN
-                }
-                else {
-                    // e.g. MacOS do not support the MAX UDP MTU.
-                    MAX_COMPATIBLE_PAYLOAD_LEN
-                };
-                break SendStatus::MaxPacketSizeExceeded(data.len(), expected_assumption)
+                break SendStatus::MaxPacketSizeExceeded
             }
             Err(err) => {
                 log::error!("UDP send error: {}", err);

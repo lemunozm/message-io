@@ -18,7 +18,7 @@ use std::sync::{
 use std::io::{Write, Read};
 
 lazy_static::lazy_static! {
-    static ref TIMEOUT: Duration = Duration::from_millis(100);
+    static ref TIMEOUT: Duration = Duration::from_millis(1);
 }
 
 fn init_connection(transport: Transport) -> (NetworkController, NetworkProcessor, Endpoint) {
@@ -36,7 +36,7 @@ fn init_connection(transport: Transport) -> (NetworkController, NetworkProcessor
     };
 
     let receiver_addr = controller.listen(transport, "127.0.0.1:0").unwrap().1;
-    let receiver = controller.connect(transport, receiver_addr).unwrap().0;
+    let receiver = controller.connect_sync(transport, receiver_addr).unwrap().0;
 
     running.store(false, Ordering::Relaxed);
     let processor = thread.join();

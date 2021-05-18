@@ -71,6 +71,10 @@ pub enum SendStatus {
     /// This implies that a [`crate::network::NetEvent::Disconnected`] has happened or that
     /// the resource never existed.
     ResourceNotFound,
+
+    /// The resource can not perform the required send operation.
+    /// Usually this is due because it is performing the handshake.
+    ResourceNotAvailable,
 }
 
 /// Returned as a result of [`Remote::receive()`]

@@ -353,6 +353,8 @@ mod tests {
         controller.remove(listener_id);
 
         let (endpoint, _) = controller.connect(transport, addr).unwrap();
+        assert_eq!(controller.send(endpoint, &[42]), SendStatus::ResourceNotAvailable);
+        assert!(!controller.is_ready(endpoint.resource_id()).unwrap());
 
         let mut was_disconnected = false;
         processor.process_poll_events_until_timeout(*LOCALHOST_CONN_TIMEOUT, |net_event| {
@@ -381,7 +383,7 @@ mod tests {
 
         let mut thread = NamespacedThread::spawn("test", move || {
             let err = controller.connect_sync(transport, addr).unwrap_err();
-            assert!(err.kind() == io::ErrorKind::ConnectionRefused);
+            assert_eq!(err.kind(), io::ErrorKind::ConnectionRefused);
         });
 
         processor.process_poll_events_until_timeout(*LOCALHOST_CONN_TIMEOUT, |_| ());

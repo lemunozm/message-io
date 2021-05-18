@@ -13,16 +13,18 @@ use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 use std::io::{self, ErrorKind};
 use std::mem::{MaybeUninit};
 
-/// Maximun payload that UDP can send.
-/// The following payload works on Linux and Windows, but overcome the MacOS limits.
-/// To more safety limit, see: `MAX_COMPATIBLE_UDP_PAYLOAD_LEN`.
+/// Maximun payload that UDP can send over the internet to be mostly compatible.
+pub const MAX_INTERNET_PAYLOAD_LEN: usize = 1500 - 20 - 8;
 // - 20: max IP header
 // - 8: max udp header
-pub const MAX_PAYLOAD_LEN: usize = 65535 - 20 - 8;
 
-/// Maximun payload that UDP can send safety in main OS.
-// 9216: MTU of the OS with the minimun MTU: OSX
-pub const MAX_COMPATIBLE_PAYLOAD_LEN: usize = 9216 - 20 - 8;
+/// Similar to [`MAX_INTERNET_PAYLOAD_LEN`] but for localhost instead of internet.
+/// Localhost can handle a bigger MTU.
+#[cfg(not(target_os = "macos"))]
+pub const MAX_LOCAL_PAYLOAD_LEN: usize = 65535 - 20 - 8;
+
+#[cfg(target_os = "macos")]
+pub const MAX_LOCAL_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 
 pub(crate) struct UdpAdapter;
 impl Adapter for UdpAdapter {
@@ -50,7 +52,7 @@ impl Remote for RemoteResource {
     }
 
     fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
-        let buffer: MaybeUninit<[u8; MAX_PAYLOAD_LEN]> = MaybeUninit::uninit();
+        let buffer: MaybeUninit<[u8; MAX_LOCAL_PAYLOAD_LEN]> = MaybeUninit::uninit();
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 
         loop {
@@ -110,7 +112,7 @@ impl Local for LocalResource {
     }
 
     fn accept(&self, mut accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
-        let buffer: MaybeUninit<[u8; MAX_PAYLOAD_LEN]> = MaybeUninit::uninit();
+        let buffer: MaybeUninit<[u8; MAX_LOCAL_PAYLOAD_LEN]> = MaybeUninit::uninit();
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 
         loop {

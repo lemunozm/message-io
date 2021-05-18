@@ -10,6 +10,10 @@ Now it performs a non-blocking connection. Previous behaviour with `connect_sync
 - Added `borrow()` method for `StoredNetEvent` to transform in into `NetEvent`.
 - Added `is_local()` and `is_remote()` helpers to `ResourceId`.
 - Modified `SendStatus::MaxPacketSizeExceeded`, now it not contains lengths info.
+- Renamed `udp::MAX_COMPATIBLE_PAYLOAD_LEN` to `udp::MAX_LOCAL_PAYLOAD_LEN`, value updated
+with `udp::MAX_PAYLOAD_LEN`.
+- Removed `udp::MAX_PAYLOAD_LEN`.
+- Added `udp::MAX_NETWORK_PAYLOAD_LEN`.
 
 ## Release 0.13.3
 - Fixed a bad internal assert.

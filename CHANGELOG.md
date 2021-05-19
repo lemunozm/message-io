@@ -16,6 +16,17 @@ with `udp::MAX_PAYLOAD_LEN`.
 - Removed `udp::MAX_PAYLOAD_LEN`.
 - Added `udp::MAX_NETWORK_PAYLOAD_LEN`.
 
+#### Update notes
+Version 0.14 modifies the [`connect()`](https://docs.rs/message-io/latest/message_io/network/struct.NetworkController.html#method.connect) behaviour to perform a
+[non-blocking connections](https://github.com/lemunozm/message-io/issues/79) instead.
+It is recommended to use this non-blocking mode in order to get the
+best scalability and performance in your application. If you need to perform
+a similar blocking connection as before (version 0.13), you can call to [`connect_sync()`](https://docs.rs/message-io/latest/message_io/network/struct.NetworkController.html#method.connect_sync).
+
+Note also that the previous `NetEvent::Connect` has been renamed to `NetEvent::Accepted`.
+The current `NetEvent::Connect` behaves as a new event to deal with the new non-blocking connections.
+See [`NetEvent`](https://docs.rs/message-io/latest/message_io/network/enum.NetEvent.html) docs for more info.
+
 ## Release 0.13.3
 - Fixed a bad internal assert.
 
@@ -58,6 +69,10 @@ This function no longer returns a `NodeTask`.
   - Latency reduced in arround 66%.
   - Zero-copy message.
 
+#### Update notes
+Version 0.12 comes with important API changes (changelog) in order to reach zero-copy write/read goal.
+For a soft transition, you can use `NodeListener::enqueue()` (see docs).
+
 ## Release 0.11.1
 - Reduce the bandwidth of `FramedTcp` transport using variadic encoding instead of constant padding.
 
@@ -93,6 +108,11 @@ and `NetEvent::Connection` events.
 - Fixed `ResourceId` compilation in 32-bits.
 - Reverted inner tuple position of `Network::split()` in version 0.8.
   First `Network` then `EventQueue`, as an user would expect.
+
+#### Update notes
+If you comming from **0.9.4 o less**, note that `Transport::Tcp` has been renamed
+to `Transport::FramedTcp` to be more according to its behaviour.
+See more [here](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html).
 
 ## Release 0.9.4
 - Fixed issue with `ResourceId`.

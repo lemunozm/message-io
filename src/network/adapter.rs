@@ -63,11 +63,9 @@ pub enum SendStatus {
     /// It means that the correspond adapter has sent the message to the OS without errors.
     Sent,
 
-    /// This status is received in datagram-based protocols where there is a limit in the bytes
+    /// This status is received in packet-based protocols where there is a limit in the bytes
     /// that a packet can have.
-    /// The first value is the length of the data that was attempt to send
-    /// and the second one is the maximun offers by the datagram based protocol used.
-    MaxPacketSizeExceeded(usize, usize),
+    MaxPacketSizeExceeded,
 
     /// It means that the message could not be sent by the specified `ResourceId`.
     /// This implies that a [`crate::network::NetEvent::Disconnected`] has happened or that

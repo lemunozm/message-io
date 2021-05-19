@@ -111,13 +111,14 @@ impl NetworkController {
 
     /// Creates a connection to the specified address.
     /// This function is similar to [`NetworkController::connect()`] but will block
-    /// to perform the connection, waiting until for the connection is ready.
+    /// until for the connection is ready.
     /// If the connection can not be established, a `ConnectionRefused` error will be returned.
     ///
     /// Note that the `Connect` event will be also generated.
     ///
-    /// Since this function blocks the current thread, it must not be used inside
-    /// the network callback.
+    /// Since this function blocks the current thread, it must NOT be used inside
+    /// the network callback because the internal event could not be processed.
+    ///
     /// In order to get the best scalability and performance, use the non-blocking
     /// [`NetworkController::connect()`] version.
     ///
@@ -150,11 +151,8 @@ impl NetworkController {
         loop {
             std::thread::sleep(Duration::from_millis(1));
             match self.is_ready(endpoint.resource_id()) {
-                Some(status) => {
-                    if status {
-                        return Ok((endpoint, addr))
-                    }
-                }
+                Some(true) => return Ok((endpoint, addr)),
+                Some(false) => continue,
                 None => {
                     return Err(io::Error::new(
                         io::ErrorKind::ConnectionRefused,
@@ -353,6 +351,8 @@ mod tests {
         controller.remove(listener_id);
 
         let (endpoint, _) = controller.connect(transport, addr).unwrap();
+        assert_eq!(controller.send(endpoint, &[42]), SendStatus::ResourceNotAvailable);
+        assert!(!controller.is_ready(endpoint.resource_id()).unwrap());
 
         let mut was_disconnected = false;
         processor.process_poll_events_until_timeout(*LOCALHOST_CONN_TIMEOUT, |net_event| {
@@ -381,7 +381,7 @@ mod tests {
 
         let mut thread = NamespacedThread::spawn("test", move || {
             let err = controller.connect_sync(transport, addr).unwrap_err();
-            assert!(err.kind() == io::ErrorKind::ConnectionRefused);
+            assert_eq!(err.kind(), io::ErrorKind::ConnectionRefused);
         });
 
         processor.process_poll_events_until_timeout(*LOCALHOST_CONN_TIMEOUT, |_| ());

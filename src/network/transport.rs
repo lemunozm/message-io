@@ -68,10 +68,9 @@ impl Transport {
 
     /// Maximum teorical packet payload length available for each transport.
     ///
-    /// Note: For UDP this value *depends* of the OS.
     /// The value returned by this function is the **teorical maximum** and could not be valid for
-    /// all OS (*MacOS* in as an example of this).
-    /// You can ensure your message not exceeds `udp::MAX_COMPATIBLE_UDP_PAYLOAD_LEN` in order to be
+    /// all networks.
+    /// You can ensure your message not exceeds `udp::MAX_INTERNET_PAYLOAD_LEN` in order to be
     /// more cross-platform compatible.
     pub const fn max_message_size(self) -> usize {
         match self {
@@ -80,7 +79,7 @@ impl Transport {
             #[cfg(feature = "tcp")]
             Self::FramedTcp => usize::MAX,
             #[cfg(feature = "udp")]
-            Self::Udp => udp::MAX_PAYLOAD_LEN,
+            Self::Udp => udp::MAX_LOCAL_PAYLOAD_LEN,
             #[cfg(feature = "websocket")]
             Self::Ws => ws::MAX_PAYLOAD_LEN,
         }

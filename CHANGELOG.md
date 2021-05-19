@@ -7,9 +7,14 @@ Now it performs a non-blocking connection. Previous behaviour with `connect_sync
 - Adapter API modified to handle easily handshakes.
 - Fixed websocket issue that could offer an accepted connection that was yet not valid.
 - Added `NetworkController::is_ready()`
-- Added `SendStatus::ResourceNotAvailable`
 - Added `borrow()` method for `StoredNetEvent` to transform in into `NetEvent`.
 - Added `is_local()` and `is_remote()` helpers to `ResourceId`.
+- Added `SendStatus::ResourceNotAvailable`
+- Modified `SendStatus::MaxPacketSizeExceeded`, now it not contains lengths info.
+- Renamed `udp::MAX_COMPATIBLE_PAYLOAD_LEN` to `udp::MAX_LOCAL_PAYLOAD_LEN`, value updated
+with `udp::MAX_PAYLOAD_LEN`.
+- Removed `udp::MAX_PAYLOAD_LEN`.
+- Added `udp::MAX_NETWORK_PAYLOAD_LEN`.
 
 ## Release 0.13.3
 - Fixed a bad internal assert.

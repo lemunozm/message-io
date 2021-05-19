@@ -161,9 +161,7 @@ impl Remote for RemoteResource {
                         Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
                             result = web_socket.write_pending();
                         }
-                        Err(Error::Capacity(_)) => {
-                            break SendStatus::MaxPacketSizeExceeded(data.len(), MAX_PAYLOAD_LEN)
-                        }
+                        Err(Error::Capacity(_)) => break SendStatus::MaxPacketSizeExceeded,
                         Err(err) => {
                             log::error!("WS send error: {}", err);
                             break SendStatus::ResourceNotFound // should not happen

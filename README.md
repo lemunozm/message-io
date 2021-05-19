@@ -91,7 +91,7 @@ message-io = { version = "0.14", default-features = false, features = ["tcp", "u
 ```
 
 _**Read before update to 0.14**: Version **0.14** modifies the [`connect()`](https://docs.rs/message-io/latest/message_io/network/struct.NetworkController.html#method.connect) behaviour to perform a
-[**non**-blocking connections](https://github.com/lemunozm/message-io/issues/61) instead.
+[**non**-blocking connections](https://github.com/lemunozm/message-io/issues/79) instead.
 It is recommended to use this non-blocking mode in order to get the
 best scalability and performance in your application. If you need to perform
 a similar blocking connection as before (version 0.13), you can call to [`connect_sync()`](https://docs.rs/message-io/latest/message_io/network/struct.NetworkController.html#method.connect_sync).

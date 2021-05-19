@@ -7,8 +7,19 @@ use std::time::{Duration};
 use std::sync::{Arc};
 use std::io::{ErrorKind};
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+/// Used for the adapter implementation.
+/// Specify the kind of event that is available for a resource.
+pub enum Readiness {
+    /// The resource is available to write
+    Write,
+
+    /// The resource is available to read (has any content to read).
+    Read,
+}
+
 pub enum PollEvent {
-    Network(ResourceId),
+    Network(ResourceId, Readiness),
     Waker,
 }
 
@@ -51,21 +62,23 @@ impl Poll {
     where C: FnMut(PollEvent) {
         loop {
             match self.mio_poll.poll(&mut self.events, timeout) {
-                Ok(_) => {
+                Ok(()) => {
                     for mio_event in &self.events {
-                        let poll_event = match mio_event.token() {
-                            Self::WAKER_TOKEN => {
-                                log::trace!("POLL EVENT: waker");
-                                PollEvent::Waker
+                        if Self::WAKER_TOKEN == mio_event.token() {
+                            log::trace!("POLL WAKER EVENT");
+                            event_callback(PollEvent::Waker);
+                        }
+                        else {
+                            let id = ResourceId::from(mio_event.token());
+                            if mio_event.is_readable() {
+                                log::trace!("POLL EVENT (R): {}", id);
+                                event_callback(PollEvent::Network(id, Readiness::Read));
                             }
-                            token => {
-                                let resource_id = ResourceId::from(token);
-                                log::trace!("POLL EVENT: {}", resource_id);
-                                PollEvent::Network(resource_id)
+                            if mio_event.is_writable() {
+                                log::trace!("POLL EVENT (W): {}", id);
+                                event_callback(PollEvent::Network(id, Readiness::Write));
                             }
-                        };
-
-                        event_callback(poll_event);
+                        }
                     }
                     break
                 }
@@ -98,10 +111,13 @@ impl PollRegistry {
         }
     }
 
-    pub fn add(&self, source: &mut dyn Source) -> ResourceId {
+    pub fn add(&self, source: &mut dyn Source, write_readiness: bool) -> ResourceId {
         let id = self.id_generator.generate();
-        self.registry.register(source, id.into(), Interest::READABLE).unwrap();
-        log::trace!("Register to poll: {}", id);
+        let interest = match write_readiness {
+            true => Interest::READABLE | Interest::WRITABLE,
+            false => Interest::READABLE,
+        };
+        self.registry.register(source, id.into(), interest).unwrap();
         id
     }
 
@@ -134,5 +150,11 @@ impl PollWaker {
     pub fn wake(&self) {
         self.waker.wake().unwrap();
         log::trace!("Wake poll...");
+    }
+}
+
+impl Clone for PollWaker {
+    fn clone(&self) -> Self {
+        Self { waker: self.waker.clone() }
     }
 }

@@ -7,13 +7,13 @@ pub fn main() {
 
     match args.get(1).unwrap_or(&String::new()).as_ref() {
         "discovery-server" => match discovery_server::DiscoveryServer::new() {
-            Some(discovery_server) => discovery_server.run(),
-            None => println!("Can not run the discovery server"),
+            Ok(discovery_server) => discovery_server.run(),
+            Err(err) => println!("Can not run the discovery server: {}", err),
         },
         "participant" => match args.get(2) {
             Some(name) => match participant::Participant::new(name) {
-                Some(participant) => participant.run(),
-                None => println!("Can not run the participant"),
+                Ok(participant) => participant.run(),
+                Err(err) => println!("Can not run the participant: {}", err),
             },
             None => println!("The participant needs a 'name'"),
         },

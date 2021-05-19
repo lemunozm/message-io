@@ -5,6 +5,7 @@ use message_io::node::{self, NodeHandler, NodeListener};
 
 use std::net::{SocketAddr};
 use std::collections::{HashMap};
+use std::io::{self};
 
 struct ParticipantInfo {
     addr: SocketAddr,
@@ -13,34 +14,31 @@ struct ParticipantInfo {
 
 pub struct DiscoveryServer {
     handler: NodeHandler<()>,
-    listener: Option<NodeListener<()>>,
+    node_listener: Option<NodeListener<()>>,
     participants: HashMap<String, ParticipantInfo>,
 }
 
 impl DiscoveryServer {
-    pub fn new() -> Option<DiscoveryServer> {
-        let (handler, listener) = node::split::<()>();
+    pub fn new() -> io::Result<DiscoveryServer> {
+        let (handler, node_listener) = node::split::<()>();
 
         let listen_addr = "127.0.0.1:5000";
-        match handler.network().listen(Transport::FramedTcp, listen_addr) {
-            Ok(_) => {
-                println!("Discovery server running at {}", listen_addr);
-                Some(DiscoveryServer {
-                    handler,
-                    listener: Some(listener),
-                    participants: HashMap::new(),
-                })
-            }
-            Err(_) => {
-                println!("Can not listen on {}", listen_addr);
-                None
-            }
-        }
+        handler.network().listen(Transport::FramedTcp, listen_addr)?;
+
+        println!("Discovery server running at {}", listen_addr);
+
+        Ok(DiscoveryServer {
+            handler,
+            node_listener: Some(node_listener),
+            participants: HashMap::new(),
+        })
     }
 
     pub fn run(mut self) {
-        let listener = self.listener.take().unwrap();
-        listener.for_each(move |event| match event.network() {
+        let node_listener = self.node_listener.take().unwrap();
+        node_listener.for_each(move |event| match event.network() {
+            NetEvent::Connected(_, _) => unreachable!(), // There is no connect() calls.
+            NetEvent::Accepted(_, _) => (),              // All endpoint accepted
             NetEvent::Message(endpoint, input_data) => {
                 let message: Message = bincode::deserialize(&input_data).unwrap();
                 match message {
@@ -53,19 +51,15 @@ impl DiscoveryServer {
                     _ => unreachable!(),
                 }
             }
-            NetEvent::Connected(_, _) => (),
             NetEvent::Disconnected(endpoint) => {
                 // Participant disconection without explict unregistration.
                 // We must remove from the registry too.
-                let participant_name = self.participants.iter().find_map(|(name, info)| {
-                    match info.endpoint == endpoint {
-                        true => Some(name.clone()),
-                        false => None,
-                    }
-                });
+                let participant =
+                    self.participants.iter().find(|(_, info)| info.endpoint == endpoint);
 
-                if let Some(name) = participant_name {
-                    self.unregister(&name)
+                if let Some(participant) = participant {
+                    let name = participant.0.to_string();
+                    self.unregister(&name);
                 }
             }
         });

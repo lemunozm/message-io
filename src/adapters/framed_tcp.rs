@@ -1,14 +1,14 @@
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
-    ListeningInfo,
+    ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr};
+use crate::network::{RemoteAddr, Readiness};
 use crate::util::encoding::{self, Decoder, MAX_ENCODED_SIZE};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
 
-use std::net::{SocketAddr, TcpStream as StdTcpStream};
+use std::net::{SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 use std::cell::{RefCell};
@@ -28,8 +28,8 @@ pub(crate) struct RemoteResource {
 }
 
 // SAFETY:
-// That RefCell<Decoder> can be used with Sync because the decoder is only used in the read_event.
-// This way, we save the cost of a Mutex.
+// That RefCell<Decoder> can be used with Sync because the decoder is only used in the read_event,
+// that will be called always from the same thread. This way, we save the cost of a Mutex.
 unsafe impl Sync for RemoteResource {}
 
 impl From<TcpStream> for RemoteResource {
@@ -47,10 +47,9 @@ impl Resource for RemoteResource {
 impl Remote for RemoteResource {
     fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
         let peer_addr = *remote_addr.socket_addr();
-        let stream = StdTcpStream::connect(peer_addr)?;
+        let stream = TcpStream::connect(peer_addr)?;
         let local_addr = stream.local_addr()?;
-        stream.set_nonblocking(true)?;
-        Ok(ConnectionInfo { remote: TcpStream::from_std(stream).into(), local_addr, peer_addr })
+        Ok(ConnectionInfo { remote: stream.into(), local_addr, peer_addr })
     }
 
     fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
@@ -111,6 +110,10 @@ impl Remote for RemoteResource {
                 }
             }
         }
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        super::tcp::check_stream_ready(&self.stream)
     }
 }
 

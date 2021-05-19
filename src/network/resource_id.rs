@@ -71,6 +71,16 @@ impl ResourceId {
         }
     }
 
+    /// Tells if the id preresents a local resource.
+    pub fn is_local(&self) -> bool {
+        self.resource_type() == ResourceType::Local
+    }
+
+    /// Tells if the id preresents a remote resource.
+    pub fn is_remote(&self) -> bool {
+        self.resource_type() == ResourceType::Remote
+    }
+
     /// Returns the associated adapter id.
     /// Note that this returned value is the same as the value of [`crate::network::Transport::id()`]
     /// if that transport uses the same adapter.

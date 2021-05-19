@@ -56,9 +56,8 @@ fn throughput_message_io(transport: Transport, packet_size: usize) {
         let handler = handler.clone();
 
         listener.for_each_async(move |event| match event.network() {
-            NetEvent::Connected(_, _) => {
-                t_ready.send(()).unwrap();
-            }
+            NetEvent::Connected(_, _) => (),
+            NetEvent::Accepted(_, _) => t_ready.send(()).unwrap(),
             NetEvent::Message(_, data) => {
                 received_bytes += data.len();
                 if received_bytes >= EXPECTED_BYTES {
@@ -74,8 +73,8 @@ fn throughput_message_io(transport: Transport, packet_size: usize) {
         r_ready.recv().unwrap();
     }
 
-    // To improve accuracy,
-    // ensure that internal thread is initialized for not oriented connection protocols
+    // Ensure that the connection is performed,
+    // the internal thread is initialized for not oriented connection protocols
     // and we are waiting in the internal poll for data.
     std::thread::sleep(Duration::from_millis(100));
 

@@ -55,7 +55,7 @@ impl Endpoint {
         // Only local resources allowed
         assert_eq!(id.resource_type(), super::resource_id::ResourceType::Local);
 
-        // Only packet based transport protocols allowed
+        // Only non connection-oriented transport protocols allowed
         assert!(!super::transport::Transport::from(id.adapter_id()).is_connection_oriented());
 
         Endpoint::new(id, addr)
@@ -89,22 +89,6 @@ mod tests {
     use super::*;
     use crate::network::resource_id::{ResourceType, ResourceIdGenerator};
     use crate::network::transport::{Transport};
-
-    #[test]
-    #[should_panic]
-    fn from_remote_non_connection_oriented() {
-        let addr = "0.0.0.0:0".parse().unwrap();
-        let generator = ResourceIdGenerator::new(Transport::Udp.id(), ResourceType::Remote);
-        Endpoint::from_listener(generator.generate(), addr);
-    }
-
-    #[test]
-    #[should_panic]
-    fn from_local_connection_oriented() {
-        let addr = "0.0.0.0:0".parse().unwrap();
-        let generator = ResourceIdGenerator::new(Transport::Tcp.id(), ResourceType::Local);
-        Endpoint::from_listener(generator.generate(), addr);
-    }
 
     #[test]
     fn from_local_non_connection_oriented() {

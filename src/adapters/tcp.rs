@@ -1,13 +1,13 @@
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
-    ListeningInfo,
+    ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr};
+use crate::network::{RemoteAddr, Readiness};
 
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
 
-use std::net::{SocketAddr, TcpStream as StdTcpStream};
+use std::net::{SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 use std::mem::{MaybeUninit};
@@ -42,10 +42,9 @@ impl Resource for RemoteResource {
 impl Remote for RemoteResource {
     fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
         let peer_addr = *remote_addr.socket_addr();
-        let stream = StdTcpStream::connect(peer_addr)?;
+        let stream = TcpStream::connect(peer_addr)?;
         let local_addr = stream.local_addr()?;
-        stream.set_nonblocking(true)?;
-        Ok(ConnectionInfo { remote: TcpStream::from_std(stream).into(), local_addr, peer_addr })
+        Ok(ConnectionInfo { remote: stream.into(), local_addr, peer_addr })
     }
 
     fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
@@ -97,6 +96,25 @@ impl Remote for RemoteResource {
                 }
             }
         }
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        check_stream_ready(&self.stream)
+    }
+}
+
+/// Check if a TcpStream can be considered connected.
+pub fn check_stream_ready(stream: &TcpStream) -> PendingStatus {
+    // A multiplatform non-blocking way to determine if the TCP stream is connected:
+    // Extracted from: https://github.com/tokio-rs/mio/issues/1486
+    if let Ok(Some(_)) = stream.take_error() {
+        return PendingStatus::Disconnected
+    }
+    match stream.peer_addr() {
+        Ok(_) => PendingStatus::Ready,
+        Err(err) if err.kind() == io::ErrorKind::NotConnected => PendingStatus::Incomplete,
+        Err(err) if err.kind() == io::ErrorKind::InvalidInput => PendingStatus::Incomplete,
+        Err(_) => PendingStatus::Disconnected,
     }
 }
 

@@ -106,11 +106,13 @@ impl<S> From<NodeEvent<'_, S>> for StoredNodeEvent<S> {
     }
 }
 
-/// Analogous to [`NetEvent`] but without reference the data.
-/// This kind of event is dispatched by `NodeListener::to_event_queue()`.
+/// Analogous to [`NetEvent`] but with static lifetime (without reference the data).
+/// This kind of event is dispatched by `NodeListener::to_event_queue()`
+/// and can be easily stored in any container.
 #[derive(Debug, Clone)]
 pub enum StoredNetEvent {
-    Connected(Endpoint, ResourceId),
+    Connected(Endpoint, bool),
+    Accepted(Endpoint, ResourceId),
     Message(Endpoint, Vec<u8>),
     Disconnected(Endpoint),
 }
@@ -118,7 +120,8 @@ pub enum StoredNetEvent {
 impl From<NetEvent<'_>> for StoredNetEvent {
     fn from(net_event: NetEvent<'_>) -> Self {
         match net_event {
-            NetEvent::Connected(endpoint, id) => Self::Connected(endpoint, id),
+            NetEvent::Connected(endpoint, status) => Self::Connected(endpoint, status),
+            NetEvent::Accepted(endpoint, id) => Self::Accepted(endpoint, id),
             NetEvent::Message(endpoint, data) => Self::Message(endpoint, Vec::from(data)),
             NetEvent::Disconnected(endpoint) => Self::Disconnected(endpoint),
         }
@@ -127,10 +130,11 @@ impl From<NetEvent<'_>> for StoredNetEvent {
 
 impl StoredNetEvent {
     /// Use this `StoredNetEvent` as a `NetEvent` referencing its data.
-    fn borrow(&self) -> NetEvent<'_> {
+    pub fn borrow(&self) -> NetEvent<'_> {
         match self {
-            Self::Connected(endpoint, id) => NetEvent::Connected(*endpoint, *id),
-            Self::Message(endpoint, data) => NetEvent::Message(*endpoint, &data),
+            Self::Connected(endpoint, status) => NetEvent::Connected(*endpoint, *status),
+            Self::Accepted(endpoint, id) => NetEvent::Accepted(*endpoint, *id),
+            Self::Message(endpoint, data) => NetEvent::Message(*endpoint, data),
             Self::Disconnected(endpoint) => NetEvent::Disconnected(*endpoint),
         }
     }
@@ -282,7 +286,7 @@ impl<S: Send + 'static> NodeListener<S> {
     ///
     /// let (handler, listener) = node::split();
     /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
-    /// handler.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    /// let (id, addr) = handler.network().listen(Transport::FramedTcp, "127.0.0.1:0").unwrap();
     ///
     /// listener.for_each(move |event| match event {
     ///     NodeEvent::Network(net_event) => { /* Your logic here */ },
@@ -326,6 +330,7 @@ impl<S: Send + 'static> NodeListener<S> {
 
                 scope
                     .builder()
+                    .name(String::from("node-network-thread"))
                     .spawn(move |_| {
                         while handler.is_running() {
                             if let Some(signal) = signal_receiver.receive_timeout(*SAMPLING_TIMEOUT)
@@ -369,7 +374,7 @@ impl<S: Send + 'static> NodeListener<S> {
     ///
     /// let (handler, listener) = node::split();
     /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
-    /// handler.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    /// let (id, addr) = handler.network().listen(Transport::FramedTcp, "127.0.0.1:0").unwrap();
     ///
     /// let task = listener.for_each(move |event| match event {
     ///      NodeEvent::Network(net_event) => { /* Your logic here */ },
@@ -462,7 +467,7 @@ impl<S: Send + 'static> NodeListener<S> {
     ///
     /// let (handler, listener) = node::split();
     /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
-    /// handler.network().listen(Transport::FramedTcp, "0.0.0.0:1234");
+    /// let (id, addr) = handler.network().listen(Transport::FramedTcp, "127.0.0.1:0").unwrap();
     ///
     /// let (task, mut receiver) = listener.enqueue();
     ///
@@ -528,8 +533,6 @@ mod tests {
         let inner_handler = handler.clone();
         listener.for_each(move |_| inner_handler.stop());
 
-        // Since here `NodeTask` is already dropped just after listener call,
-        // the node is considered not running.
         assert!(!handler.is_running());
     }
 

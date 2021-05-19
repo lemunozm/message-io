@@ -1,8 +1,8 @@
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
-    ListeningInfo,
+    ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr};
+use crate::network::{RemoteAddr, Readiness};
 
 use mio::net::{UdpSocket};
 use mio::event::{Source};
@@ -73,6 +73,10 @@ impl Remote for RemoteResource {
 
     fn send(&self, data: &[u8]) -> SendStatus {
         send_packet(data, |data| self.socket.send(data))
+    }
+
+    fn pending(&self, _readiness: Readiness) -> PendingStatus {
+        PendingStatus::Ready
     }
 }
 

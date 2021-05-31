@@ -5,8 +5,10 @@
 [![](https://img.shields.io/github/workflow/status/lemunozm/message-io/message-io%20ci)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
 [![](https://img.shields.io/badge/bymeacoffee-donate-yellow)](https://www.buymeacoffee.com/lemunozm)
 
+<p align="center">
+  <img src="docs/images/message-io-title.png" title="message-io">
+</p>
 
-# message-io
 `message-io` is a fast and easy-to-use event-driven network library.
 The library handles the OS socket internally and offers a simple event message API to the user.
 It also allows you to make an adapter for your own transport protocol following some
@@ -18,7 +20,6 @@ It also allows you to make an adapter for your own transport protocol following 
 
 If you find a problem using the library or you have an idea to improve it,
 do not hesitate to open an issue. **Any contribution is welcome!**
-
 And remember: more [caffeine](https://www.buymeacoffee.com/lemunozm), more productive!
 
 ## Motivation

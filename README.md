@@ -6,7 +6,7 @@
 [![](https://img.shields.io/badge/bymeacoffee-donate-yellow)](https://www.buymeacoffee.com/lemunozm)
 
 <p align="center">
-  <img style="padding: 25px 60px" src="docs/images/message-io-title.png" title="message-io">
+  <img src="docs/images/message-io-title.png" title="message-io">
 </p>
 
 `message-io` is a fast and easy-to-use event-driven network library.

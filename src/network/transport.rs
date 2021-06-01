@@ -66,9 +66,9 @@ impl Transport {
         };
     }
 
-    /// Maximum teorical packet payload length available for each transport.
+    /// Maximum theorical packet payload length available for each transport.
     ///
-    /// The value returned by this function is the **teorical maximum** and could not be valid for
+    /// The value returned by this function is the **theorical maximum** and could not be valid for
     /// all networks.
     /// You can ensure your message not exceeds `udp::MAX_INTERNET_PAYLOAD_LEN` in order to be
     /// more cross-platform compatible.

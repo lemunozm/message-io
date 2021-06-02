@@ -278,7 +278,7 @@ impl<S: Send + 'static> NodeListener<S> {
     /// This function will work until [`NodeHandler::stop()`] is called.
     ///
     /// Note that any events generated before calling this function (e.g. some connection was done)
-    /// will be storage and offered once you call `for_each()`.
+    /// will be stored and offered once you call `for_each()`.
     /// # Example
     /// ```
     /// use message_io::node::{self, NodeEvent};

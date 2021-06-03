@@ -496,6 +496,7 @@ impl<S: Send + 'static> Drop for NodeListener<S> {
 /// The destruction of this entity will block until the task is finished.
 /// If you want to "unblock" the thread that drops this entity call to
 /// [`NodeHandler::stop()`] before or from another thread.
+#[must_use = "The NodeTask must be used or the asynchronous task will be dropped in return"]
 pub struct NodeTask {
     network_thread: NamespacedThread<()>,
     signal_thread: NamespacedThread<()>,

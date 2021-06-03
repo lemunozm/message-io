@@ -275,10 +275,10 @@ impl<S: Send + 'static> NodeListener<S> {
     }
 
     /// Iterate indefinitely over all generated `NetEvent`.
-    /// This function will work until [`NodeHandler::stop()`] was called.
+    /// This function will work until [`NodeHandler::stop()`] is called.
     ///
     /// Note that any events generated before calling this function (e.g. some connection was done)
-    /// will be storage and offered once you call `for_each()`.
+    /// will be stored and offered once you call `for_each()`.
     /// # Example
     /// ```
     /// use message_io::node::{self, NodeEvent};
@@ -292,7 +292,7 @@ impl<S: Send + 'static> NodeListener<S> {
     ///     NodeEvent::Network(net_event) => { /* Your logic here */ },
     ///     NodeEvent::Signal(_) => handler.stop(),
     /// });
-    /// // Blocked here until handler.stop() was called (1 sec).
+    /// // Blocked here until handler.stop() is called (1 sec).
     /// println!("Node is stopped");
     /// ```
     pub fn for_each(mut self, mut event_callback: impl FnMut(NodeEvent<S>)) {
@@ -359,10 +359,10 @@ impl<S: Send + 'static> NodeListener<S> {
     }
 
     /// Similar to [`NodeListener::for_each()`] but it returns the control to the user
-    /// after call it. The events would be processed asynchronously.
+    /// after calling it. The events will be processed asynchronously.
     /// A `NodeTask` representing this asynchronous job is returned.
     /// Destroying this object will result in blocking the current thread until
-    /// [`NodeHandler::stop()`] was called.
+    /// [`NodeHandler::stop()`] is called.
     ///
     /// In order to allow the node working asynchronously, you can move the `NodeTask` to a
     /// an object with a longer lifetime.
@@ -386,7 +386,7 @@ impl<S: Send + 'static> NodeListener<S> {
     /// println!("Node is running");
     /// // ...
     ///
-    /// drop(task); // Blocked here until handler.stop() was called (1 sec).
+    /// drop(task); // Blocked here until handler.stop() is called (1 sec).
     /// // Also task.wait(); can be called doing the same (but taking a mutable reference).
     ///
     /// println!("Node is stopped");

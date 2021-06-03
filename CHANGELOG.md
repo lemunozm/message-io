@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.14.1
+- `NodeTask` is now considered *must_use*.
+
 ## Release 0.14.0
 - Asynchronous connections: `NetworkController::connect()` behaviour modified.
 Now it performs a non-blocking connection. Previous behaviour with `connect_sync` version.

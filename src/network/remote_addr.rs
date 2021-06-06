@@ -87,7 +87,7 @@ impl ToRemoteAddr for &str {
 
 impl ToRemoteAddr for String {
     fn to_remote_addr(&self) -> io::Result<RemoteAddr> {
-        (&self as &str).to_remote_addr()
+        (self as &str).to_remote_addr()
     }
 }
 

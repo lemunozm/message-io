@@ -18,6 +18,7 @@ const BIG_MESSAGE_SIZE: usize = 1024 * 1024 * 8; // 8MB
 
 lazy_static::lazy_static! {
     pub static ref TIMEOUT: Duration = Duration::from_secs(60);
+    pub static ref TIMEOUT_SMALL: Duration = Duration::from_secs(1);
 }
 
 // Common error messages
@@ -331,6 +332,50 @@ fn message_size(transport: Transport, message_size: usize) {
                 assert_eq!(sent_message, received_message);
                 node.stop();
             }
+        },
+    });
+}
+
+#[test]
+fn multicast_reuse_addr() {
+    util::init_logger(LogThread::Disabled); // Enable it for better debugging
+
+    let (node, listener) = node::split();
+    node.signals().send_with_timer((), *TIMEOUT_SMALL);
+
+    let multicast_addr = "239.255.0.1:3015";
+    let (id_1, _) = node.network().listen(Transport::Udp, multicast_addr).unwrap();
+    let (id_2, _) = node.network().listen(Transport::Udp, multicast_addr).unwrap();
+
+    let (target, local_addr) = node.network().connect(Transport::Udp, multicast_addr).unwrap();
+
+    let mut received = 0;
+    listener.for_each(move |event| match event {
+        NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
+        NodeEvent::Network(net_event) => match net_event {
+            NetEvent::Connected(endpoint, status) => {
+                assert!(status);
+                assert_eq!(endpoint, target);
+                let status = node.network().send(target, &[42]);
+                assert_eq!(status, SendStatus::Sent);
+            }
+            NetEvent::Message(endpoint, data) => {
+                if endpoint.resource_id() != id_1 {
+                    assert_eq!(endpoint.resource_id(), id_2);
+                }
+                if endpoint.resource_id() != id_2 {
+                    assert_eq!(endpoint.resource_id(), id_1);
+                }
+                assert_eq!(data, [42]);
+                assert_eq!(endpoint.addr(), local_addr);
+
+                received += 1;
+                if received == 2 {
+                    node.stop();
+                }
+            }
+            NetEvent::Accepted(..) => unreachable!(),
+            NetEvent::Disconnected(_) => unreachable!(),
         },
     });
 }

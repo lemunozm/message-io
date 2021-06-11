@@ -34,7 +34,7 @@ impl Decoder {
     fn try_decode(&mut self, data: &[u8], mut decoded_callback: impl FnMut(&[u8])) {
         let mut next_data = data;
         loop {
-            if let Some((expected_size, used_bytes)) = decode_size(&next_data) {
+            if let Some((expected_size, used_bytes)) = decode_size(next_data) {
                 let remaining = &next_data[used_bytes..];
                 if remaining.len() >= expected_size {
                     let (decoded, not_decoded) = remaining.split_at(expected_size);

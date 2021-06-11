@@ -46,7 +46,7 @@ impl Default for Poll {
     fn default() -> Self {
         let mio_poll = MioPoll::new().unwrap();
         Self {
-            waker: Arc::new(Waker::new(&mio_poll.registry(), Self::WAKER_TOKEN).unwrap()),
+            waker: Arc::new(Waker::new(mio_poll.registry(), Self::WAKER_TOKEN).unwrap()),
             mio_poll,
             events: Events::with_capacity(Self::EVENTS_SIZE),
         }

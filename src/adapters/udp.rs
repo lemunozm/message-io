@@ -101,7 +101,7 @@ impl Local for LocalResource {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
                 let socket = UdpBuilder::new_v4()?.reuse_address(true)?.bind(listening_addr)?;
                 socket.set_nonblocking(true)?;
-                socket.join_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED)?;
+                socket.join_multicast_v4(addr.ip(), &Ipv4Addr::UNSPECIFIED)?;
                 UdpSocket::from_std(socket)
             }
             _ => UdpSocket::bind(addr)?,
@@ -136,7 +136,7 @@ impl Drop for LocalResource {
     fn drop(&mut self) {
         if let SocketAddr::V4(addr) = self.socket.local_addr().unwrap() {
             if addr.ip().is_multicast() {
-                self.socket.leave_multicast_v4(&addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
+                self.socket.leave_multicast_v4(addr.ip(), &Ipv4Addr::UNSPECIFIED).unwrap();
             }
         }
     }

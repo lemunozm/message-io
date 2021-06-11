@@ -52,7 +52,7 @@ impl DiscoveryServer {
                 }
             }
             NetEvent::Disconnected(endpoint) => {
-                // Participant disconection without explict unregistration.
+                // Participant disconnection without explict unregistration.
                 // We must remove from the registry too.
                 let participant =
                     self.participants.iter().find(|(_, info)| info.endpoint == endpoint);

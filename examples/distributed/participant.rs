@@ -14,7 +14,7 @@ pub struct Participant {
     discovery_endpoint: Endpoint,
     public_addr: SocketAddr,
     known_participants: HashMap<String, Endpoint>, // Used only for free resources later
-    grettings: HashMap<Endpoint, (String, String)>,
+    greetings: HashMap<Endpoint, (String, String)>,
 }
 
 impl Participant {
@@ -36,7 +36,7 @@ impl Participant {
             discovery_endpoint: endpoint,
             public_addr: listen_addr,
             known_participants: HashMap::new(),
-            grettings: HashMap::new(),
+            greetings: HashMap::new(),
         })
     }
 
@@ -58,10 +58,10 @@ impl Participant {
                 }
                 else {
                     // Participant endpoint
-                    let (name, message) = self.grettings.remove(&endpoint).unwrap();
+                    let (name, message) = self.greetings.remove(&endpoint).unwrap();
                     if established {
-                        let gretings = format!("Hi '{}', {}", name, message);
-                        let message = Message::Gretings(self.name.clone(), gretings);
+                        let greetings = format!("Hi '{}', {}", name, message);
+                        let message = Message::Greetings(self.name.clone(), greetings);
                         let output_data = bincode::serialize(&message).unwrap();
                         self.handler.network().send(endpoint, &output_data);
                         self.known_participants.insert(name.clone(), endpoint);
@@ -89,8 +89,8 @@ impl Participant {
                             self.handler.network().remove(endpoint.resource_id());
                         }
                     }
-                    Message::Gretings(name, gretings) => {
-                        println!("'{}' says: {}", name, gretings);
+                    Message::Greetings(name, greetings) => {
+                        println!("'{}' says: {}", name, greetings);
                     }
                     _ => unreachable!(),
                 }
@@ -107,6 +107,6 @@ impl Participant {
     fn discovered_participant(&mut self, name: &str, addr: SocketAddr, text: &str) {
         let (endpoint, _) = self.handler.network().connect(Transport::FramedTcp, addr).unwrap();
         // Save the necessary info to send the message when the connection is established.
-        self.grettings.insert(endpoint, (name.into(), text.into()));
+        self.greetings.insert(endpoint, (name.into(), text.into()));
     }
 }

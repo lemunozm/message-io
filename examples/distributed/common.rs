@@ -15,5 +15,5 @@ pub enum Message {
     ParticipantNotificationRemoved(String),
 
     // From Participant to Participant
-    Gretings(String, String), //name and grettings
+    Greetings(String, String), //name and greetings
 }

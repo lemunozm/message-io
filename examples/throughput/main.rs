@@ -25,7 +25,7 @@ fn main() {
     throughput_message_io(Transport::Tcp, CHUNK);
     throughput_message_io(Transport::FramedTcp, CHUNK);
     throughput_message_io(Transport::Ws, CHUNK);
-    println!("");
+    println!();
     throughput_native_udp(CHUNK);
     throughput_native_tcp(CHUNK);
     throughput_native_framed_tcp(CHUNK);

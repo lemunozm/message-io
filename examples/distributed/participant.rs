@@ -58,7 +58,7 @@ impl Participant {
                 }
                 else {
                     // Participant endpoint
-                    let (name, message) = self.grettings.remove(&endpoint).unwrap();
+                    let (name, message) = self.greetings.remove(&endpoint).unwrap();
                     if established {
                         let greetings = format!("Hi '{}', {}", name, message);
                         let message = Message::Greetings(self.name.clone(), greetings);
@@ -107,6 +107,6 @@ impl Participant {
     fn discovered_participant(&mut self, name: &str, addr: SocketAddr, text: &str) {
         let (endpoint, _) = self.handler.network().connect(Transport::FramedTcp, addr).unwrap();
         // Save the necessary info to send the message when the connection is established.
-        self.grettings.insert(endpoint, (name.into(), text.into()));
+        self.greetings.insert(endpoint, (name.into(), text.into()));
     }
 }

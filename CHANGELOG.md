@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.14.2
+- Fixed isolated compilation with `websocket` feature.
+- Fixed multicast issue in Mac.
+
 ## Release 0.14.1
 - `NodeTask` is now considered *must_use*.
 

@@ -20,7 +20,7 @@ all-features = true
 [features]
 default = ["tcp", "udp", "websocket"] # All features by default
 tcp = ["mio/tcp"]
-udp = ["mio/udp"]
+udp = ["mio/udp", "socket2"]
 websocket = ["tungstenite", "url", "tcp"]
 
 [dependencies]
@@ -29,8 +29,8 @@ serde = { version = "1.0", features = ["derive"] }
 crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
 log = "0.4"
-net2 = "0.2.34"
 strum = { version = "0.20", features = ["derive"] }
+socket2 = { version = "0.3.19", features = ["reuseport"], optional = true}
 tungstenite = { version = "0.13", optional = true }
 url = { version = "2.2", optional = true }
 integer-encoding = "3.0.2"

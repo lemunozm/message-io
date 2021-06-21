@@ -7,7 +7,7 @@ use crate::network::{RemoteAddr, Readiness};
 use mio::net::{UdpSocket};
 use mio::event::{Source};
 
-use net2::{UdpBuilder};
+use socket2::{Socket, Domain, Type, Protocol};
 
 use std::net::{SocketAddr, SocketAddrV4, Ipv4Addr};
 use std::io::{self, ErrorKind};
@@ -99,10 +99,15 @@ impl Local for LocalResource {
         let socket = match addr {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
-                let socket = UdpBuilder::new_v4()?.reuse_address(true)?.bind(listening_addr)?;
+
+                let socket = Socket::new(Domain::ipv4(), Type::dgram(), Some(Protocol::udp()))?;
+                socket.set_reuse_address(true)?;
+                #[cfg(unix)]
+                socket.set_reuse_port(true)?;
                 socket.set_nonblocking(true)?;
                 socket.join_multicast_v4(addr.ip(), &Ipv4Addr::UNSPECIFIED)?;
-                UdpSocket::from_std(socket)
+                socket.bind(&listening_addr.into())?;
+                UdpSocket::from_std(socket.into())
             }
             _ => UdpSocket::bind(addr)?,
         };

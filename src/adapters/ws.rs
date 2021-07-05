@@ -186,6 +186,9 @@ impl Remote for RemoteResource {
                         *pending = Some(PendingHandshake::Connect(url, stream));
                         return tcp_status
                     }
+                    dbg!(tcp_status);
+                    dbg!(&url);
+                    dbg!(stream.0.peer_addr().unwrap());
                     let stream_backup = stream.clone();
                     match ws_connect(url, stream) {
                         Ok((web_socket, _)) => {
@@ -202,7 +205,7 @@ impl Remote for RemoteResource {
                         }
                         Err(HandshakeError::Failure(err)) => {
                             *state = RemoteState::Error(stream_backup);
-                            log::error!("WS connect handshake error: {}", err);
+                            dbg!("WS connect handshake error: {}", err);
                             PendingStatus::Disconnected // should not happen
                         }
                     }
@@ -246,7 +249,7 @@ impl Remote for RemoteResource {
                         }
                         Err(HandshakeError::Failure(err)) => {
                             *state = RemoteState::Error(stream_backup);
-                            log::error!("WS client handshake error: {}", err);
+                            dbg!("WS client handshake error: {}", err);
                             PendingStatus::Disconnected // should not happen
                         }
                     }

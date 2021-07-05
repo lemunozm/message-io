@@ -44,7 +44,8 @@ You could change the transport of your application in literally one line.
 ([docs](https://docs.rs/message-io/latest/message_io/network/enum.Transport.html)):
   - **TCP**: stream and framed mode (to deal with messages instead of stream)
   - **UDP**, with multicast option
-  - **WebSocket**: basic and secure option using [tungstenite-rs](https://github.com/snapview/tungstenite-rs)
+  - **WebSocket**: plain and ~~secure~~[#102](https://github.com/lemunozm/message-io/issues/102)
+  option using [tungstenite-rs](https://github.com/snapview/tungstenite-rs)
   (`wasm` is not supported but [planned](https://github.com/lemunozm/message-io/issues/100)).
 - Custom FIFO events with timers and priority.
 - Easy, intuitive and consistent API:

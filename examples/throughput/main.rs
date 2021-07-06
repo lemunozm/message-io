@@ -186,8 +186,10 @@ fn throughput_native_framed_tcp(packet_size: usize) {
                 let start_time = Instant::now();
                 while total_sent < EXPECTED_BYTES {
                     let encoded_size = encoding::encode_size(&message, &mut framming);
+                    sender.set_nodelay(false).ok();
                     sender.write(&encoded_size).unwrap();
                     sender.write(&message).unwrap();
+                    sender.set_nodelay(true).ok();
                     total_sent += message.len();
                 }
                 start_time

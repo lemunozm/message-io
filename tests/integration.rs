@@ -338,7 +338,7 @@ fn message_size(transport: Transport, message_size: usize) {
 
 #[test]
 fn multicast_reuse_addr() {
-    util::init_logger(LogThread::Disabled); // Enable it for better debugging
+    //util::init_logger(LogThread::Disabled); // Enable it for better debugging
 
     let (node, listener) = node::split();
     node.signals().send_with_timer((), *TIMEOUT_SMALL);

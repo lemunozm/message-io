@@ -32,13 +32,13 @@ impl ResourceId {
     pub const MAX_ADAPTERS: usize = Self::MAX_ADAPTER_ID as usize + 1;
 
     fn new(adapter_id: u8, resource_type: ResourceType, base_value: usize) -> Self {
-        assert!(
+        debug_assert!(
             adapter_id <= Self::MAX_ADAPTER_ID,
             "The adapter_id must be less than {}",
             Self::MAX_ADAPTER_ID + 1,
         );
 
-        assert!(
+        debug_assert!(
             base_value <= Self::MAX_BASE_VALUE,
             "The base_value must be less than {}",
             Self::MAX_BASE_VALUE + 1,

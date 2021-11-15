@@ -324,6 +324,7 @@ impl<S: Send + 'static> NodeListener<S> {
                 // It implies that any object moved into the callback do not have
                 // any concurrence issues.
                 struct SendableEventCallback<'a, S>(Arc<Mutex<dyn FnMut(NodeEvent<S>) + 'a>>);
+                #[allow(clippy::non_send_fields_in_send_ty)]
                 unsafe impl<'a, S> Send for SendableEventCallback<'a, S> {}
 
                 let multiplexed = SendableEventCallback(multiplexed.clone());

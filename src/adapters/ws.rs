@@ -9,7 +9,7 @@ use mio::event::{Source};
 use mio::net::{TcpStream, TcpListener};
 
 use tungstenite::protocol::{WebSocket, Message};
-use tungstenite::server::{accept as ws_accept};
+use tungstenite::{accept as ws_accept};
 use tungstenite::client::{client as ws_connect};
 use tungstenite::handshake::{
     HandshakeError, MidHandshake,

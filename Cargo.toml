@@ -1,6 +1,6 @@
 [package]
 name = "message-io"
-version = "0.14.2"
+version = "0.14.3"
 authors = ["lemunozm <lemunozm@gmail.com>"]
 edition = "2018"
 readme = "README.md"
@@ -31,7 +31,7 @@ crossbeam-utils = "0.8"
 log = "0.4"
 strum = { version = "0.20", features = ["derive"] }
 socket2 = { version = "0.3.19", features = ["reuseport"], optional = true}
-tungstenite = { version = "0.13", optional = true }
+tungstenite = { version = "0.16", optional = true }
 url = { version = "2.2", optional = true }
 integer-encoding = "3.0.2"
 lazy_static = "1.4.0"

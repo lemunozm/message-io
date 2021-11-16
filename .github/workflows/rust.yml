@@ -80,14 +80,12 @@ jobs:
         with:
           use-cross: true
           command: build
-          args: --no-default-features --features "tcp udp"
       - uses: actions-rs/cargo@v1
         with:
           use-cross: true
           command: test
-          args: --tests --no-default-features --features "tcp udp"
       - uses: actions-rs/cargo@v1
         with:
           use-cross: true
           command: bench
-          args: --no-run --no-default-features --features "tcp udp"
+          args: --no-run

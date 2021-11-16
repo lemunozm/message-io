@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.14.3
+- `websocket` feature compiling without tls.
+
 ## Release 0.14.2
 - Fixed isolated compilation with `websocket` feature.
 - Fixed multicast issue in Mac.

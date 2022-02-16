@@ -1,6 +1,10 @@
 # Changelog
 
 ## Release 0.14.3
+- Added `EventSender::cancel_timer()` to allow cancel timers already sent.
+- Added a `TimerId` as a result of calling `EventSender::send_with_timer()`.
+
+## Release 0.14.3
 - `websocket` feature compiling without tls.
 
 ## Release 0.14.2

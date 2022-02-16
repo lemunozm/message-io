@@ -21,6 +21,11 @@ pub fn split<E: Send + 'static>() -> (EventSender<E>, EventReceiver<E>) {
     (event_sender, event_queue)
 }
 
+/// An ID that represents a timer scheduled.
+/// It can be used to cancel the event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TimerId(Instant);
+
 /// A generic and synchronized queue where the user can send and receive events.
 /// See [`EventSender`] to see how send events.
 /// This entity can be used as an utility for the [`crate::network`] module redirecting the
@@ -29,6 +34,7 @@ pub struct EventReceiver<E> {
     event_sender: EventSender<E>, // Should be before receiver in order to drop first.
     receiver: Receiver<E>,
     timer_receiver: Receiver<(Instant, E)>,
+    remove_timer_receiver: Receiver<Instant>,
     priority_receiver: Receiver<E>,
     timers: BTreeMap<Instant, E>,
 }
@@ -40,11 +46,18 @@ where E: Send + 'static
     fn default() -> Self {
         let (sender, receiver) = crossbeam_channel::unbounded();
         let (timer_sender, timer_receiver) = crossbeam_channel::unbounded();
+        let (remove_timer_sender, remove_timer_receiver) = crossbeam_channel::unbounded();
         let (priority_sender, priority_receiver) = crossbeam_channel::unbounded();
         EventReceiver {
-            event_sender: EventSender::new(sender, timer_sender, priority_sender),
+            event_sender: EventSender::new(
+                sender,
+                timer_sender,
+                remove_timer_sender,
+                priority_sender,
+            ),
             receiver,
             timer_receiver,
+            remove_timer_receiver,
             priority_receiver,
             timers: BTreeMap::new(),
         }
@@ -64,6 +77,10 @@ where E: Send + 'static
     fn enque_timers(&mut self) {
         for timer in self.timer_receiver.try_iter() {
             self.timers.insert(timer.0, timer.1);
+        }
+
+        for timer_instant in self.remove_timer_receiver.try_iter() {
+            self.timers.remove(&timer_instant);
         }
     }
 
@@ -159,6 +176,7 @@ where E: Send + 'static
 pub struct EventSender<E> {
     sender: Sender<E>,
     timer_sender: Sender<(Instant, E)>,
+    remove_timer_sender: Sender<Instant>,
     priority_sender: Sender<E>,
 }
 
@@ -168,9 +186,10 @@ where E: Send + 'static
     fn new(
         sender: Sender<E>,
         timer_sender: Sender<(Instant, E)>,
+        remove_timer_sender: Sender<Instant>,
         priority_sender: Sender<E>,
     ) -> EventSender<E> {
-        EventSender { sender, timer_sender, priority_sender }
+        EventSender { sender, timer_sender, remove_timer_sender, priority_sender }
     }
 
     /// Send instantly an event to the event queue.
@@ -187,10 +206,18 @@ where E: Send + 'static
 
     /// Send a timed event to the [`EventReceiver`].
     /// The event only will be sent after the specific duration, never before.
-    /// If the [`EventSender`] is dropped, the event will be generated as well.
-    pub fn send_with_timer(&self, event: E, duration: Duration) {
+    /// If the [`EventSender`] is dropped, the event will be generated as well unless
+    /// [`EventSender::cancel_timer()`] be called.
+    pub fn send_with_timer(&self, event: E, duration: Duration) -> TimerId {
         let when = Instant::now() + duration;
         self.timer_sender.send((when, event)).ok();
+        TimerId(when)
+    }
+
+    /// Remove a timer previously sent by [`EventSender::send_with_timer()`].
+    /// The timer will not be receive by the [`EventReceiver`].
+    pub fn cancel_timer(&self, timer_id: TimerId) {
+        self.remove_timer_sender.send(timer_id.0).ok();
     }
 }
 
@@ -201,6 +228,7 @@ where E: Send + 'static
         EventSender::new(
             self.sender.clone(),
             self.timer_sender.clone(),
+            self.remove_timer_sender.clone(),
             self.priority_sender.clone(),
         )
     }
@@ -360,6 +388,18 @@ mod tests {
 
         assert_eq!(queue.try_receive().unwrap(), "priority");
         assert_eq!(queue.try_receive().unwrap(), "timed");
+        assert_eq!(queue.try_receive(), None);
+    }
+
+    #[test]
+    fn cancel_timers() {
+        let mut queue = EventReceiver::default();
+        let id = queue.sender().send_with_timer("timed", *TIMER_TIME);
+        queue.sender().cancel_timer(id);
+
+        std::thread::sleep(*TIMEOUT);
+        // The timed event has been received at this point, but was cancelled.
+
         assert_eq!(queue.try_receive(), None);
     }
 }

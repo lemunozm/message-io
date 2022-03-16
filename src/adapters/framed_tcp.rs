@@ -62,8 +62,7 @@ impl Remote for RemoteResource {
                 Ok(0) => break ReadStatus::Disconnected,
                 Ok(size) => {
                     let data = &input_buffer[..size];
-                    let addr = self.stream.peer_addr().unwrap();
-                    log::trace!("Decoding data from {}, {} bytes", addr, data.len());
+                    log::trace!("Decoding {} bytes", data.len());
                     self.decoder.borrow_mut().decode(data, |decoded_data| {
                         process_data(decoded_data);
                     });

@@ -25,7 +25,7 @@ pub enum PollEvent {
 
 impl From<Token> for ResourceId {
     fn from(token: Token) -> Self {
-        Self::from(token.0 >> Poll::RESERVED_BITS)
+        (token.0 >> Poll::RESERVED_BITS).into()
     }
 }
 

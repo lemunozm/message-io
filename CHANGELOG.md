@@ -1,6 +1,9 @@
 # Changelog
 
-## Release 0.14.3
+## Release 0.14.5
+- Removed a `peer_addr()` call used in a log with potential issues in some cases.
+
+## Release 0.14.4
 - Added `EventSender::cancel_timer()` to allow cancel timers already sent.
 - Added a `TimerId` as a result of calling `EventSender::send_with_timer()`.
 

@@ -227,7 +227,6 @@ impl<S> NodeHandler<S> {
     /// Check if the node is running.
     /// Note that the node is running and listening events from its creation,
     /// not only once you call to [`NodeListener::for_each()`].
-    /// Calling this function only will offer the event to the user to be processed.
     pub fn is_running(&self) -> bool {
         self.0.running.load(Ordering::Relaxed)
     }

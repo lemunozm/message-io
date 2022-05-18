@@ -217,3 +217,33 @@ Oops! one more step: make a *Pull Request* so everyone can use it :)
 - [LanChat](https://github.com/sigmaSd/LanChat) LanChat flutter + rust demo.
 
 *Does your awesome project use `message-io`? Make a Pull Request and add it to the list!*
+
+## Is message-io for me?
+`message-io` has the main goal to keep things simple.
+This is great, but sometimes this point of view could make more complex the already complex things.
+
+For instance, `message-io` allows handling asynchronous network events without using an `async/await` pattern.
+It reduces the complexity to handle income messages from the network, which is great.
+Nevertheless, the applications that read asynchronous messages tend to perform
+asynchronous tasks over these events too.
+This asynchronous inheritance can easily be propagated to your entire application
+being difficult to maintain or scale without an async/await pattern.
+In those cases, maybe [`tokio`](https://tokio.rs) could be a better option.
+You need to deal with more low-level network stuff but you gain in organization and thread/resource management.
+
+A similar issue can happen regarding the node usage of `message-io`.
+Because a node can be used independently as a client/server or both,
+you can easily start to make peer to peer applications.
+In fact, this is one of the intentions of `message-io`.
+Nevertheless, if your goal scales, will appear problems related to this patter to deal with,
+and libraries such as [`libp2p`](https://libp2p.io) come with a huge battery of tools to help to archive that goal.
+
+Of course, this is not a disclaiming about the library usage (I use it!),
+it is more about being honest about its capabilities,
+and to guide you to the right tool depending on what are you looking for.
+
+To summarize:
+
+- If you have a medium complex network problem: make it simpler with `message-io`!
+- If you have a really complex network problem: use
+  [`tokio`](https://tokio.rs), [`libp2p`](https://libp2p.io) or others, to have more control over it.

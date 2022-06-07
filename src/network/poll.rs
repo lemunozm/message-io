@@ -59,9 +59,7 @@ impl Poll {
     const WAKER_TOKEN: Token = Token(0);
 
     pub fn process_event<C>(&mut self, timeout: Option<Duration>, mut event_callback: C)
-    where
-        C: FnMut(PollEvent),
-    {
+    where C: FnMut(PollEvent) {
         loop {
             match self.mio_poll.poll(&mut self.events, timeout) {
                 Ok(()) => {
@@ -69,7 +67,8 @@ impl Poll {
                         if Self::WAKER_TOKEN == mio_event.token() {
                             log::trace!("POLL WAKER EVENT");
                             event_callback(PollEvent::Waker);
-                        } else {
+                        }
+                        else {
                             let id = ResourceId::from(mio_event.token());
                             if mio_event.is_readable() {
                                 log::trace!("POLL EVENT (R): {}", id);
@@ -81,7 +80,7 @@ impl Poll {
                             }
                         }
                     }
-                    break;
+                    break
                 }
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                 Err(ref err) => Err(err).expect("No error here"),

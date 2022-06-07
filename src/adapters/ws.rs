@@ -112,7 +112,8 @@ impl Remote for RemoteResource {
         loop {
             // "emulates" full duplex for the websocket case locking here and not outside the loop.
             let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
-            match state.deref_mut() {
+            let deref_state = state.deref_mut();
+            match deref_state {
                 RemoteState::WebSocket(web_socket) => match web_socket.read_message() {
                     Ok(message) => match message {
                         Message::Binary(data) => {
@@ -151,7 +152,9 @@ impl Remote for RemoteResource {
     }
 
     fn send(&self, data: &[u8]) -> SendStatus {
-        match self.state.lock().expect(OTHER_THREAD_ERR).deref_mut() {
+        let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
+        let deref_state = state.deref_mut();
+        match deref_state {
             RemoteState::WebSocket(web_socket) => {
                 let message = Message::Binary(data.to_vec());
                 let mut result = web_socket.write_message(message);
@@ -176,7 +179,8 @@ impl Remote for RemoteResource {
 
     fn pending(&self, _readiness: Readiness) -> PendingStatus {
         let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
-        match state.deref_mut() {
+        let deref_state = state.deref_mut();
+        match deref_state {
             RemoteState::WebSocket(_) => PendingStatus::Ready,
             RemoteState::Handshake(pending) => match pending.take().unwrap() {
                 PendingHandshake::Connect(url, stream) => {

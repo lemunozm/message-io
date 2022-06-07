@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.14.6
+- Updated dependencies.
+- Fixed clippy issues in nightly.
+
 ## Release 0.14.5
 - Removed a `peer_addr()` call used in a log with potential issues in some cases.
 

@@ -7,7 +7,7 @@ use std::time::{Duration};
 use std::sync::{Arc};
 use std::io::{ErrorKind};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 /// Used for the adapter implementation.
 /// Specify the kind of event that is available for a resource.
 pub enum Readiness {

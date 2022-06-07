@@ -56,7 +56,7 @@ pub struct ListeningInfo<L: Local> {
 /// call can return.
 /// The library do not encourage to perform the check of this status for each `send()` call,
 /// only in that cases where you need extra information about how the sending method was.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SendStatus {
     /// This status is received when the entire data has been sent.
     /// It does not guarantees that the packet have been successfully received by the endpoint.
@@ -92,7 +92,7 @@ pub enum ReadStatus {
     WaitNextEvent,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PendingStatus {
     /// The resource is no longer considered as a pending resource.
     /// It it came from a listener, a [`crate::network::NetEvent::Accepted`] event will be generated.

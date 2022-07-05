@@ -305,7 +305,7 @@ impl<S: Send + 'static> NodeListener<S> {
             log::trace!("Read from cache {:?}", net_event);
             event_callback(NodeEvent::Network(net_event));
             if !self.handler.is_running() {
-                return;
+                return
             }
         }
 
@@ -417,7 +417,7 @@ impl<S: Send + 'static> NodeListener<S> {
                     let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                     event_callback(NodeEvent::Network(net_event));
                     if !handler.is_running() {
-                        return;
+                        return
                     }
                 }
 

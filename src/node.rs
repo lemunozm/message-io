@@ -305,7 +305,7 @@ impl<S: Send + 'static> NodeListener<S> {
             log::trace!("Read from cache {:?}", net_event);
             event_callback(NodeEvent::Network(net_event));
             if !self.handler.is_running() {
-                return
+                return;
             }
         }
 
@@ -322,6 +322,7 @@ impl<S: Send + 'static> NodeListener<S> {
                 // so only one call is performed at the same time.
                 // It implies that any object moved into the callback do not have
                 // any concurrence issues.
+                #[allow(clippy::type_complexity)]
                 struct SendableEventCallback<'a, S>(Arc<Mutex<dyn FnMut(NodeEvent<S>) + 'a>>);
                 #[allow(clippy::non_send_fields_in_send_ty)]
                 unsafe impl<'a, S> Send for SendableEventCallback<'a, S> {}
@@ -416,7 +417,7 @@ impl<S: Send + 'static> NodeListener<S> {
                     let mut event_callback = multiplexed.lock().expect(OTHER_THREAD_ERR);
                     event_callback(NodeEvent::Network(net_event));
                     if !handler.is_running() {
-                        return
+                        return;
                     }
                 }
 

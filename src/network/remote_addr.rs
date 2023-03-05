@@ -61,8 +61,8 @@ impl ToSocketAddrs for RemoteAddr {
 impl std::fmt::Display for RemoteAddr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RemoteAddr::Socket(addr) => write!(f, "{}", addr),
-            RemoteAddr::Str(string) => write!(f, "{}", string),
+            RemoteAddr::Socket(addr) => write!(f, "{addr}"),
+            RemoteAddr::Str(string) => write!(f, "{string}"),
         }
     }
 }

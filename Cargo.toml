@@ -1,6 +1,6 @@
 [package]
 name = "message-io"
-version = "0.14.6"
+version = "0.14.7"
 authors = ["lemunozm <lemunozm@gmail.com>"]
 edition = "2018"
 readme = "README.md"
@@ -19,12 +19,12 @@ all-features = true
 
 [features]
 default = ["tcp", "udp", "websocket"] # All features by default
-tcp = ["mio/tcp"]
-udp = ["mio/udp", "socket2"]
+tcp = ["mio/net"]
+udp = ["mio/net", "socket2"]
 websocket = ["tungstenite", "url", "tcp"]
 
 [dependencies]
-mio = { version = "0.7", features = ["os-poll"] }
+mio = { version = "0.8", features = ["os-poll"] }
 serde = { version = "1.0", features = ["derive"] }
 crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"

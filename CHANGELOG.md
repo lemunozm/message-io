@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.14.7
+- Updated mio to 0.8
+- Updated cargo clippy
+
 ## Release 0.14.6
 - Updated dependencies.
 - Fixed clippy issues in nightly.

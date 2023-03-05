@@ -112,7 +112,7 @@ impl std::fmt::Display for ResourceId {
 
 impl std::fmt::Debug for ResourceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "{self}")
     }
 }
 

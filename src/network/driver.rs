@@ -58,12 +58,12 @@ pub enum NetEvent<'a> {
 impl std::fmt::Debug for NetEvent<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            Self::Connected(endpoint, status) => format!("Connected({}, {})", endpoint, status),
-            Self::Accepted(endpoint, id) => format!("Accepted({}, {})", endpoint, id),
+            Self::Connected(endpoint, status) => format!("Connected({endpoint}, {status})"),
+            Self::Accepted(endpoint, id) => format!("Accepted({endpoint}, {id})"),
             Self::Message(endpoint, data) => format!("Message({}, {})", endpoint, data.len()),
-            Self::Disconnected(endpoint) => format!("Disconnected({})", endpoint),
+            Self::Disconnected(endpoint) => format!("Disconnected({endpoint})"),
         };
-        write!(f, "NetEvent::{}", string)
+        write!(f, "NetEvent::{string}")
     }
 }
 
@@ -313,9 +313,9 @@ impl<R: Remote, L: Local<Remote = R>> Driver<R, L> {
 impl<R> std::fmt::Display for AcceptedType<'_, R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
-            AcceptedType::Remote(addr, _) => format!("Remote({})", addr),
-            AcceptedType::Data(addr, _) => format!("Data({})", addr),
+            AcceptedType::Remote(addr, _) => format!("Remote({addr})"),
+            AcceptedType::Data(addr, _) => format!("Data({addr})"),
         };
-        write!(f, "AcceptedType::{}", string)
+        write!(f, "AcceptedType::{string}")
     }
 }

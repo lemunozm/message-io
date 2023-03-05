@@ -42,6 +42,7 @@ enum PendingHandshake {
     Server(MidHandshake<ServerHandshake<ArcTcpStream, NoCallback>>),
 }
 
+#[allow(clippy::large_enum_variant)]
 enum RemoteState {
     WebSocket(WebSocket<ArcTcpStream>),
     Handshake(Option<PendingHandshake>),

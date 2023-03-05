@@ -79,7 +79,7 @@ impl Remote for RemoteResource {
     fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
         let (peer_addr, url) = match remote_addr {
             RemoteAddr::Socket(addr) => {
-                (addr, Url::parse(&format!("ws://{}/message-io-default", addr)).unwrap())
+                (addr, Url::parse(&format!("ws://{addr}/message-io-default")).unwrap())
             }
             RemoteAddr::Str(path) => {
                 let url = Url::parse(&path).expect("A valid URL");

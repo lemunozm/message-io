@@ -30,8 +30,8 @@ pub enum NodeEvent<'a, S> {
 impl<'a, S: std::fmt::Debug> std::fmt::Debug for NodeEvent<'a, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NodeEvent::Network(net_event) => write!(f, "NodeEvent::Network({:?})", net_event),
-            NodeEvent::Signal(signal) => write!(f, "NodeEvent::Signal({:?})", signal),
+            NodeEvent::Network(net_event) => write!(f, "NodeEvent::Network({net_event:?})"),
+            NodeEvent::Signal(signal) => write!(f, "NodeEvent::Signal({signal:?})"),
         }
     }
 }
@@ -73,8 +73,8 @@ pub enum StoredNodeEvent<S> {
 impl<S: std::fmt::Debug> std::fmt::Debug for StoredNodeEvent<S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StoredNodeEvent::Network(net_event) => write!(f, "NodeEvent::Network({:?})", net_event),
-            StoredNodeEvent::Signal(signal) => write!(f, "NodeEvent::Signal({:?})", signal),
+            StoredNodeEvent::Network(net_event) => write!(f, "NodeEvent::Network({net_event:?})"),
+            StoredNodeEvent::Signal(signal) => write!(f, "NodeEvent::Signal({signal:?})"),
         }
     }
 }

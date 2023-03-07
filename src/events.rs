@@ -53,11 +53,7 @@ where E: Send + 'static
         let (timer_sender, timer_receiver) = crossbeam_channel::unbounded();
         let (priority_sender, priority_receiver) = crossbeam_channel::unbounded();
         EventReceiver {
-            event_sender: EventSender::new(
-                sender,
-                timer_sender,
-                priority_sender,
-            ),
+            event_sender: EventSender::new(sender, timer_sender, priority_sender),
             receiver,
             timer_receiver,
             priority_receiver,
@@ -80,7 +76,7 @@ where E: Send + 'static
         for timer in self.timer_receiver.try_iter() {
             match timer.1 {
                 TimerCommand::Create(e) => self.timers.insert(timer.0, e),
-                TimerCommand::Cancel    => self.timers.remove(&timer.0),
+                TimerCommand::Cancel => self.timers.remove(&timer.0),
             }
         }
     }
@@ -216,10 +212,9 @@ where E: Send + 'static
     /// Remove a timer previously sent by [`EventSender::send_with_timer()`].
     /// The timer will not be receive by the [`EventReceiver`].
     pub fn cancel_timer(&self, timer_id: TimerId) {
-        self.timer_sender.send((timer_id.0,TimerCommand::Cancel)).ok();
+        self.timer_sender.send((timer_id.0, TimerCommand::Cancel)).ok();
     }
 }
-
 
 impl<E> Clone for EventSender<E>
 where E: Send + 'static

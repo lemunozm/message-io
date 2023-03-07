@@ -77,7 +77,7 @@ where E: Send + 'static
             match timer.1 {
                 TimerCommand::Create(e) => self.timers.insert(timer.0, e),
                 TimerCommand::Cancel => self.timers.remove(&timer.0),
-            }
+            };
         }
     }
 

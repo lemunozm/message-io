@@ -28,8 +28,8 @@ pub struct TimerId(Instant);
 
 // Internal enum to enqueue different timer commands in a single queue
 enum TimerCommand<E> {
-	Create(E),
-	Cancel
+    Create(E),
+    Cancel,
 }
 
 /// A generic and synchronized queue where the user can send and receive events.
@@ -78,10 +78,10 @@ where E: Send + 'static
 
     fn enque_timers(&mut self) {
         for timer in self.timer_receiver.try_iter() {
-			match timer.1 {
-				TimerCommand::Create(e) => self.timers.insert(timer.0, e),
-				TimerCommand::Cancel    => self.timers.remove(&timer.0),
-			};
+            match timer.1 {
+                TimerCommand::Create(e) => self.timers.insert(timer.0, e),
+                TimerCommand::Cancel    => self.timers.remove(&timer.0),
+            }
         }
     }
 
@@ -103,7 +103,6 @@ where E: Send + 'static
         else {
             let next_instant = *self.timers.iter().next().unwrap().0;
             if next_instant <= Instant::now() {
-				eprint!("++++ Removing timer in <= Instant::now() {:?} ",next_instant);
                 self.timers.remove(&next_instant).unwrap()
             }
             else {
@@ -111,7 +110,6 @@ where E: Send + 'static
                     recv(self.receiver) -> event => event.unwrap(),
                     recv(self.priority_receiver) -> event => event.unwrap(),
                     recv(crossbeam_channel::at(next_instant)) -> _ => {
-						eprint!("++++ Removing timer in crossbeam_channel::at() {:?} ",next_instant);
                         self.timers.remove(&next_instant).unwrap()
                     }
                 }

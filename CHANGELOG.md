@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.14.8
+- Fix timer concurrent issue: [#136](https://github.com/lemunozm/message-io/issues/136)
+
 ## Release 0.14.7
 - Updated mio to 0.8
 - Updated cargo clippy

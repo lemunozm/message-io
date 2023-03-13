@@ -30,7 +30,7 @@ crossbeam-channel = "0.5"
 crossbeam-utils = "0.8"
 log = "0.4"
 strum = { version = "0.24", features = ["derive"] }
-socket2 = { version = "0.3.19", features = ["reuseport"], optional = true}
+socket2 = { version = "0.5.1", features = ["all"], optional = true}
 tungstenite = { version = "0.16", optional = true }
 url = { version = "2.2", optional = true }
 integer-encoding = "3.0.2"

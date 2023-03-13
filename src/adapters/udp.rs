@@ -100,7 +100,7 @@ impl Local for LocalResource {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
 
-                let socket = Socket::new(Domain::ipv4(), Type::dgram(), Some(Protocol::udp()))?;
+                let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
                 socket.set_reuse_address(true)?;
                 #[cfg(unix)]
                 socket.set_reuse_port(true)?;

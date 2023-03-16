@@ -156,3 +156,89 @@ impl std::fmt::Display for Transport {
         write!(f, "{self:?}")
     }
 }
+
+pub enum TransportConnect {
+    #[cfg(feature = "tcp")]
+    Tcp,
+    #[cfg(feature = "tcp")]
+    FramedTcp,
+    #[cfg(feature = "udp")]
+    Udp,
+    #[cfg(feature = "websocket")]
+    Ws,
+}
+
+impl TransportConnect {
+    pub fn id(&self) -> u8 {
+        let transport = match self {
+            #[cfg(feature = "tcp")]
+            Self::Tcp => Transport::Tcp,
+            #[cfg(feature = "tcp")]
+            Self::FramedTcp => Transport::FramedTcp,
+            #[cfg(feature = "udp")]
+            Self::Udp => Transport::Udp,
+            #[cfg(feature = "websocket")]
+            Self::Ws => Transport::Ws,
+        };
+
+        transport.id()
+    }
+}
+
+impl From<Transport> for TransportConnect {
+    fn from(transport: Transport) -> Self {
+        match transport {
+            #[cfg(feature = "tcp")]
+            Transport::Tcp => Self::Tcp,
+            #[cfg(feature = "tcp")]
+            Transport::FramedTcp => Self::FramedTcp,
+            #[cfg(feature = "udp")]
+            Transport::Udp => Self::Udp,
+            #[cfg(feature = "websocket")]
+            Transport::Ws => Self::Ws,
+        }
+    }
+}
+
+pub enum TransportListen {
+    #[cfg(feature = "tcp")]
+    Tcp,
+    #[cfg(feature = "tcp")]
+    FramedTcp,
+    #[cfg(feature = "udp")]
+    Udp,
+    #[cfg(feature = "websocket")]
+    Ws,
+}
+
+impl TransportListen {
+    pub fn id(&self) -> u8 {
+        let transport = match self {
+            #[cfg(feature = "tcp")]
+            Self::Tcp => Transport::Tcp,
+            #[cfg(feature = "tcp")]
+            Self::FramedTcp => Transport::FramedTcp,
+            #[cfg(feature = "udp")]
+            Self::Udp => Transport::Udp,
+            #[cfg(feature = "websocket")]
+            Self::Ws => Transport::Ws,
+        };
+
+        transport.id()
+    }
+}
+
+impl From<Transport> for TransportListen {
+    fn from(transport: Transport) -> Self {
+        match transport {
+            #[cfg(feature = "tcp")]
+            Transport::Tcp => Self::Tcp,
+            #[cfg(feature = "tcp")]
+            Transport::FramedTcp => Self::FramedTcp,
+            #[cfg(feature = "udp")]
+            Transport::Udp => Self::Udp,
+            #[cfg(feature = "websocket")]
+            Transport::Ws => Self::Ws,
+        }
+    }
+}

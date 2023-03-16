@@ -2,7 +2,7 @@ use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr, Readiness};
+use crate::network::{RemoteAddr, Readiness, TransportConnect, TransportListen};
 
 use mio::net::{UdpSocket};
 use mio::event::{Source};
@@ -43,7 +43,10 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
+    fn connect_with(
+        _: TransportConnect,
+        remote_addr: RemoteAddr,
+    ) -> io::Result<ConnectionInfo<Self>> {
         let socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
         let peer_addr = *remote_addr.socket_addr();
         socket.connect(peer_addr)?;
@@ -95,7 +98,7 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+    fn listen_with(_: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         let socket = match addr {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());

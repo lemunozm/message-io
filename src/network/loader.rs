@@ -1,3 +1,5 @@
+use crate::network::{TransportConnect, TransportListen};
+
 use super::endpoint::{Endpoint};
 use super::resource_id::{ResourceId};
 use super::poll::{Poll, Readiness};
@@ -62,11 +64,19 @@ const UNIMPLEMENTED_DRIVER_ERR: &str =
 
 struct UnimplementedDriver;
 impl ActionController for UnimplementedDriver {
-    fn connect(&self, _: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
+    fn connect_with(
+        &self,
+        _: TransportConnect,
+        _: RemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)> {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
     }
 
-    fn listen(&self, _: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
+    fn listen_with(
+        &self,
+        _: TransportListen,
+        _: SocketAddr,
+    ) -> io::Result<(ResourceId, SocketAddr)> {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
     }
 

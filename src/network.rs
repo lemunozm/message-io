@@ -17,7 +17,7 @@ pub use adapter::{SendStatus};
 pub use resource_id::{ResourceId, ResourceType};
 pub use endpoint::{Endpoint};
 pub use remote_addr::{RemoteAddr, ToRemoteAddr};
-pub use transport::{Transport};
+pub use transport::{Transport, TransportConnect, TransportListen};
 pub use driver::{NetEvent};
 pub use poll::{Readiness};
 
@@ -102,11 +102,32 @@ impl NetworkController {
         transport: Transport,
         addr: impl ToRemoteAddr,
     ) -> io::Result<(Endpoint, SocketAddr)> {
+        self.connect_with(transport.into(), addr)
+    }
+
+    /// Creates a connection to the specified address with custom transport options for transports
+    /// that support it.
+    /// The endpoint, an identifier of the new connection, will be returned.
+    /// This function will generate a [`NetEvent::Connected`] event with the result of the
+    /// connection.  This call will **NOT** block to perform the connection.
+    ///
+    /// Note that this function can return an error in the case the internal socket
+    /// could not be binded or open in the OS, but never will return an error regarding
+    /// the connection itself.
+    /// If you want to check if the connection has been established or not you have to read the
+    /// boolean indicator in the [`NetEvent::Connected`] event.
+    pub fn connect_with(
+        &self,
+        transport_connect: TransportConnect,
+        addr: impl ToRemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)> {
         let addr = addr.to_remote_addr().unwrap();
-        self.controllers[transport.id() as usize].connect(addr).map(|(endpoint, addr)| {
-            log::trace!("Connect to {}", endpoint);
-            (endpoint, addr)
-        })
+        self.controllers[transport_connect.id() as usize].connect_with(transport_connect, addr).map(
+            |(endpoint, addr)| {
+                log::trace!("Connect to {}", endpoint);
+                (endpoint, addr)
+            },
+        )
     }
 
     /// Creates a connection to the specified address.
@@ -147,7 +168,28 @@ impl NetworkController {
         transport: Transport,
         addr: impl ToRemoteAddr,
     ) -> io::Result<(Endpoint, SocketAddr)> {
-        let (endpoint, addr) = self.connect(transport, addr)?;
+        self.connect_sync_with(transport.into(), addr)
+    }
+
+    /// Creates a connection to the specified address with custom transport options for transports
+    /// that support it.
+    /// This function is similar to [`NetworkController::connect_with()`] but will block
+    /// until for the connection is ready.
+    /// If the connection can not be established, a `ConnectionRefused` error will be returned.
+    ///
+    /// Note that the `Connect` event will be also generated.
+    ///
+    /// Since this function blocks the current thread, it must NOT be used inside
+    /// the network callback because the internal event could not be processed.
+    ///
+    /// In order to get the best scalability and performance, use the non-blocking
+    /// [`NetworkController::connect_with()`] version.
+    pub fn connect_sync_with(
+        &self,
+        transport_connect: TransportConnect,
+        addr: impl ToRemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)> {
+        let (endpoint, addr) = self.connect_with(transport_connect, addr)?;
         loop {
             std::thread::sleep(Duration::from_millis(1));
             match self.is_ready(endpoint.resource_id()) {
@@ -164,7 +206,7 @@ impl NetworkController {
     }
 
     /// Listen messages from specified transport.
-    /// The giver address will be used as interface and listening port.
+    /// The given address will be used as interface and listening port.
     /// If the port can be opened, a [ResourceId] identifying the listener is returned
     /// along with the local address, or an error if not.
     /// The address is returned despite you passed as parameter because
@@ -174,11 +216,28 @@ impl NetworkController {
         transport: Transport,
         addr: impl ToSocketAddrs,
     ) -> io::Result<(ResourceId, SocketAddr)> {
+        self.listen_with(transport.into(), addr)
+    }
+
+    /// Listen messages from specified transport with custom transport options for transports that
+    /// support it.
+    /// The given address will be used as interface and listening port.
+    /// If the port can be opened, a [ResourceId] identifying the listener is returned
+    /// along with the local address, or an error if not.
+    /// The address is returned despite you passed as parameter because
+    /// when a `0` port is specified, the OS will give choose the value.
+    pub fn listen_with(
+        &self,
+        transport_listen: TransportListen,
+        addr: impl ToSocketAddrs,
+    ) -> io::Result<(ResourceId, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
-        self.controllers[transport.id() as usize].listen(addr).map(|(resource_id, addr)| {
-            log::trace!("Listening at {} by {}", addr, resource_id);
-            (resource_id, addr)
-        })
+        self.controllers[transport_listen.id() as usize].listen_with(transport_listen, addr).map(
+            |(resource_id, addr)| {
+                log::trace!("Listening at {} by {}", addr, resource_id);
+                (resource_id, addr)
+            },
+        )
     }
 
     /// Send the data message thought the connection represented by the given endpoint.

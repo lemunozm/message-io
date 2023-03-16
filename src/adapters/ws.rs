@@ -4,6 +4,7 @@ use crate::network::adapter::{
 };
 use crate::network::{RemoteAddr, Readiness};
 use crate::util::thread::{OTHER_THREAD_ERR};
+use crate::network::{TransportConnect, TransportListen};
 
 use mio::event::{Source};
 use mio::net::{TcpStream, TcpListener};
@@ -76,7 +77,10 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
+    fn connect_with(
+        _: TransportConnect,
+        remote_addr: RemoteAddr,
+    ) -> io::Result<ConnectionInfo<Self>> {
         let (peer_addr, url) = match remote_addr {
             RemoteAddr::Socket(addr) => {
                 (addr, Url::parse(&format!("ws://{addr}/message-io-default")).unwrap())
@@ -328,7 +332,7 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+    fn listen_with(_: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         let listener = TcpListener::bind(addr)?;
         let local_addr = listener.local_addr().unwrap();
         Ok(ListeningInfo { local: LocalResource { listener }, local_addr })

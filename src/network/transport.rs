@@ -5,7 +5,7 @@ use crate::adapters::tcp::{TcpAdapter};
 #[cfg(feature = "tcp")]
 use crate::adapters::framed_tcp::{FramedTcpAdapter};
 #[cfg(feature = "udp")]
-use crate::adapters::udp::{self, UdpAdapter};
+use crate::adapters::udp::{self, UdpAdapter, UdpConnectConfig, UdpListenConfig};
 #[cfg(feature = "websocket")]
 use crate::adapters::ws::{self, WsAdapter};
 
@@ -163,7 +163,7 @@ pub enum TransportConnect {
     #[cfg(feature = "tcp")]
     FramedTcp,
     #[cfg(feature = "udp")]
-    Udp,
+    Udp(UdpConnectConfig),
     #[cfg(feature = "websocket")]
     Ws,
 }
@@ -176,7 +176,7 @@ impl TransportConnect {
             #[cfg(feature = "tcp")]
             Self::FramedTcp => Transport::FramedTcp,
             #[cfg(feature = "udp")]
-            Self::Udp => Transport::Udp,
+            Self::Udp(_) => Transport::Udp,
             #[cfg(feature = "websocket")]
             Self::Ws => Transport::Ws,
         };
@@ -193,7 +193,7 @@ impl From<Transport> for TransportConnect {
             #[cfg(feature = "tcp")]
             Transport::FramedTcp => Self::FramedTcp,
             #[cfg(feature = "udp")]
-            Transport::Udp => Self::Udp,
+            Transport::Udp => Self::Udp(UdpConnectConfig::default()),
             #[cfg(feature = "websocket")]
             Transport::Ws => Self::Ws,
         }
@@ -206,7 +206,7 @@ pub enum TransportListen {
     #[cfg(feature = "tcp")]
     FramedTcp,
     #[cfg(feature = "udp")]
-    Udp,
+    Udp(UdpListenConfig),
     #[cfg(feature = "websocket")]
     Ws,
 }
@@ -219,7 +219,7 @@ impl TransportListen {
             #[cfg(feature = "tcp")]
             Self::FramedTcp => Transport::FramedTcp,
             #[cfg(feature = "udp")]
-            Self::Udp => Transport::Udp,
+            Self::Udp(_) => Transport::Udp,
             #[cfg(feature = "websocket")]
             Self::Ws => Transport::Ws,
         };
@@ -236,7 +236,7 @@ impl From<Transport> for TransportListen {
             #[cfg(feature = "tcp")]
             Transport::FramedTcp => Self::FramedTcp,
             #[cfg(feature = "udp")]
-            Transport::Udp => Self::Udp,
+            Transport::Udp => Self::Udp(UdpListenConfig::default()),
             #[cfg(feature = "websocket")]
             Transport::Ws => Self::Ws,
         }

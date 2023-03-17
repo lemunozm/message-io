@@ -1,7 +1,7 @@
 use super::loader::{DriverLoader};
 
 #[cfg(feature = "tcp")]
-use crate::adapters::tcp::{TcpAdapter};
+use crate::adapters::tcp::{TcpAdapter, TcpConnectConfig, TcpListenConfig};
 #[cfg(feature = "tcp")]
 use crate::adapters::framed_tcp::{FramedTcpAdapter};
 #[cfg(feature = "udp")]
@@ -157,9 +157,10 @@ impl std::fmt::Display for Transport {
     }
 }
 
+#[derive(Debug)]
 pub enum TransportConnect {
     #[cfg(feature = "tcp")]
-    Tcp,
+    Tcp(TcpConnectConfig),
     #[cfg(feature = "tcp")]
     FramedTcp,
     #[cfg(feature = "udp")]
@@ -172,7 +173,7 @@ impl TransportConnect {
     pub fn id(&self) -> u8 {
         let transport = match self {
             #[cfg(feature = "tcp")]
-            Self::Tcp => Transport::Tcp,
+            Self::Tcp(_) => Transport::Tcp,
             #[cfg(feature = "tcp")]
             Self::FramedTcp => Transport::FramedTcp,
             #[cfg(feature = "udp")]
@@ -189,7 +190,7 @@ impl From<Transport> for TransportConnect {
     fn from(transport: Transport) -> Self {
         match transport {
             #[cfg(feature = "tcp")]
-            Transport::Tcp => Self::Tcp,
+            Transport::Tcp => Self::Tcp(TcpConnectConfig::default()),
             #[cfg(feature = "tcp")]
             Transport::FramedTcp => Self::FramedTcp,
             #[cfg(feature = "udp")]
@@ -200,9 +201,10 @@ impl From<Transport> for TransportConnect {
     }
 }
 
+#[derive(Debug)]
 pub enum TransportListen {
     #[cfg(feature = "tcp")]
-    Tcp,
+    Tcp(TcpListenConfig),
     #[cfg(feature = "tcp")]
     FramedTcp,
     #[cfg(feature = "udp")]
@@ -215,7 +217,7 @@ impl TransportListen {
     pub fn id(&self) -> u8 {
         let transport = match self {
             #[cfg(feature = "tcp")]
-            Self::Tcp => Transport::Tcp,
+            Self::Tcp(_) => Transport::Tcp,
             #[cfg(feature = "tcp")]
             Self::FramedTcp => Transport::FramedTcp,
             #[cfg(feature = "udp")]
@@ -232,7 +234,7 @@ impl From<Transport> for TransportListen {
     fn from(transport: Transport) -> Self {
         match transport {
             #[cfg(feature = "tcp")]
-            Transport::Tcp => Self::Tcp,
+            Transport::Tcp => Self::Tcp(TcpListenConfig::default()),
             #[cfg(feature = "tcp")]
             Transport::FramedTcp => Self::FramedTcp,
             #[cfg(feature = "udp")]

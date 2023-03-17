@@ -1,3 +1,5 @@
+use crate::network::transport::{TransportConnect, TransportListen};
+
 use super::remote_addr::{RemoteAddr};
 use super::poll::{Readiness};
 
@@ -31,7 +33,7 @@ pub trait Resource: Send + Sync {
     fn source(&mut self) -> &mut dyn Source;
 }
 
-/// Plain struct used as a returned value of [`Remote::connect()`]
+/// Plain struct used as a returned value of [`Remote::connect_with()`]
 pub struct ConnectionInfo<R: Remote> {
     /// The new created remote resource
     pub remote: R,
@@ -43,7 +45,7 @@ pub struct ConnectionInfo<R: Remote> {
     pub peer_addr: SocketAddr,
 }
 
-/// Plain struct used as a returned value of [`Local::listen()`]
+/// Plain struct used as a returned value of [`Local::listen_with()`]
 pub struct ListeningInfo<L: Local> {
     /// The new created local resource
     pub local: L,
@@ -117,10 +119,16 @@ pub enum PendingStatus {
 pub trait Remote: Resource + Sized {
     /// Called when the user performs a connection request to an specific remote address.
     /// The **implementator** is in change of creating the corresponding remote resource.
+    /// The [`TransportConnect`] wraps custom transport options for transports that support it. It
+    /// is guaranteed by the upper level to be of the variant matching the adapter. Therefore other
+    /// variants can be safely ignored.
     /// The [`RemoteAddr`] contains either a [`SocketAddr`] or a [`url::Url`].
     /// It is in charge of deciding what to do in both cases.
     /// It also must return the extracted address as `SocketAddr`.
-    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>>;
+    fn connect_with(
+        config: TransportConnect,
+        remote_addr: RemoteAddr,
+    ) -> io::Result<ConnectionInfo<Self>>;
 
     /// Called when a remote resource received an event.
     /// The resource must be *ready* to receive this call.
@@ -193,7 +201,10 @@ pub trait Local: Resource + Sized {
     /// The **implementator** is in change of creating the corresponding local resource.
     /// It also must returned the listening address since it could not be the same as param `addr`
     /// (e.g. listening from port `0`).
-    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>>;
+    /// The [`TransportListen`] wraps custom transport options for transports that support it. It
+    /// is guaranteed by the upper level to be of the variant matching the adapter. Therefore other
+    /// variants can be safely ignored.
+    fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>>;
 
     /// Called when a local resource received an event.
     /// It means that some resource have tried to connect.

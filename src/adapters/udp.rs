@@ -2,7 +2,7 @@ use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr, Readiness};
+use crate::network::{RemoteAddr, Readiness, TransportConnect, TransportListen};
 
 use mio::net::{UdpSocket};
 use mio::event::{Source};
@@ -26,6 +26,20 @@ pub const MAX_LOCAL_PAYLOAD_LEN: usize = 65535 - 20 - 8;
 #[cfg(target_os = "macos")]
 pub const MAX_LOCAL_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub struct UdpConnectConfig {
+    /// Enables the socket capabilities to send broadcast messages.
+    pub broadcast: bool,
+}
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub struct UdpListenConfig {
+    /// Enables the socket capabilities to send broadcast messages when the listening socket is
+    /// also used for sending with
+    /// [`Endpoint::from_listener`](crate::network::Endpoint::from_listener).
+    pub broadcast: bool,
+}
+
 pub(crate) struct UdpAdapter;
 impl Adapter for UdpAdapter {
     type Remote = RemoteResource;
@@ -43,9 +57,22 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
+    fn connect_with(
+        config: TransportConnect,
+        remote_addr: RemoteAddr,
+    ) -> io::Result<ConnectionInfo<Self>> {
+        let config = match config {
+            TransportConnect::Udp(config) => config,
+            _ => panic!("Internal error: Got wrong config"),
+        };
+
         let socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
         let peer_addr = *remote_addr.socket_addr();
+
+        if config.broadcast {
+            socket.set_broadcast(true)?;
+        }
+
         socket.connect(peer_addr)?;
         let local_addr = socket.local_addr()?;
         Ok(ConnectionInfo { remote: RemoteResource { socket }, local_addr, peer_addr })
@@ -95,7 +122,12 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+    fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+        let config = match config {
+            TransportListen::Udp(config) => config,
+            _ => panic!("Internal error: Got wrong config"),
+        };
+
         let socket = match addr {
             SocketAddr::V4(addr) if addr.ip().is_multicast() => {
                 let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
@@ -111,6 +143,10 @@ impl Local for LocalResource {
             }
             _ => UdpSocket::bind(addr)?,
         };
+
+        if config.broadcast {
+            socket.set_broadcast(true)?;
+        }
 
         let local_addr = socket.local_addr().unwrap();
         Ok(ListeningInfo { local: { LocalResource { socket } }, local_addr })

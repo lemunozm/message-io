@@ -4,7 +4,7 @@ use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo, PendingStatus,
 };
-use crate::network::{RemoteAddr, Readiness};
+use crate::network::{RemoteAddr, Readiness, TransportConnect, TransportListen};
 
 use mio::event::{Source};
 
@@ -25,7 +25,10 @@ impl Resource for RemoteResource {
 }
 
 impl Remote for RemoteResource {
-    fn connect(remote_addr: RemoteAddr) -> io::Result<ConnectionInfo<Self>> {
+    fn connect_with(
+        config: TransportConnect,
+        remote_addr: RemoteAddr,
+    ) -> io::Result<ConnectionInfo<Self>> {
         todo!()
     }
 
@@ -52,7 +55,7 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen(addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+    fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         todo!()
     }
 

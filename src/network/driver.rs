@@ -4,6 +4,7 @@ use super::poll::{Poll, Readiness};
 use super::registry::{ResourceRegistry, Register};
 use super::remote_addr::{RemoteAddr};
 use super::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus, PendingStatus};
+use super::transport::{TransportConnect, TransportListen};
 
 use std::net::{SocketAddr};
 use std::sync::{
@@ -68,8 +69,16 @@ impl std::fmt::Debug for NetEvent<'_> {
 }
 
 pub trait ActionController: Send + Sync {
-    fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)>;
-    fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)>;
+    fn connect_with(
+        &self,
+        config: TransportConnect,
+        addr: RemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)>;
+    fn listen_with(
+        &self,
+        config: TransportListen,
+        addr: SocketAddr,
+    ) -> io::Result<(ResourceId, SocketAddr)>;
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
     fn remove(&self, id: ResourceId) -> bool;
     fn is_ready(&self, id: ResourceId) -> Option<bool>;
@@ -136,8 +145,12 @@ impl<R: Remote, L: Local> Clone for Driver<R, L> {
 }
 
 impl<R: Remote, L: Local> ActionController for Driver<R, L> {
-    fn connect(&self, addr: RemoteAddr) -> io::Result<(Endpoint, SocketAddr)> {
-        R::connect(addr).map(|info| {
+    fn connect_with(
+        &self,
+        config: TransportConnect,
+        addr: RemoteAddr,
+    ) -> io::Result<(Endpoint, SocketAddr)> {
+        R::connect_with(config, addr).map(|info| {
             let id = self.remote_registry.register(
                 info.remote,
                 RemoteProperties::new(info.peer_addr, None),
@@ -147,8 +160,12 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
         })
     }
 
-    fn listen(&self, addr: SocketAddr) -> io::Result<(ResourceId, SocketAddr)> {
-        L::listen(addr).map(|info| {
+    fn listen_with(
+        &self,
+        config: TransportListen,
+        addr: SocketAddr,
+    ) -> io::Result<(ResourceId, SocketAddr)> {
+        L::listen_with(config, addr).map(|info| {
             let id = self.local_registry.register(info.local, LocalProperties, false);
             (id, info.local_addr)
         })

@@ -5,7 +5,7 @@ use crate::adapters::tcp::{TcpAdapter};
 #[cfg(feature = "tcp")]
 use crate::adapters::framed_tcp::{FramedTcpAdapter};
 #[cfg(feature = "udp")]
-use crate::adapters::udp::{self, UdpAdapter};
+use crate::adapters::udp::{self, UdpAdapter, UdpConnectConfig, UdpListenConfig};
 #[cfg(feature = "websocket")]
 use crate::adapters::ws::{self, WsAdapter};
 
@@ -154,5 +154,91 @@ impl From<u8> for Transport {
 impl std::fmt::Display for Transport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{self:?}")
+    }
+}
+
+pub enum TransportConnect {
+    #[cfg(feature = "tcp")]
+    Tcp,
+    #[cfg(feature = "tcp")]
+    FramedTcp,
+    #[cfg(feature = "udp")]
+    Udp(UdpConnectConfig),
+    #[cfg(feature = "websocket")]
+    Ws,
+}
+
+impl TransportConnect {
+    pub fn id(&self) -> u8 {
+        let transport = match self {
+            #[cfg(feature = "tcp")]
+            Self::Tcp => Transport::Tcp,
+            #[cfg(feature = "tcp")]
+            Self::FramedTcp => Transport::FramedTcp,
+            #[cfg(feature = "udp")]
+            Self::Udp(_) => Transport::Udp,
+            #[cfg(feature = "websocket")]
+            Self::Ws => Transport::Ws,
+        };
+
+        transport.id()
+    }
+}
+
+impl From<Transport> for TransportConnect {
+    fn from(transport: Transport) -> Self {
+        match transport {
+            #[cfg(feature = "tcp")]
+            Transport::Tcp => Self::Tcp,
+            #[cfg(feature = "tcp")]
+            Transport::FramedTcp => Self::FramedTcp,
+            #[cfg(feature = "udp")]
+            Transport::Udp => Self::Udp(UdpConnectConfig::default()),
+            #[cfg(feature = "websocket")]
+            Transport::Ws => Self::Ws,
+        }
+    }
+}
+
+pub enum TransportListen {
+    #[cfg(feature = "tcp")]
+    Tcp,
+    #[cfg(feature = "tcp")]
+    FramedTcp,
+    #[cfg(feature = "udp")]
+    Udp(UdpListenConfig),
+    #[cfg(feature = "websocket")]
+    Ws,
+}
+
+impl TransportListen {
+    pub fn id(&self) -> u8 {
+        let transport = match self {
+            #[cfg(feature = "tcp")]
+            Self::Tcp => Transport::Tcp,
+            #[cfg(feature = "tcp")]
+            Self::FramedTcp => Transport::FramedTcp,
+            #[cfg(feature = "udp")]
+            Self::Udp(_) => Transport::Udp,
+            #[cfg(feature = "websocket")]
+            Self::Ws => Transport::Ws,
+        };
+
+        transport.id()
+    }
+}
+
+impl From<Transport> for TransportListen {
+    fn from(transport: Transport) -> Self {
+        match transport {
+            #[cfg(feature = "tcp")]
+            Transport::Tcp => Self::Tcp,
+            #[cfg(feature = "tcp")]
+            Transport::FramedTcp => Self::FramedTcp,
+            #[cfg(feature = "udp")]
+            Transport::Udp => Self::Udp(UdpListenConfig::default()),
+            #[cfg(feature = "websocket")]
+            Transport::Ws => Self::Ws,
+        }
     }
 }

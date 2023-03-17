@@ -126,7 +126,7 @@ impl NetworkController {
     /// let (handler, listener) = node::split();
     /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
     ///
-    /// let config = UdpConnectConfig { broadcast: true };
+    /// let config = UdpConnectConfig { broadcast: true, ..Default::default() };
     /// let addr = "255.255.255.255:7777";
     /// let (conn_endpoint, _) = handler.network().connect_with(TransportConnect::Udp(config), addr).unwrap();
     /// // The socket could not be able to send yet.
@@ -226,7 +226,7 @@ impl NetworkController {
     /// let (handler, listener) = node::split();
     /// handler.signals().send_with_timer((), std::time::Duration::from_secs(1));
     ///
-    /// let config = UdpConnectConfig { broadcast: true };
+    /// let config = UdpConnectConfig { broadcast: true, ..Default::default() };
     /// let addr = "255.255.255.255:7777";
     /// match handler.network().connect_sync_with(TransportConnect::Udp(config), addr) {
     ///     Ok((endpoint, _)) => {

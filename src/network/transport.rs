@@ -3,7 +3,7 @@ use super::loader::{DriverLoader};
 #[cfg(feature = "tcp")]
 use crate::adapters::tcp::{TcpAdapter, TcpConnectConfig, TcpListenConfig};
 #[cfg(feature = "tcp")]
-use crate::adapters::framed_tcp::{FramedTcpAdapter};
+use crate::adapters::framed_tcp::{FramedTcpAdapter, FramedTcpConnectConfig, FramedTcpListenConfig};
 #[cfg(feature = "udp")]
 use crate::adapters::udp::{self, UdpAdapter, UdpConnectConfig, UdpListenConfig};
 #[cfg(feature = "websocket")]
@@ -162,7 +162,7 @@ pub enum TransportConnect {
     #[cfg(feature = "tcp")]
     Tcp(TcpConnectConfig),
     #[cfg(feature = "tcp")]
-    FramedTcp,
+    FramedTcp(FramedTcpConnectConfig),
     #[cfg(feature = "udp")]
     Udp(UdpConnectConfig),
     #[cfg(feature = "websocket")]
@@ -175,7 +175,7 @@ impl TransportConnect {
             #[cfg(feature = "tcp")]
             Self::Tcp(_) => Transport::Tcp,
             #[cfg(feature = "tcp")]
-            Self::FramedTcp => Transport::FramedTcp,
+            Self::FramedTcp(_) => Transport::FramedTcp,
             #[cfg(feature = "udp")]
             Self::Udp(_) => Transport::Udp,
             #[cfg(feature = "websocket")]
@@ -192,7 +192,7 @@ impl From<Transport> for TransportConnect {
             #[cfg(feature = "tcp")]
             Transport::Tcp => Self::Tcp(TcpConnectConfig::default()),
             #[cfg(feature = "tcp")]
-            Transport::FramedTcp => Self::FramedTcp,
+            Transport::FramedTcp => Self::FramedTcp(FramedTcpConnectConfig::default()),
             #[cfg(feature = "udp")]
             Transport::Udp => Self::Udp(UdpConnectConfig::default()),
             #[cfg(feature = "websocket")]
@@ -206,7 +206,7 @@ pub enum TransportListen {
     #[cfg(feature = "tcp")]
     Tcp(TcpListenConfig),
     #[cfg(feature = "tcp")]
-    FramedTcp,
+    FramedTcp(FramedTcpListenConfig),
     #[cfg(feature = "udp")]
     Udp(UdpListenConfig),
     #[cfg(feature = "websocket")]
@@ -219,7 +219,7 @@ impl TransportListen {
             #[cfg(feature = "tcp")]
             Self::Tcp(_) => Transport::Tcp,
             #[cfg(feature = "tcp")]
-            Self::FramedTcp => Transport::FramedTcp,
+            Self::FramedTcp(_) => Transport::FramedTcp,
             #[cfg(feature = "udp")]
             Self::Udp(_) => Transport::Udp,
             #[cfg(feature = "websocket")]
@@ -236,7 +236,7 @@ impl From<Transport> for TransportListen {
             #[cfg(feature = "tcp")]
             Transport::Tcp => Self::Tcp(TcpListenConfig::default()),
             #[cfg(feature = "tcp")]
-            Transport::FramedTcp => Self::FramedTcp,
+            Transport::FramedTcp => Self::FramedTcp(FramedTcpListenConfig::default()),
             #[cfg(feature = "udp")]
             Transport::Udp => Self::Udp(UdpListenConfig::default()),
             #[cfg(feature = "websocket")]

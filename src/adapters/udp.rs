@@ -26,10 +26,22 @@ pub const MAX_LOCAL_PAYLOAD_LEN: usize = 65535 - 20 - 8;
 #[cfg(target_os = "macos")]
 pub const MAX_LOCAL_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct UdpConnectConfig {
+    /// Specify the source address and port.
+    pub source_address: SocketAddr,
+
     /// Enables the socket capabilities to send broadcast messages.
     pub broadcast: bool,
+}
+
+impl Default for UdpConnectConfig {
+    fn default() -> Self {
+        Self {
+            source_address: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
+            broadcast: false,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
@@ -66,7 +78,7 @@ impl Remote for RemoteResource {
             _ => panic!("Internal error: Got wrong config"),
         };
 
-        let socket = UdpSocket::bind("0.0.0.0:0".parse().unwrap())?;
+        let socket = UdpSocket::bind(config.source_address)?;
         let peer_addr = *remote_addr.socket_addr();
 
         if config.broadcast {

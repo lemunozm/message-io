@@ -62,7 +62,7 @@ pub struct UdpListenConfig {
     /// Enables the socket capabilities to send broadcast messages when the listening socket is
     /// also used for sending with
     /// [`Endpoint::from_listener`](crate::network::Endpoint::from_listener).
-    pub broadcast: bool,
+    pub send_broadcasts: bool,
 
     /// Set value for the `SO_REUSEADDR` option on this socket. This indicates that futher calls to
     /// `bind` may allow reuse of local addresses.
@@ -198,9 +198,7 @@ impl Local for LocalResource {
         if config.reuse_port || multicast.is_some() {
             socket.set_reuse_port(true)?;
         }
-        if config.broadcast {
-            socket.set_broadcast(true)?;
-        }
+        socket.set_broadcast(config.send_broadcasts)?;
 
         if let Some(multicast) = multicast {
             socket.join_multicast_v4(multicast.ip(), &Ipv4Addr::UNSPECIFIED)?;

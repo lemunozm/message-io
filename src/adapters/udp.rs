@@ -33,6 +33,17 @@ pub struct UdpConnectConfig {
 
     /// Enables the socket capabilities to send broadcast messages.
     pub broadcast: bool,
+
+    /// Set value for the `SO_REUSEADDR` option on this socket. This indicates that futher calls to
+    /// `bind` may allow reuse of local addresses. For IPv4 sockets this means that a socket may
+    /// bind even when there’s a socket already listening on this port.
+    pub reuse_address: bool,
+
+    /// Set value for the `SO_REUSEPORT` option on this socket. This indicates that further calls
+    /// to `bind` may allow reuse of local addresses. For IPv4 sockets this means that a socket may
+    /// bind even when there’s a socket already listening on this port. This option is always-on on
+    /// Windows and cannot be configured.
+    pub reuse_port: bool,
 }
 
 impl Default for UdpConnectConfig {
@@ -40,6 +51,8 @@ impl Default for UdpConnectConfig {
         Self {
             source_address: SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into(),
             broadcast: false,
+            reuse_address: false,
+            reuse_port: false,
         }
     }
 }
@@ -50,6 +63,16 @@ pub struct UdpListenConfig {
     /// also used for sending with
     /// [`Endpoint::from_listener`](crate::network::Endpoint::from_listener).
     pub broadcast: bool,
+
+    /// Set value for the `SO_REUSEADDR` option on this socket. This indicates that futher calls to
+    /// `bind` may allow reuse of local addresses.
+    pub reuse_address: bool,
+
+    /// Set value for the `SO_REUSEPORT` option on this socket. This indicates that further calls
+    /// to `bind` may allow reuse of local addresses. For IPv4 sockets this means that a socket may
+    /// bind even when there’s a socket already listening on this port. This option is always-on
+    /// on Windows and cannot be configured.
+    pub reuse_port: bool,
 }
 
 pub(crate) struct UdpAdapter;
@@ -78,14 +101,27 @@ impl Remote for RemoteResource {
             _ => panic!("Internal error: Got wrong config"),
         };
 
-        let socket = UdpSocket::bind(config.source_address)?;
         let peer_addr = *remote_addr.socket_addr();
 
-        if config.broadcast {
-            socket.set_broadcast(true)?;
-        }
+        let socket = Socket::new(
+            match peer_addr {
+                SocketAddr::V4 { .. } => Domain::IPV4,
+                SocketAddr::V6 { .. } => Domain::IPV6,
+            },
+            Type::DGRAM,
+            Some(Protocol::UDP),
+        )?;
+        socket.set_nonblocking(true)?;
 
-        socket.connect(peer_addr)?;
+        socket.set_reuse_address(config.reuse_address)?;
+        #[cfg(unix)]
+        socket.set_reuse_port(config.reuse_port)?;
+        socket.set_broadcast(config.broadcast)?;
+
+        socket.bind(&config.source_address.into())?;
+        socket.connect(&peer_addr.into())?;
+
+        let socket = UdpSocket::from_std(socket.into());
         let local_addr = socket.local_addr()?;
         Ok(ConnectionInfo { remote: RemoteResource { socket }, local_addr, peer_addr })
     }
@@ -140,26 +176,41 @@ impl Local for LocalResource {
             _ => panic!("Internal error: Got wrong config"),
         };
 
-        let socket = match addr {
-            SocketAddr::V4(addr) if addr.ip().is_multicast() => {
-                let listening_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port());
-
-                let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
-                socket.set_reuse_address(true)?;
-                #[cfg(unix)]
-                socket.set_reuse_port(true)?;
-                socket.set_nonblocking(true)?;
-                socket.join_multicast_v4(addr.ip(), &Ipv4Addr::UNSPECIFIED)?;
-                socket.bind(&listening_addr.into())?;
-                UdpSocket::from_std(socket.into())
-            }
-            _ => UdpSocket::bind(addr)?,
+        let multicast = match addr {
+            SocketAddr::V4(addr) if addr.ip().is_multicast() => Some(addr),
+            _ => None,
         };
 
+        let socket = Socket::new(
+            match addr {
+                SocketAddr::V4 { .. } => Domain::IPV4,
+                SocketAddr::V6 { .. } => Domain::IPV6,
+            },
+            Type::DGRAM,
+            Some(Protocol::UDP),
+        )?;
+        socket.set_nonblocking(true)?;
+
+        if config.reuse_address || multicast.is_some() {
+            socket.set_reuse_address(true)?;
+        }
+        #[cfg(unix)]
+        if config.reuse_port || multicast.is_some() {
+            socket.set_reuse_port(true)?;
+        }
         if config.broadcast {
             socket.set_broadcast(true)?;
         }
 
+        if let Some(multicast) = multicast {
+            socket.join_multicast_v4(multicast.ip(), &Ipv4Addr::UNSPECIFIED)?;
+            socket.bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port()).into())?;
+        }
+        else {
+            socket.bind(&addr.into())?;
+        }
+
+        let socket = UdpSocket::from_std(socket.into());
         let local_addr = socket.local_addr().unwrap();
         Ok(ListeningInfo { local: { LocalResource { socket } }, local_addr })
     }

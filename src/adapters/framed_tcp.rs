@@ -8,13 +8,31 @@ use crate::util::encoding::{self, Decoder, MAX_ENCODED_SIZE};
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
 
+use socket2::{Socket, TcpKeepalive};
+
 use std::net::{SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::{Deref};
 use std::cell::{RefCell};
-use std::mem::{MaybeUninit};
+use std::mem::{forget, MaybeUninit};
+#[cfg(target_os = "windows")]
+use std::os::windows::io::{FromRawSocket, AsRawSocket};
+#[cfg(not(target_os = "windows"))]
+use std::os::{fd::AsRawFd, unix::io::FromRawFd};
 
 const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
+
+#[derive(Clone, Debug, Default)]
+pub struct FramedTcpConnectConfig {
+    /// Enables TCP keepalive settings on the socket.
+    pub keepalive: Option<TcpKeepalive>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct FramedTcpListenConfig {
+    /// Enables TCP keepalive settings on client connection sockets.
+    pub keepalive: Option<TcpKeepalive>,
+}
 
 pub(crate) struct FramedTcpAdapter;
 impl Adapter for FramedTcpAdapter {
@@ -25,6 +43,7 @@ impl Adapter for FramedTcpAdapter {
 pub(crate) struct RemoteResource {
     stream: TcpStream,
     decoder: RefCell<Decoder>,
+    keepalive: Option<TcpKeepalive>,
 }
 
 // SAFETY:
@@ -32,9 +51,9 @@ pub(crate) struct RemoteResource {
 // that will be called always from the same thread. This way, we save the cost of a Mutex.
 unsafe impl Sync for RemoteResource {}
 
-impl From<TcpStream> for RemoteResource {
-    fn from(stream: TcpStream) -> Self {
-        Self { stream, decoder: RefCell::new(Decoder::default()) }
+impl RemoteResource {
+    fn new(stream: TcpStream, keepalive: Option<TcpKeepalive>) -> Self {
+        Self { stream, decoder: RefCell::new(Decoder::default()), keepalive }
     }
 }
 
@@ -46,13 +65,21 @@ impl Resource for RemoteResource {
 
 impl Remote for RemoteResource {
     fn connect_with(
-        _: TransportConnect,
+        config: TransportConnect,
         remote_addr: RemoteAddr,
     ) -> io::Result<ConnectionInfo<Self>> {
+        let config = match config {
+            TransportConnect::FramedTcp(config) => config,
+            _ => panic!("Internal error: Got wrong config"),
+        };
         let peer_addr = *remote_addr.socket_addr();
         let stream = TcpStream::connect(peer_addr)?;
         let local_addr = stream.local_addr()?;
-        Ok(ConnectionInfo { remote: stream.into(), local_addr, peer_addr })
+        Ok(ConnectionInfo {
+            remote: RemoteResource::new(stream, config.keepalive),
+            local_addr,
+            peer_addr,
+        })
     }
 
     fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
@@ -115,12 +142,31 @@ impl Remote for RemoteResource {
     }
 
     fn pending(&self, _readiness: Readiness) -> PendingStatus {
-        super::tcp::check_stream_ready(&self.stream)
+        let status = super::tcp::check_stream_ready(&self.stream);
+
+        if status == PendingStatus::Ready {
+            if let Some(keepalive) = &self.keepalive {
+                #[cfg(target_os = "windows")]
+                let socket = unsafe { Socket::from_raw_socket(self.stream.as_raw_socket()) };
+                #[cfg(not(target_os = "windows"))]
+                let socket = unsafe { Socket::from_raw_fd(self.stream.as_raw_fd()) };
+
+                if let Err(e) = socket.set_tcp_keepalive(keepalive) {
+                    log::warn!("TCP set keepalive error: {}", e);
+                }
+
+                // Don't drop so the underlying socket is not closed.
+                forget(socket);
+            }
+        }
+
+        status
     }
 }
 
 pub(crate) struct LocalResource {
     listener: TcpListener,
+    keepalive: Option<TcpKeepalive>,
 }
 
 impl Resource for LocalResource {
@@ -132,16 +178,26 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen_with(_: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+    fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+        let config = match config {
+            TransportListen::FramedTcp(config) => config,
+            _ => panic!("Internal error: Got wrong config"),
+        };
         let listener = TcpListener::bind(addr)?;
         let local_addr = listener.local_addr().unwrap();
-        Ok(ListeningInfo { local: { LocalResource { listener } }, local_addr })
+        Ok(ListeningInfo {
+            local: { LocalResource { listener, keepalive: config.keepalive } },
+            local_addr,
+        })
     }
 
     fn accept(&self, mut accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
         loop {
             match self.listener.accept() {
-                Ok((stream, addr)) => accept_remote(AcceptedType::Remote(addr, stream.into())),
+                Ok((stream, addr)) => accept_remote(AcceptedType::Remote(
+                    addr,
+                    RemoteResource::new(stream, self.keepalive.clone()),
+                )),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                 Err(err) => break log::error!("TCP accept error: {}", err), // Should not happen

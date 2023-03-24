@@ -1,5 +1,13 @@
 # Changelog
 
+## Release 0.15.0
+- Configurable network adapters: [#141](https://github.com/lemunozm/message-io/pull/141)
+- TCP keepalive configurable option: [#143](https://github.com/lemunozm/message-io/pull/143)
+- UDP with configurable source address, reuse address, reuse port: [#145](https://github.com/lemunozm/message-io/pull/145),
+  [#146](https://github.com/lemunozm/message-io/pull/146)
+- UDP linux mimic behaviour for receive broadcasts [#149](https://github.com/lemunozm/message-io/pull/149)
+- Updated dependencies.
+
 ## Release 0.14.8
 - Fix timer concurrent issue: [#136](https://github.com/lemunozm/message-io/issues/136)
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.15.1
+- Fixed compilation issue when only `tcp` feature is enabled
+
 ## Release 0.15.0
 - Configurable network adapters: [#141](https://github.com/lemunozm/message-io/pull/141)
 - TCP keepalive configurable option: [#143](https://github.com/lemunozm/message-io/pull/143)

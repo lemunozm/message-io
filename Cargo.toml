@@ -1,6 +1,6 @@
 [package]
 name = "message-io"
-version = "0.15.0"
+version = "0.15.1"
 authors = ["lemunozm <lemunozm@gmail.com>"]
 edition = "2018"
 readme = "README.md"
@@ -19,7 +19,7 @@ all-features = true
 
 [features]
 default = ["tcp", "udp", "websocket"] # All features by default
-tcp = ["mio/net"]
+tcp = ["mio/net", "socket2"]
 udp = ["mio/net", "socket2"]
 websocket = ["tungstenite", "url", "tcp"]
 

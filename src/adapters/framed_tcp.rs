@@ -24,14 +24,28 @@ const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
 
 #[derive(Clone, Debug, Default)]
 pub struct FramedTcpConnectConfig {
+    keepalive: Option<TcpKeepalive>,
+}
+
+impl FramedTcpConnectConfig {
     /// Enables TCP keepalive settings on the socket.
-    pub keepalive: Option<TcpKeepalive>,
+    pub fn with_keepalive(mut self, keepalive: TcpKeepalive) -> Self {
+        self.keepalive = Some(keepalive);
+        self
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct FramedTcpListenConfig {
+    keepalive: Option<TcpKeepalive>,
+}
+
+impl FramedTcpListenConfig {
     /// Enables TCP keepalive settings on client connection sockets.
-    pub keepalive: Option<TcpKeepalive>,
+    pub fn with_keepalive(mut self, keepalive: TcpKeepalive) -> Self {
+        self.keepalive = Some(keepalive);
+        self
+    }
 }
 
 pub(crate) struct FramedTcpAdapter;

@@ -39,22 +39,41 @@ pub const MAX_LOCAL_PAYLOAD_LEN: usize = 9216 - 20 - 8;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct UdpConnectConfig {
+    source_address: SocketAddr,
+    broadcast: bool,
+    reuse_address: bool,
+    reuse_port: bool,
+}
+
+impl UdpConnectConfig {
     /// Specify the source address and port.
-    pub source_address: SocketAddr,
+    pub fn with_source_address(mut self, addr: SocketAddr) -> Self {
+        self.source_address = addr;
+        self
+    }
 
     /// Enables the socket capabilities to send broadcast messages.
-    pub broadcast: bool,
+    pub fn with_broadcast(mut self) -> Self {
+        self.broadcast = true;
+        self
+    }
 
     /// Set value for the `SO_REUSEADDR` option on this socket. This indicates that futher calls to
     /// `bind` may allow reuse of local addresses. For IPv4 sockets this means that a socket may
     /// bind even when there’s a socket already listening on this port.
-    pub reuse_address: bool,
+    pub fn with_reuse_address(mut self) -> Self {
+        self.reuse_address = true;
+        self
+    }
 
     /// Set value for the `SO_REUSEPORT` option on this socket. This indicates that further calls
     /// to `bind` may allow reuse of local addresses. For IPv4 sockets this means that a socket may
     /// bind even when there’s a socket already listening on this port. This option is always-on on
     /// Windows and cannot be configured.
-    pub reuse_port: bool,
+    pub fn with_reuse_port(mut self) -> Self {
+        self.reuse_port = true;
+        self
+    }
 }
 
 impl Default for UdpConnectConfig {
@@ -70,26 +89,45 @@ impl Default for UdpConnectConfig {
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
 pub struct UdpListenConfig {
+    send_broadcasts: bool,
+    receive_broadcasts: bool,
+    reuse_address: bool,
+    reuse_port: bool,
+}
+
+impl UdpListenConfig {
     /// Enables the socket capabilities to send broadcast messages when the listening socket is
     /// also used for sending with
     /// [`Endpoint::from_listener`](crate::network::Endpoint::from_listener).
-    pub send_broadcasts: bool,
+    pub fn with_send_broadcasts(mut self) -> Self {
+        self.send_broadcasts = true;
+        self
+    }
 
     /// On Windows, when listening on a specific IP address, the sockets also receives
     /// corresponding subnet broadcasts and global broadcasts ([`std::net::Ipv4Addr::BROADCAST`])
     /// received on the interface matching the IP.  When this option is set, message-io mimics this
     /// behavior on Linux.
-    pub receive_broadcasts: bool,
+    pub fn with_receive_broadcasts(mut self) -> Self {
+        self.receive_broadcasts = true;
+        self
+    }
 
     /// Set value for the `SO_REUSEADDR` option on this socket. This indicates that futher calls to
     /// `bind` may allow reuse of local addresses.
-    pub reuse_address: bool,
+    pub fn with_reuse_address(mut self) -> Self {
+        self.reuse_address = true;
+        self
+    }
 
     /// Set value for the `SO_REUSEPORT` option on this socket. This indicates that further calls
     /// to `bind` may allow reuse of local addresses. For IPv4 sockets this means that a socket may
     /// bind even when there’s a socket already listening on this port. This option is always-on
     /// on Windows and cannot be configured.
-    pub reuse_port: bool,
+    pub fn with_reuse_port(mut self) -> Self {
+        self.reuse_port = true;
+        self
+    }
 }
 
 pub(crate) struct UdpAdapter;

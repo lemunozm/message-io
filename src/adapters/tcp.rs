@@ -9,7 +9,7 @@ use crate::network::{RemoteAddr, Readiness, TransportConnect, TransportListen};
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
 
-use socket2::{Socket};
+use socket2::{Socket, Domain, Type, Protocol};
 
 use std::net::{SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};
@@ -27,6 +27,7 @@ pub const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
 
 #[derive(Clone, Debug, Default)]
 pub struct TcpConnectConfig {
+    source_address: Option<SocketAddr>,
     keepalive: Option<TcpKeepalive>,
 }
 
@@ -34,6 +35,12 @@ impl TcpConnectConfig {
     /// Enables TCP keepalive settings on the socket.
     pub fn with_keepalive(mut self, keepalive: TcpKeepalive) -> Self {
         self.keepalive = Some(keepalive);
+        self
+    }
+
+    /// Specify the source address and port.
+    pub fn with_source_address(mut self, source_address: SocketAddr) -> Self {
+        self.source_address = Some(source_address);
         self
     }
 }
@@ -78,7 +85,30 @@ impl Remote for RemoteResource {
             _ => panic!("Internal error: Got wrong config"),
         };
         let peer_addr = *remote_addr.socket_addr();
-        let stream = TcpStream::connect(peer_addr)?;
+
+        let socket = Socket::new(
+            match peer_addr {
+                SocketAddr::V4 { .. } => Domain::IPV4,
+                SocketAddr::V6 { .. } => Domain::IPV6,
+            },
+            Type::STREAM,
+            Some(Protocol::TCP),
+        )?;
+        socket.set_nonblocking(true)?;
+
+        if let Some(source_address) = config.source_address {
+            socket.bind(&source_address.into())?;
+        }
+
+        match socket.connect(&peer_addr.into()) {
+            #[cfg(unix)]
+            Err(e) if e.raw_os_error() != Some(libc::EINPROGRESS) => return Err(e),
+            #[cfg(windows)]
+            Err(e) if e.kind() != io::ErrorKind::WouldBlock => return Err(e),
+            _ => {}
+        }
+
+        let stream = TcpStream::from_std(socket.into());
         let local_addr = stream.local_addr()?;
         Ok(ConnectionInfo {
             remote: Self { stream, keepalive: config.keepalive },

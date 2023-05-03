@@ -1,3 +1,5 @@
+pub use socket2::{TcpKeepalive};
+
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo, PendingStatus,
@@ -7,7 +9,7 @@ use crate::network::{RemoteAddr, Readiness, TransportConnect, TransportListen};
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
 
-use socket2::{Socket, TcpKeepalive};
+use socket2::{Socket};
 
 use std::net::{SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};

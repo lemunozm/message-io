@@ -1,3 +1,5 @@
+pub use socket2::{TcpKeepalive};
+
 use crate::network::adapter::{
     Resource, Remote, Local, Adapter, SendStatus, AcceptedType, ReadStatus, ConnectionInfo,
     ListeningInfo, PendingStatus,
@@ -8,7 +10,7 @@ use crate::util::encoding::{self, Decoder, MAX_ENCODED_SIZE};
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
 
-use socket2::{Socket, TcpKeepalive};
+use socket2::{Socket};
 
 use std::net::{SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};
@@ -24,14 +26,28 @@ const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
 
 #[derive(Clone, Debug, Default)]
 pub struct FramedTcpConnectConfig {
+    keepalive: Option<TcpKeepalive>,
+}
+
+impl FramedTcpConnectConfig {
     /// Enables TCP keepalive settings on the socket.
-    pub keepalive: Option<TcpKeepalive>,
+    pub fn with_keepalive(mut self, keepalive: TcpKeepalive) -> Self {
+        self.keepalive = Some(keepalive);
+        self
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct FramedTcpListenConfig {
+    keepalive: Option<TcpKeepalive>,
+}
+
+impl FramedTcpListenConfig {
     /// Enables TCP keepalive settings on client connection sockets.
-    pub keepalive: Option<TcpKeepalive>,
+    pub fn with_keepalive(mut self, keepalive: TcpKeepalive) -> Self {
+        self.keepalive = Some(keepalive);
+        self
+    }
 }
 
 pub(crate) struct FramedTcpAdapter;

@@ -41,7 +41,7 @@ version = "0.26.2"
 default-features = false
 features = ["socket", "uio", "net"]
 
-[target.'cfg(target_os = "linux")'.dependencies.libc]
+[target.'cfg(unix)'.dependencies.libc]
 version = "0.2.137"
 default-features = false
 

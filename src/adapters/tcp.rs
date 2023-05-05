@@ -9,10 +9,14 @@ use crate::network::{RemoteAddr, Readiness, TransportConnect, TransportListen};
 use mio::net::{TcpListener, TcpStream};
 use mio::event::{Source};
 
-use socket2::{Socket};
+use socket2::{Socket, Domain, Type, Protocol};
 
 use std::net::{SocketAddr};
+#[cfg(unix)]
+use std::ffi::{CString};
 use std::io::{self, ErrorKind, Read, Write};
+#[cfg(target_os = "macos")]
+use std::num::NonZeroU32;
 use std::ops::{Deref};
 use std::mem::{forget, MaybeUninit};
 #[cfg(target_os = "windows")]
@@ -27,13 +31,28 @@ pub const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
 
 #[derive(Clone, Debug, Default)]
 pub struct TcpConnectConfig {
+    bind_device: Option<String>,
+    source_address: Option<SocketAddr>,
     keepalive: Option<TcpKeepalive>,
 }
 
 impl TcpConnectConfig {
+    /// Bind the TCP connection to a specific interface, identified by its name. This option works
+    /// in Unix, on other systems, it will be ignored.
+    pub fn with_bind_device(mut self, device: String) -> Self {
+        self.bind_device = Some(device);
+        self
+    }
+
     /// Enables TCP keepalive settings on the socket.
     pub fn with_keepalive(mut self, keepalive: TcpKeepalive) -> Self {
         self.keepalive = Some(keepalive);
+        self
+    }
+
+    /// Specify the source address and port.
+    pub fn with_source_address(mut self, source_address: SocketAddr) -> Self {
+        self.source_address = Some(source_address);
         self
     }
 }
@@ -78,7 +97,49 @@ impl Remote for RemoteResource {
             _ => panic!("Internal error: Got wrong config"),
         };
         let peer_addr = *remote_addr.socket_addr();
-        let stream = TcpStream::connect(peer_addr)?;
+
+        let socket = Socket::new(
+            match peer_addr {
+                SocketAddr::V4 { .. } => Domain::IPV4,
+                SocketAddr::V6 { .. } => Domain::IPV6,
+            },
+            Type::STREAM,
+            Some(Protocol::TCP),
+        )?;
+        socket.set_nonblocking(true)?;
+
+        if let Some(source_address) = config.source_address {
+            socket.bind(&source_address.into())?;
+        }
+
+        #[cfg(unix)]
+        if let Some(bind_device) = config.bind_device {
+            let device = CString::new(bind_device)?;
+
+            #[cfg(not(target_os = "macos"))]
+            socket.bind_device(Some(device.as_bytes()))?;
+
+            #[cfg(target_os = "macos")]
+            match NonZeroU32::new(unsafe { libc::if_nametoindex(device.as_ptr()) }) {
+                Some(index) => socket.bind_device_by_index(Some(index))?,
+                None => {
+                    return Err(io::Error::new(
+                        ErrorKind::NotFound,
+                        "Bind device interface not found",
+                    ))
+                }
+            }
+        }
+
+        match socket.connect(&peer_addr.into()) {
+            #[cfg(unix)]
+            Err(e) if e.raw_os_error() != Some(libc::EINPROGRESS) => return Err(e),
+            #[cfg(windows)]
+            Err(e) if e.kind() != io::ErrorKind::WouldBlock => return Err(e),
+            _ => {}
+        }
+
+        let stream = TcpStream::from_std(socket.into());
         let local_addr = stream.local_addr()?;
         Ok(ConnectionInfo {
             remote: Self { stream, keepalive: config.keepalive },

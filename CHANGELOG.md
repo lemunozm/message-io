@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.16.0
+- Use builders for build transport options: [#153](https://github.com/lemunozm/message-io/pull/153)
+- New transport options for TCP adapter: source_address and bind_device: [#154](https://github.com/lemunozm/message-io/pull/154)
+
 ## Release 0.15.1
 - Fixed compilation issue when only `tcp` feature is enabled
 

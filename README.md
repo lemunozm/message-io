@@ -82,14 +82,14 @@ You could change the transport of your application in literally one line.
 Add to your `Cargo.toml` (all transports included by default):
 ```toml
 [dependencies]
-message-io = "0.15"
+message-io = "0.16"
 ```
 If you **only** want to use a subset of the available transport battery,
 you can select them by their associated features `tcp`, `udp`, and `websocket`.
 For example, in order to include only *TCP* and *UDP*, add to your `Cargo.toml`:
 ```toml
 [dependencies]
-message-io = { version = "0.15", default-features = false, features = ["tcp", "udp"] }
+message-io = { version = "0.16", default-features = false, features = ["tcp", "udp"] }
 ```
 
 ### All in one: TCP, UDP and WebSocket echo server

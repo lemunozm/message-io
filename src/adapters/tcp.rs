@@ -19,6 +19,7 @@ use std::io::{self, ErrorKind, Read, Write};
 use std::num::NonZeroU32;
 use std::ops::{Deref};
 use std::mem::{forget, MaybeUninit};
+use std::os::raw::c_int;
 #[cfg(target_os = "windows")]
 use std::os::windows::io::{FromRawSocket, AsRawSocket};
 #[cfg(not(target_os = "windows"))]
@@ -28,6 +29,9 @@ use std::os::{fd::AsRawFd, unix::io::FromRawFd};
 /// It implies that at most the generated [`crate::network::NetEvent::Message`]
 /// will contains a chunk of data of this value.
 pub const INPUT_BUFFER_SIZE: usize = u16::MAX as usize; // 2^16 - 1
+
+/// The maximum length of the pending (unaccepted) connection queue of a listener.
+pub const LISTENER_BACKLOG: c_int = 1024;
 
 #[derive(Clone, Debug, Default)]
 pub struct TcpConnectConfig {
@@ -59,10 +63,18 @@ impl TcpConnectConfig {
 
 #[derive(Clone, Debug, Default)]
 pub struct TcpListenConfig {
+    bind_device: Option<String>,
     keepalive: Option<TcpKeepalive>,
 }
 
 impl TcpListenConfig {
+    /// Bind the TCP listener to a specific interface, identified by its name. This option works in
+    /// Unix, on other systems, it will be ignored.
+    pub fn with_bind_device(mut self, device: String) -> Self {
+        self.bind_device = Some(device);
+        self
+    }
+
     /// Enables TCP keepalive settings on client connection sockets.
     pub fn with_keepalive(mut self, keepalive: TcpKeepalive) -> Self {
         self.keepalive = Some(keepalive);
@@ -256,7 +268,42 @@ impl Local for LocalResource {
             TransportListen::Tcp(config) => config,
             _ => panic!("Internal error: Got wrong config"),
         };
-        let listener = TcpListener::bind(addr)?;
+
+        let socket = Socket::new(
+            match addr {
+                SocketAddr::V4 { .. } => Domain::IPV4,
+                SocketAddr::V6 { .. } => Domain::IPV6,
+            },
+            Type::STREAM,
+            Some(Protocol::TCP),
+        )?;
+        socket.set_nonblocking(true)?;
+        socket.set_reuse_address(true)?;
+
+        #[cfg(unix)]
+        if let Some(bind_device) = config.bind_device {
+            let device = CString::new(bind_device)?;
+
+            #[cfg(not(target_os = "macos"))]
+            socket.bind_device(Some(device.as_bytes()))?;
+
+            #[cfg(target_os = "macos")]
+            match NonZeroU32::new(unsafe { libc::if_nametoindex(device.as_ptr()) }) {
+                Some(index) => socket.bind_device_by_index(Some(index))?,
+                None => {
+                    return Err(io::Error::new(
+                        ErrorKind::NotFound,
+                        "Bind device interface not found",
+                    ))
+                }
+            }
+        }
+
+        socket.bind(&addr.into())?;
+        socket.listen(LISTENER_BACKLOG)?;
+
+        let listener = TcpListener::from_std(socket.into());
+
         let local_addr = listener.local_addr().unwrap();
         Ok(ListeningInfo {
             local: { LocalResource { listener, keepalive: config.keepalive } },

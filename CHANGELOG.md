@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.17.0
+- Add `bin_device()` option for TCP: [#158](https://github.com/lemunozm/message-io/pull/158)
+
 ## Release 0.16.0
 - Use builders for build transport options: [#153](https://github.com/lemunozm/message-io/pull/153)
 - New transport options for TCP adapter: source_address and bind_device: [#154](https://github.com/lemunozm/message-io/pull/154)

@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "message-io"
-version = "0.16.0"
+version = "0.17.0"
 dependencies = [
  "bincode",
  "chrono",

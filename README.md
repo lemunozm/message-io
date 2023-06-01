@@ -3,7 +3,7 @@
 [![](https://img.shields.io/crates/l/message-io)](https://www.apache.org/licenses/LICENSE-2.0.txt)
 [![](https://img.shields.io/crates/d/message-io)](https://crates.io/crates/message-io)
 [![](https://img.shields.io/github/actions/workflow/status/lemunozm/message-io/.github/workflows/rust.yml?branch=master)](https://github.com/lemunozm/message-io/actions?query=workflow%3A%22message-io+ci%22)
-[![](https://img.shields.io/badge/bymeacoffee-donate-yellow)](https://www.buymeacoffee.com/lemunozm)
+[![](https://img.shields.io/badge/buymeacoffee-donate-yellow)](https://www.buymeacoffee.com/lemunozm)
 
 <p align="center">
   <img src="docs/images/message-io-title.png" title="message-io">

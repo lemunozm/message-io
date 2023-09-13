@@ -197,7 +197,7 @@ impl Remote for RemoteResource {
                 }
                 Err(err) => {
                     log::error!("UDP receive error: {}", err);
-                    break ReadStatus::WaitNextEvent; // Should not happen
+                    break ReadStatus::WaitNextEvent // Should not happen
                 }
             }
         }

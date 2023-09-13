@@ -236,9 +236,10 @@ impl LocalResource {
         let mut control_buffer = nix::cmsg_space!(libc::sockaddr_storage);
 
         loop {
+            let mut iov = [io::IoSliceMut::new(&mut input_buffer)];
             let result = socket::recvmsg::<SockaddrStorage>(
                 self.socket.as_raw_fd(),
-                &mut [io::IoSliceMut::new(&mut input_buffer)],
+                &mut iov,
                 Some(&mut control_buffer),
                 MsgFlags::empty(),
             );

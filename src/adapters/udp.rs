@@ -386,7 +386,8 @@ impl Local for LocalResource {
                     Some(ingress_addresses)
                 }
             }
-        } else {
+        } 
+        else {
             None
         };
 

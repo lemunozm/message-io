@@ -83,7 +83,7 @@ impl Poll {
                     break
                 }
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
-                Err(ref err) => Err(err).expect("No error here"),
+                Err(ref err) => panic!("{}: No error here", err),
             }
         }
     }

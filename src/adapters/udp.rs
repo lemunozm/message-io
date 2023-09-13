@@ -270,7 +270,7 @@ impl LocalResource {
                             return Some(SocketAddr::V4((*addr).into()))
                         }
                         if let Some(addr) = addr.as_sockaddr_in6() {
-                            return Some(SocketAddr::V6((*addr).into()));
+                            return Some(SocketAddr::V6((*addr).into()))
                         }
                         None
                     }

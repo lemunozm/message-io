@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.18.0
+- Fix compilation issue in Linux
+
 ## Release 0.17.0
 - Add `bin_device()` option for TCP: [#158](https://github.com/lemunozm/message-io/pull/158)
 

@@ -262,7 +262,7 @@ impl LocalResource {
                     };
 
                     if !ingress_addresses.contains(&ingress_ip) {
-                        continue;
+                        continue
                     }
 
                     fn convert_sockaddr(addr: SockaddrStorage) -> Option<SocketAddr> {

@@ -464,7 +464,7 @@ fn send_packet(data: &[u8], send_method: impl Fn(&[u8]) -> io::Result<usize>) ->
             }
             Err(err) => {
                 log::error!("UDP send error: {}", err);
-                break SendStatus::ResourceNotFound; // should not happen
+                break SendStatus::ResourceNotFound // should not happen
             }
         }
     }

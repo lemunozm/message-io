@@ -394,7 +394,8 @@ impl Local for LocalResource {
         if let Some(multicast) = multicast {
             socket.join_multicast_v4(multicast.ip(), &Ipv4Addr::UNSPECIFIED)?;
             socket.bind(&SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, addr.port()).into())?;
-        } else {
+        } 
+        else {
             socket.bind(&addr.into())?;
         }
 

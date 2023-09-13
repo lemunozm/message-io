@@ -417,7 +417,7 @@ impl Local for LocalResource {
         #[cfg(target_os = "linux")]
         if let Some(ingress_addresses) = &self.ingress_addresses {
             self.accept_filtered(ingress_addresses, accept_remote);
-            return;
+            return
         }
 
         let buffer: MaybeUninit<[u8; MAX_LOCAL_PAYLOAD_LEN]> = MaybeUninit::uninit();

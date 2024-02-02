@@ -1,5 +1,9 @@
 # Changelog
 
+## Release 0.18.1
+- Update tugstenite version.
+- Update minor versions of internal dependencies
+
 ## Release 0.18.0
 - Fix compilation issue in Linux
 

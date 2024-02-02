@@ -108,8 +108,10 @@ fn latency_by_native_framed_tcp(c: &mut Criterion) {
 
         b.iter(|| {
             let encoded_size = encoding::encode_size(&[0xFF], &mut framming);
+            sender.set_nodelay(false).ok();
             sender.write(&encoded_size).unwrap();
             sender.write(&[0xFF]).unwrap();
+            sender.set_nodelay(true).ok();
 
             let mut message_received = false;
             while !message_received {

@@ -14,6 +14,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::fs;
 
 // Note: net.core.rmem_max = 212992 by default on linux systems
 // not used because w euse unixstream I think?
@@ -165,12 +166,23 @@ impl Remote for RemoteResource {
 }
 
 pub(crate) struct LocalResource {
-    listener: UnixListener
+    listener: UnixListener,
+    bind_path: PathBuf
 }
 
 impl Resource for LocalResource {
     fn source(&mut self) -> &mut dyn Source {
         &mut self.listener
+    }
+}
+
+impl Drop for LocalResource {
+    fn drop(&mut self) {
+        // this may fail if the file is already removed
+        match fs::remove_file(&self.bind_path) {
+            Ok(_) => (),
+            Err(err) => log::error!("Error removing unix socket file on drop: {}", err),
+        }
     }
 }
 
@@ -184,11 +196,13 @@ impl Local for LocalResource {
         };
 
         // TODO: fallback to ip when we are able to set path to none
+        let path_copy = config.path.clone();
         let listener = UnixListener::bind(config.path)?;
         let local_addr = listener.local_addr()?;
         Ok(ListeningInfo {
             local: Self {
-                listener
+                listener,
+                bind_path: path_copy
             },
             // same issue as above my change in https://github.com/tokio-rs/mio/pull/1749
             // relevant issue https://github.com/tokio-rs/mio/issues/1527

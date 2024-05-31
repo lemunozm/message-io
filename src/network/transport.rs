@@ -6,6 +6,9 @@ use crate::adapters::tcp::{TcpAdapter, TcpConnectConfig, TcpListenConfig};
 use crate::adapters::framed_tcp::{FramedTcpAdapter, FramedTcpConnectConfig, FramedTcpListenConfig};
 #[cfg(feature = "udp")]
 use crate::adapters::udp::{self, UdpAdapter, UdpConnectConfig, UdpListenConfig};
+use crate::adapters::unix_socket::{UnixSocketAdapter, UnixSocketConnectConfig};
+#[cfg(feature = "unixsocket")]
+use crate::adapters::unix_socket::UnixSocketListenConfig;
 #[cfg(feature = "websocket")]
 use crate::adapters::ws::{self, WsAdapter};
 
@@ -48,6 +51,10 @@ pub enum Transport {
     /// websocket with the following uri: `ws://{SocketAddr}/message-io-default`.
     #[cfg(feature = "websocket")]
     Ws,
+    /// Unix Socket protocol (available through the *unixsocket* feature).
+    /// To be used on systems that support it.
+    #[cfg(feature = "unixsocket")]
+    UnixSocket,
 }
 
 impl Transport {
@@ -63,6 +70,8 @@ impl Transport {
             Self::Udp => loader.mount(self.id(), UdpAdapter),
             #[cfg(feature = "websocket")]
             Self::Ws => loader.mount(self.id(), WsAdapter),
+            #[cfg(feature = "unixsocket")]
+            Self::UnixSocket => loader.mount(self.id(), UnixSocketAdapter),
         };
     }
 
@@ -82,6 +91,8 @@ impl Transport {
             Self::Udp => udp::MAX_LOCAL_PAYLOAD_LEN,
             #[cfg(feature = "websocket")]
             Self::Ws => ws::MAX_PAYLOAD_LEN,
+            #[cfg(feature = "unixsocket")]
+            Self::UnixSocket => usize::MAX,
         }
     }
 
@@ -97,6 +108,8 @@ impl Transport {
             Transport::Udp => false,
             #[cfg(feature = "websocket")]
             Transport::Ws => true,
+            #[cfg(feature = "unixsocket")]
+            Self::UnixSocket => true
         }
     }
 
@@ -116,6 +129,8 @@ impl Transport {
             Transport::Udp => true,
             #[cfg(feature = "websocket")]
             Transport::Ws => true,
+            #[cfg(feature = "unixsocket")]
+            Self::UnixSocket => false
         }
     }
 
@@ -131,6 +146,8 @@ impl Transport {
             Transport::Udp => 2,
             #[cfg(feature = "websocket")]
             Transport::Ws => 3,
+            #[cfg(feature = "unixsocket")]
+            Transport::UnixSocket => 4,
         }
     }
 }
@@ -146,6 +163,8 @@ impl From<u8> for Transport {
             2 => Transport::Udp,
             #[cfg(feature = "websocket")]
             3 => Transport::Ws,
+            #[cfg(feature = "unixsocket")]
+            4 => Transport::UnixSocket,
             _ => panic!("Not available transport"),
         }
     }
@@ -167,6 +186,8 @@ pub enum TransportConnect {
     Udp(UdpConnectConfig),
     #[cfg(feature = "websocket")]
     Ws,
+    #[cfg(feature = "unixsocket")]
+    UnixSocket(UnixSocketConnectConfig),
 }
 
 impl TransportConnect {
@@ -180,6 +201,8 @@ impl TransportConnect {
             Self::Udp(_) => Transport::Udp,
             #[cfg(feature = "websocket")]
             Self::Ws => Transport::Ws,
+            #[cfg(feature = "unixsocket")]
+            Self::UnixSocket(_) => Transport::UnixSocket
         };
 
         transport.id()
@@ -197,6 +220,8 @@ impl From<Transport> for TransportConnect {
             Transport::Udp => Self::Udp(UdpConnectConfig::default()),
             #[cfg(feature = "websocket")]
             Transport::Ws => Self::Ws,
+            #[cfg(feature = "unixsocket")]
+            Transport::UnixSocket => Self::UnixSocket(UnixSocketConnectConfig::default()),
         }
     }
 }
@@ -211,6 +236,8 @@ pub enum TransportListen {
     Udp(UdpListenConfig),
     #[cfg(feature = "websocket")]
     Ws,
+    #[cfg(feature = "unixsocket")]
+    UnixSocket(UnixSocketListenConfig),
 }
 
 impl TransportListen {
@@ -224,6 +251,8 @@ impl TransportListen {
             Self::Udp(_) => Transport::Udp,
             #[cfg(feature = "websocket")]
             Self::Ws => Transport::Ws,
+            #[cfg(feature = "unixsocket")]
+            Self::UnixSocket(_) => Transport::UnixSocket,
         };
 
         transport.id()
@@ -241,6 +270,8 @@ impl From<Transport> for TransportListen {
             Transport::Udp => Self::Udp(UdpListenConfig::default()),
             #[cfg(feature = "websocket")]
             Transport::Ws => Self::Ws,
+            #[cfg(feature = "unixsocket")]
+            Transport::UnixSocket => Self::UnixSocket(UnixSocketListenConfig::default())
         }
     }
 }

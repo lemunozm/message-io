@@ -37,6 +37,12 @@ pub struct UnixSocketListenConfig {
     path: PathBuf,
 }
 
+impl UnixSocketListenConfig {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
 impl Default for UnixSocketListenConfig {
     fn default() -> Self {
         // TODO: better idea? I could make this into an option later and complain if empty.
@@ -48,6 +54,13 @@ impl Default for UnixSocketListenConfig {
 pub struct UnixSocketConnectConfig {
     path: PathBuf,
 }
+
+impl UnixSocketConnectConfig {
+    pub fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
 
 impl Default for UnixSocketConnectConfig {
     fn default() -> Self {

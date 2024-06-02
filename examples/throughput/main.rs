@@ -27,7 +27,9 @@ fn main() {
     throughput_message_io(Transport::Ws, CHUNK);
     // for platforms that support it
     #[cfg(feature = "unixsocket")]
-    throughput_message_io(Transport::UnixSocket, CHUNK);
+    throughput_message_io(Transport::UnixSocketStream, CHUNK);
+    #[cfg(feature = "unixsocket")]
+    throughput_message_io(Transport::UnixSocketDatagram, CHUNK);
     println!();
     throughput_native_udp(CHUNK);
     throughput_native_tcp(CHUNK);

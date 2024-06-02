@@ -7,7 +7,7 @@ use crate::network::adapter::{
 use crate::network::{RemoteAddr, Readiness, TransportConnect, TransportListen};
 
 use mio::event::{Source};
-use mio::net::{UnixListener, UnixStream};
+use mio::net::{UnixDatagram, UnixListener, UnixStream};
 
 use std::mem::MaybeUninit;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -69,17 +69,17 @@ impl Default for UnixSocketConnectConfig {
     }
 }
 
-pub(crate) struct UnixSocketAdapter;
-impl Adapter for UnixSocketAdapter {
-    type Remote = RemoteResource;
-    type Local = LocalResource;
+pub(crate) struct UnixSocketStreamAdapter;
+impl Adapter for UnixSocketStreamAdapter {
+    type Remote = StreamRemoteResource;
+    type Local = StreamLocalResource;
 }
 
-pub(crate) struct RemoteResource {
+pub(crate) struct StreamRemoteResource {
     stream: UnixStream
 }
 
-impl Resource for RemoteResource {
+impl Resource for StreamRemoteResource {
     fn source(&mut self) -> &mut dyn Source {
         &mut self.stream
     }
@@ -94,14 +94,14 @@ pub fn check_stream_ready(stream: &UnixStream) -> PendingStatus{
     return PendingStatus::Ready;
 }
 
-impl Remote for RemoteResource {
+impl Remote for StreamRemoteResource {
     fn connect_with(
         config: TransportConnect,
         remote_addr: RemoteAddr,
     ) -> io::Result<ConnectionInfo<Self>> {
 
         let stream_config = match config {
-            TransportConnect::UnixSocket(config) => config,
+            TransportConnect::UnixSocketStream(config) => config,
             _ => panic!("Internal error: Got wrong config"),
         };
         
@@ -178,18 +178,18 @@ impl Remote for RemoteResource {
     }
 }
 
-pub(crate) struct LocalResource {
+pub(crate) struct StreamLocalResource {
     listener: UnixListener,
     bind_path: PathBuf
 }
 
-impl Resource for LocalResource {
+impl Resource for StreamLocalResource {
     fn source(&mut self) -> &mut dyn Source {
         &mut self.listener
     }
 }
 
-impl Drop for LocalResource {
+impl Drop for StreamLocalResource {
     fn drop(&mut self) {
         // this may fail if the file is already removed
         match fs::remove_file(&self.bind_path) {
@@ -199,23 +199,22 @@ impl Drop for LocalResource {
     }
 }
 
-impl Local for LocalResource {
-    type Remote = RemoteResource;
+impl Local for StreamLocalResource {
+    type Remote = StreamRemoteResource;
 
     fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         let config = match config {
-            TransportListen::UnixSocket(config) => config,
+            TransportListen::UnixStreamSocket(config) => config,
             _ => panic!("Internal error: Got wrong config"),
         };
 
         // TODO: fallback to ip when we are able to set path to none
-        let path_copy = config.path.clone();
-        let listener = UnixListener::bind(config.path)?;
+        let listener = UnixListener::bind(&config.path)?;
         let local_addr = listener.local_addr()?;
         Ok(ListeningInfo {
             local: Self {
                 listener,
-                bind_path: path_copy
+                bind_path: config.path
             },
             // same issue as above my change in https://github.com/tokio-rs/mio/pull/1749
             // relevant issue https://github.com/tokio-rs/mio/issues/1527
@@ -228,7 +227,7 @@ impl Local for LocalResource {
             match self.listener.accept() {
                 Ok((stream, addr)) => accept_remote(AcceptedType::Remote(
                     create_null_socketaddr(), // TODO: provide correct address
-                    RemoteResource { stream },
+                    StreamRemoteResource { stream },
                 )),
                 Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
@@ -236,4 +235,150 @@ impl Local for LocalResource {
             }
         }
     }
+}
+
+pub(crate) struct DatagramRemoteResource {
+    datagram: UnixDatagram
+}
+
+impl Resource for DatagramRemoteResource {
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.datagram
+    }
+}
+
+impl Remote for DatagramRemoteResource {
+    fn connect_with(
+        config: TransportConnect,
+        remote_addr: RemoteAddr,
+    ) -> io::Result<ConnectionInfo<Self>> {
+        let config = match config {
+            TransportConnect::UnixSocketDatagram(config) => config,
+            _ => panic!("Internal error: Got wrong config"),
+        };
+
+        let datagram = UnixDatagram::unbound()?;
+        datagram.connect(config.path)?;
+        
+        Ok(ConnectionInfo {
+            local_addr: create_null_socketaddr(),
+            peer_addr: create_null_socketaddr(),
+            remote: Self {
+                datagram
+            }
+        })
+    }
+
+    // A majority of send, reciev and accept in local are reused from udp.rs due to similarities
+
+    fn receive(&self, mut process_data: impl FnMut(&[u8])) -> ReadStatus {
+        let buffer: MaybeUninit<[u8; MAX_PAYLOAD_LEN]> = MaybeUninit::uninit();
+        let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
+
+        loop {
+            match self.datagram.recv(&mut input_buffer) {
+                Ok(size) => process_data(&mut input_buffer[..size]),
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => {
+                    break ReadStatus::WaitNextEvent
+                }
+                Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
+                    // Avoid ICMP generated error to be logged
+                    break ReadStatus::WaitNextEvent
+                }
+                Err(err) => {
+                    log::error!("unix datagram socket receive error: {}", err);
+                    break ReadStatus::WaitNextEvent // Should not happen
+                }
+            }
+        }
+    }
+
+    fn send(&self, data: &[u8]) -> SendStatus {
+        loop {
+            match self.datagram.send(data) {
+                Ok(_) => break SendStatus::Sent,
+                // Avoid ICMP generated error to be logged
+                Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
+                    break SendStatus::ResourceNotFound
+                }
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => continue,
+                Err(ref err) if err.kind() == ErrorKind::Other => {
+                    break SendStatus::MaxPacketSizeExceeded
+                }
+                Err(err) => {
+                    log::error!("unix datagram socket send error: {}", err);
+                    break SendStatus::ResourceNotFound // should not happen
+                }
+            }
+        }
+    }
+
+    fn pending(&self, readiness: Readiness) -> PendingStatus {
+        PendingStatus::Ready
+    }
+}
+// datagram is also used for listener
+pub(crate) struct DatagramLocalResource {
+    listener: UnixDatagram,
+    bind_path: PathBuf
+}
+
+impl Resource for DatagramLocalResource {
+    fn source(&mut self) -> &mut dyn Source {
+        &mut self.listener
+    }
+}
+
+
+impl Local for DatagramLocalResource {
+    type Remote = DatagramRemoteResource;
+
+    fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+        let config = match config {
+            TransportListen::UnixDatagramSocket(config) => config,
+            _ => panic!("Internal error: Got wrong config"),
+        };
+
+        let listener = UnixDatagram::bind(&config.path)?;
+
+        Ok(ListeningInfo {
+            local: Self {
+                listener,
+                bind_path: config.path
+            },
+            local_addr: create_null_socketaddr(),
+        })
+    }
+
+    fn accept(&self, mut accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
+        let buffer: MaybeUninit<[u8; MAX_PAYLOAD_LEN]> = MaybeUninit::uninit();
+        let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
+
+        loop {
+            match self.listener.recv_from(&mut input_buffer) {
+                Ok((size, addr)) => {
+                    let data = &mut input_buffer[..size];
+                    accept_remote(AcceptedType::Data(create_null_socketaddr(), data))
+                }
+                Err(ref err) if err.kind() == ErrorKind::WouldBlock => break,
+                Err(err) => break log::error!("Unix datagram socket accept error: {}", err), // Should never happen
+            };
+        }
+    }
+}
+
+impl Drop for DatagramLocalResource {
+    fn drop(&mut self) {
+        // this may fail if the file is already removed
+        match fs::remove_file(&self.bind_path) {
+            Ok(_) => (),
+            Err(err) => log::error!("Error removing unix socket file on drop: {}", err),
+        }
+    }
+}
+
+pub(crate) struct UnixSocketDatagramAdapter;
+impl Adapter for UnixSocketDatagramAdapter {
+    type Remote = DatagramRemoteResource;
+    type Local = DatagramLocalResource;
 }

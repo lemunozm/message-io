@@ -6,6 +6,7 @@ use crate::adapters::tcp::{TcpAdapter, TcpConnectConfig, TcpListenConfig};
 use crate::adapters::framed_tcp::{FramedTcpAdapter, FramedTcpConnectConfig, FramedTcpListenConfig};
 #[cfg(feature = "udp")]
 use crate::adapters::udp::{self, UdpAdapter, UdpConnectConfig, UdpListenConfig};
+#[cfg(feature = "unixsocket")]
 use crate::adapters::unix_socket::{self, UnixSocketConnectConfig, UnixSocketDatagramAdapter, UnixSocketStreamAdapter};
 #[cfg(feature = "unixsocket")]
 use crate::adapters::unix_socket::UnixSocketListenConfig;

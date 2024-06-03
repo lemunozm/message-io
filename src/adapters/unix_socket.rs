@@ -235,6 +235,11 @@ impl Local for StreamLocalResource {
             }
         }
     }
+
+    // nearly impossible to implement
+    // fn send_to(&self, addr: SocketAddr, data: &[u8]) -> SendStatus {
+    //        
+    // }
 }
 
 pub(crate) struct DatagramRemoteResource {

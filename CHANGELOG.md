@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.18.2
+- Fix tugstenite dependency adding url feature
+
 ## Release 0.18.1
 - Update tugstenite version.
 - Update minor versions of internal dependencies

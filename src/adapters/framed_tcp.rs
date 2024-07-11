@@ -14,7 +14,6 @@ use socket2::{Socket};
 
 use std::net::{SocketAddr};
 use std::io::{self, ErrorKind, Read, Write};
-use std::ops::{Deref};
 use std::cell::{RefCell};
 use std::mem::{forget, MaybeUninit};
 #[cfg(target_os = "windows")]
@@ -103,8 +102,8 @@ impl Remote for RemoteResource {
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 
         loop {
-            let stream = &self.stream;
-            match stream.deref().read(&mut input_buffer) {
+            let mut stream = &self.stream;
+            match stream.read(&mut input_buffer) {
                 Ok(0) => break ReadStatus::Disconnected,
                 Ok(size) => {
                     let data = &input_buffer[..size];
@@ -140,8 +139,8 @@ impl Remote for RemoteResource {
                 false => &data[total_bytes_sent - encoded_size.len()..],
             };
 
-            let stream = &self.stream;
-            match stream.deref().write(data_to_send) {
+            let mut stream = &self.stream;
+            match stream.write(data_to_send) {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
                     if total_bytes_sent == total_bytes {

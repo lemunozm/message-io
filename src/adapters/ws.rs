@@ -118,8 +118,9 @@ impl Remote for RemoteResource {
             // "emulates" full duplex for the websocket case locking here and not outside the loop.
             let mut state = self.state.lock().expect(OTHER_THREAD_ERR);
             let deref_state = state.deref_mut();
+
             match deref_state {
-                RemoteState::WebSocket(web_socket) => match web_socket.read_message() {
+                RemoteState::WebSocket(web_socket) => match web_socket.read() {
                     Ok(message) => match message {
                         Message::Binary(data) => {
                             // As an optimization.
@@ -162,12 +163,13 @@ impl Remote for RemoteResource {
         match deref_state {
             RemoteState::WebSocket(web_socket) => {
                 let message = Message::Binary(data.to_vec());
-                let mut result = web_socket.write_message(message);
+
+                let mut result = web_socket.send(message);
                 loop {
                     match result {
                         Ok(_) => break SendStatus::Sent,
                         Err(Error::Io(ref err)) if err.kind() == ErrorKind::WouldBlock => {
-                            result = web_socket.write_pending();
+                            result = web_socket.flush();
                         }
                         Err(Error::Capacity(_)) => break SendStatus::MaxPacketSizeExceeded,
                         Err(err) => {

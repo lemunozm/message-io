@@ -17,7 +17,6 @@ use std::ffi::{CString};
 use std::io::{self, ErrorKind, Read, Write};
 #[cfg(target_os = "macos")]
 use std::num::NonZeroU32;
-use std::ops::{Deref};
 use std::mem::{forget, MaybeUninit};
 use std::os::raw::c_int;
 #[cfg(target_os = "windows")]
@@ -133,7 +132,7 @@ impl Remote for RemoteResource {
 
             #[cfg(target_os = "macos")]
             match NonZeroU32::new(unsafe { libc::if_nametoindex(device.as_ptr()) }) {
-                Some(index) => socket.bind_device_by_index(Some(index))?,
+                Some(index) => socket.bind_device_by_index_v4(Some(index))?,
                 None => {
                     return Err(io::Error::new(
                         ErrorKind::NotFound,
@@ -165,8 +164,8 @@ impl Remote for RemoteResource {
         let mut input_buffer = unsafe { buffer.assume_init() }; // Avoid to initialize the array
 
         loop {
-            let stream = &self.stream;
-            match stream.deref().read(&mut input_buffer) {
+            let mut stream = &self.stream;
+            match stream.read(&mut input_buffer) {
                 Ok(0) => break ReadStatus::Disconnected,
                 Ok(size) => process_data(&input_buffer[..size]),
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
@@ -191,8 +190,8 @@ impl Remote for RemoteResource {
         // this only occurs in the case when the receiver is full because reads slower that it sends.
         let mut total_bytes_sent = 0;
         loop {
-            let stream = &self.stream;
-            match stream.deref().write(&data[total_bytes_sent..]) {
+            let mut stream = &self.stream;
+            match stream.write(&data[total_bytes_sent..]) {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
                     if total_bytes_sent == data.len() {
@@ -289,7 +288,7 @@ impl Local for LocalResource {
 
             #[cfg(target_os = "macos")]
             match NonZeroU32::new(unsafe { libc::if_nametoindex(device.as_ptr()) }) {
-                Some(index) => socket.bind_device_by_index(Some(index))?,
+                Some(index) => socket.bind_device_by_index_v4(Some(index))?,
                 None => {
                     return Err(io::Error::new(
                         ErrorKind::NotFound,

@@ -162,7 +162,7 @@ impl Remote for RemoteResource {
         let deref_state = state.deref_mut();
         match deref_state {
             RemoteState::WebSocket(web_socket) => {
-                let message = Message::Binary(data.to_vec());
+                let message = Message::Binary(data.to_vec().into());
 
                 let mut result = web_socket.send(message);
                 loop {

@@ -234,7 +234,7 @@ fn throughput_native_ws(packet_size: usize) {
                 let (mut sender, _) = ws_connect(Url::parse(&url_addr).unwrap()).unwrap();
                 let start_time = Instant::now();
                 while total_sent < EXPECTED_BYTES {
-                    sender.send(Message::Binary(message.clone())).unwrap();
+                    sender.send(Message::Binary(message.clone().into())).unwrap();
                     total_sent += message.len();
                 }
                 start_time

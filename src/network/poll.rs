@@ -80,7 +80,7 @@ impl Poll {
                             }
                         }
                     }
-                    break
+                    break;
                 }
                 Err(ref err) if err.kind() == ErrorKind::Interrupted => continue,
                 Err(ref err) => panic!("{}: No error here", err),

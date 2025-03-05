@@ -121,7 +121,7 @@ impl Remote for RemoteResource {
                 }
                 Err(err) => {
                     log::error!("TCP receive error: {}", err);
-                    break ReadStatus::Disconnected // should not happen
+                    break ReadStatus::Disconnected; // should not happen
                 }
             }
         }
@@ -144,13 +144,13 @@ impl Remote for RemoteResource {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
                     if total_bytes_sent == total_bytes {
-                        break SendStatus::Sent
+                        break SendStatus::Sent;
                     }
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
                 Err(err) => {
                     log::error!("TCP receive error: {}", err);
-                    break SendStatus::ResourceNotFound // should not happen
+                    break SendStatus::ResourceNotFound; // should not happen
                 }
             }
         }

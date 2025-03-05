@@ -177,7 +177,7 @@ impl Remote for RemoteResource {
                 }
                 Err(err) => {
                     log::error!("TCP receive error: {}", err);
-                    break ReadStatus::Disconnected // should not happen
+                    break ReadStatus::Disconnected; // should not happen
                 }
             }
         }
@@ -195,7 +195,7 @@ impl Remote for RemoteResource {
                 Ok(bytes_sent) => {
                     total_bytes_sent += bytes_sent;
                     if total_bytes_sent == data.len() {
-                        break SendStatus::Sent
+                        break SendStatus::Sent;
                     }
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::WouldBlock => continue,
@@ -204,7 +204,7 @@ impl Remote for RemoteResource {
                 // a Event::Disconnection will be generated later.
                 Err(err) => {
                     log::error!("TCP receive error: {}", err);
-                    break SendStatus::ResourceNotFound // should not happen
+                    break SendStatus::ResourceNotFound; // should not happen
                 }
             }
         }
@@ -238,7 +238,7 @@ pub fn check_stream_ready(stream: &TcpStream) -> PendingStatus {
     // A multiplatform non-blocking way to determine if the TCP stream is connected:
     // Extracted from: https://github.com/tokio-rs/mio/issues/1486
     if let Ok(Some(_)) = stream.take_error() {
-        return PendingStatus::Disconnected
+        return PendingStatus::Disconnected;
     }
     match stream.peer_addr() {
         Ok(_) => PendingStatus::Ready,

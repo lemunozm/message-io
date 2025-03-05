@@ -41,15 +41,15 @@ impl Decoder {
                     decoded_callback(decoded);
                     if !not_decoded.is_empty() {
                         next_data = not_decoded;
-                        continue
+                        continue;
                     }
                     else {
-                        break
+                        break;
                     }
                 }
             }
             self.stored.extend_from_slice(next_data);
-            break
+            break;
         }
     }
 
@@ -68,7 +68,7 @@ impl Decoder {
                 }
                 else {
                     // We still don't know the size (data was too small)
-                    return None
+                    return None;
                 }
             }
         };

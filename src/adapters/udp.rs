@@ -193,11 +193,11 @@ impl Remote for RemoteResource {
                 }
                 Err(ref err) if err.kind() == ErrorKind::ConnectionRefused => {
                     // Avoid ICMP generated error to be logged
-                    break ReadStatus::WaitNextEvent
+                    break ReadStatus::WaitNextEvent;
                 }
                 Err(err) => {
                     log::error!("UDP receive error: {}", err);
-                    break ReadStatus::WaitNextEvent // Should not happen
+                    break ReadStatus::WaitNextEvent; // Should not happen
                 }
             }
         }
@@ -262,15 +262,15 @@ impl LocalResource {
                     };
 
                     if !ingress_addresses.contains(&ingress_ip) {
-                        continue
+                        continue;
                     }
 
                     fn convert_sockaddr(addr: SockaddrStorage) -> Option<SocketAddr> {
                         if let Some(addr) = addr.as_sockaddr_in() {
-                            return Some(SocketAddr::V4((*addr).into()))
+                            return Some(SocketAddr::V4((*addr).into()));
                         }
                         if let Some(addr) = addr.as_sockaddr_in6() {
-                            return Some(SocketAddr::V6((*addr).into()))
+                            return Some(SocketAddr::V6((*addr).into()));
                         }
                         None
                     }
@@ -417,7 +417,7 @@ impl Local for LocalResource {
         #[cfg(target_os = "linux")]
         if let Some(ingress_addresses) = &self.ingress_addresses {
             self.accept_filtered(ingress_addresses, accept_remote);
-            return
+            return;
         }
 
         let buffer: MaybeUninit<[u8; MAX_LOCAL_PAYLOAD_LEN]> = MaybeUninit::uninit();
@@ -464,7 +464,7 @@ fn send_packet(data: &[u8], send_method: impl Fn(&[u8]) -> io::Result<usize>) ->
             }
             Err(err) => {
                 log::error!("UDP send error: {}", err);
-                break SendStatus::ResourceNotFound // should not happen
+                break SendStatus::ResourceNotFound; // should not happen
             }
         }
     }

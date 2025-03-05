@@ -152,16 +152,16 @@ where E: Send + 'static
         self.enque_timers();
 
         if let Ok(priority_event) = self.priority_receiver.try_recv() {
-            return Some(priority_event)
+            return Some(priority_event);
         }
         else if let Some(next_instant) = self.timers.iter().next() {
             if *next_instant.0 <= Instant::now() {
                 let instant = *next_instant.0;
-                return self.timers.remove(&instant)
+                return self.timers.remove(&instant);
             }
         }
         else if let Ok(event) = self.receiver.try_recv() {
-            return Some(event)
+            return Some(event);
         }
 
         None

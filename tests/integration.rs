@@ -287,7 +287,7 @@ fn message_size(transport: Transport, message_size: usize) {
     assert!(message_size <= transport.max_message_size());
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-    let sent_message: Vec<u8> = (0..message_size).map(|_| rng.gen()).collect();
+    let sent_message: Vec<u8> = (0..message_size).map(|_| rng.random()).collect();
 
     let (node, listener) = node::split();
     node.signals().send_with_timer((), *TIMEOUT);

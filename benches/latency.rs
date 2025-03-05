@@ -139,8 +139,8 @@ fn latency_by_native_web_socket(c: &mut Criterion) {
         let message = vec![0xFF];
 
         b.iter(|| {
-            sender.write_message(Message::Binary(message.clone())).unwrap();
-            receiver.read_message().unwrap();
+            sender.send(Message::Binary(message.clone().into())).unwrap();
+            receiver.read().unwrap();
         });
     });
 }

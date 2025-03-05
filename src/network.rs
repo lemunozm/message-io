@@ -391,7 +391,7 @@ impl NetworkProcessor {
             let now = Instant::now();
             self.process_poll_event(Some(timeout), &mut event_callback);
             if now.elapsed() > timeout {
-                break
+                break;
             }
         }
     }

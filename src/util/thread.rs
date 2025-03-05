@@ -45,7 +45,7 @@ impl<T: Send + 'static> NamespacedThread<T> {
     /// Returns the inner `T` value if never was joined, `None` otherwise
     pub fn try_join(&mut self) -> Option<T> {
         if self.join_handle.is_some() {
-            return Some(self.join())
+            return Some(self.join());
         }
         None
     }

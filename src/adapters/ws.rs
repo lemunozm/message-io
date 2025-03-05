@@ -139,7 +139,7 @@ impl Remote for RemoteResource {
 
                             #[cfg(not(target_os = "windows"))]
                             if let Err(err) = _peek_result {
-                                break Self::io_error_to_read_status(&err)
+                                break Self::io_error_to_read_status(&err);
                             }
                         }
                         Message::Close(_) => break ReadStatus::Disconnected,
@@ -148,7 +148,7 @@ impl Remote for RemoteResource {
                     Err(Error::Io(ref err)) => break Self::io_error_to_read_status(err),
                     Err(err) => {
                         log::error!("WS receive error: {}", err);
-                        break ReadStatus::Disconnected // should not happen
+                        break ReadStatus::Disconnected; // should not happen
                     }
                 },
                 RemoteState::Handshake(_) => unreachable!(),
@@ -162,7 +162,7 @@ impl Remote for RemoteResource {
         let deref_state = state.deref_mut();
         match deref_state {
             RemoteState::WebSocket(web_socket) => {
-                let message = Message::Binary(data.to_vec());
+                let message = Message::Binary(data.to_vec().into());
 
                 let mut result = web_socket.send(message);
                 loop {
@@ -174,7 +174,7 @@ impl Remote for RemoteResource {
                         Err(Error::Capacity(_)) => break SendStatus::MaxPacketSizeExceeded,
                         Err(err) => {
                             log::error!("WS send error: {}", err);
-                            break SendStatus::ResourceNotFound // should not happen
+                            break SendStatus::ResourceNotFound; // should not happen
                         }
                     }
                 }
@@ -195,7 +195,7 @@ impl Remote for RemoteResource {
                     if tcp_status != PendingStatus::Ready {
                         // TCP handshake not ready yet.
                         *pending = Some(PendingHandshake::Connect(url, stream));
-                        return tcp_status
+                        return tcp_status;
                     }
                     let stream_backup = stream.clone();
                     match ws_connect(url, stream) {

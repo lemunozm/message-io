@@ -50,9 +50,9 @@ impl ResourceId {
         };
 
         Self {
-            id: (adapter_id as usize) << Self::ADAPTER_ID_POS
+            id: ((adapter_id as usize) << Self::ADAPTER_ID_POS)
                 | resource_type
-                | base_value << Self::BASE_VALUE_POS,
+                | (base_value << Self::BASE_VALUE_POS),
         }
     }
 

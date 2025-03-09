@@ -18,10 +18,11 @@ maintenance = { status = "actively-developed" }
 all-features = true
 
 [features]
-default = ["tcp", "udp", "websocket"] # All features by default
+default = ["tcp", "udp", "websocket"] # All features that are crossplatform by default
 tcp = ["mio/net", "socket2"]
 udp = ["mio/net", "socket2"]
 websocket = ["tungstenite", "url", "tcp"]
+unixsocket = ["mio/net", "socket2"] # TODO: check if this is really needed
 
 [dependencies]
 mio = { version = "0.8", features = ["os-poll"] }

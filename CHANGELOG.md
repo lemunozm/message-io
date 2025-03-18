@@ -1,5 +1,8 @@
 # Changelog
 
+## Release 0.19.0
+- Update internal dependencies
+
 ## Release 0.18.3
 - Fix tugstenite dependency adding correct version
 

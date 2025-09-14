@@ -15,7 +15,7 @@ use std::net::{SocketAddr};
 #[cfg(unix)]
 use std::ffi::{CString};
 use std::io::{self, ErrorKind, Read, Write};
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 use std::num::NonZeroU32;
 use std::mem::{forget, MaybeUninit};
 use std::os::raw::c_int;
@@ -127,10 +127,10 @@ impl Remote for RemoteResource {
         if let Some(bind_device) = config.bind_device {
             let device = CString::new(bind_device)?;
 
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(all(not(target_os = "macos"), not(target_os = "ios")))]
             socket.bind_device(Some(device.as_bytes()))?;
 
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             match NonZeroU32::new(unsafe { libc::if_nametoindex(device.as_ptr()) }) {
                 Some(index) => socket.bind_device_by_index_v4(Some(index))?,
                 None => {
@@ -283,10 +283,10 @@ impl Local for LocalResource {
         if let Some(bind_device) = config.bind_device {
             let device = CString::new(bind_device)?;
 
-            #[cfg(not(target_os = "macos"))]
+            #[cfg(all(not(target_os = "macos"), not(target_os = "ios")))]
             socket.bind_device(Some(device.as_bytes()))?;
 
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
             match NonZeroU32::new(unsafe { libc::if_nametoindex(device.as_ptr()) }) {
                 Some(index) => socket.bind_device_by_index_v4(Some(index))?,
                 None => {

@@ -1,7 +1,7 @@
 # Basic concepts
 The main `message-io` entity is the **node**.
 It is in charge of managing the different connections, performing actions over them and offering
-the events comming from the network or by the own node (called signals).
+the events coming from the network or by the own node (called signals).
 
 <p align="center">
   <img src="https://docs.google.com/drawings/d/e/2PACX-1vQxs3w6bgIL1Qq600Q0IopWiKvvlKdj9KC7rUuF9Der6sN2UtzYrmn81DPEbRNFmBlEkE1qvDGxwc75/pub?w=890&h=617"/>

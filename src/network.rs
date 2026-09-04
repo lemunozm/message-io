@@ -29,6 +29,8 @@ use strum::{IntoEnumIterator};
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::time::{Duration, Instant};
 use std::io::{self};
+#[cfg(feature = "websocket")]
+use crate::adapters::ws::WsListenConfig;
 
 /// Create a network instance giving its controller and processor.
 pub fn split() -> (NetworkController, NetworkProcessor) {
@@ -288,6 +290,22 @@ impl NetworkController {
     ) -> io::Result<(ResourceId, SocketAddr)> {
         let addr = addr.to_socket_addrs().unwrap().next().unwrap();
         self.controllers[transport_listen.id() as usize].listen_with(transport_listen, addr).map(
+            |(resource_id, addr)| {
+                log::trace!("Listening at {} by {}", addr, resource_id);
+                (resource_id, addr)
+            },
+        )
+    }
+
+    /// Listen for WebSocket messages with settings applied to every accepted connection.
+    #[cfg(feature = "websocket")]
+    pub fn listen_ws_with(
+        &self,
+        config: WsListenConfig,
+        addr: impl ToSocketAddrs,
+    ) -> io::Result<(ResourceId, SocketAddr)> {
+        let addr = addr.to_socket_addrs().unwrap().next().unwrap();
+        self.controllers[Transport::Ws.id() as usize].listen_ws_with(config, addr).map(
             |(resource_id, addr)| {
                 log::trace!("Listening at {} by {}", addr, resource_id);
                 (resource_id, addr)

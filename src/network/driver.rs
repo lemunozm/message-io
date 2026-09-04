@@ -5,6 +5,8 @@ use super::registry::{ResourceRegistry, Register};
 use super::remote_addr::{RemoteAddr};
 use super::adapter::{Adapter, Remote, Local, SendStatus, AcceptedType, ReadStatus, PendingStatus};
 use super::transport::{TransportConnect, TransportListen};
+#[cfg(feature = "websocket")]
+use crate::adapters::ws::WsListenConfig;
 
 use std::net::{SocketAddr};
 use std::sync::{
@@ -77,6 +79,12 @@ pub trait ActionController: Send + Sync {
     fn listen_with(
         &self,
         config: TransportListen,
+        addr: SocketAddr,
+    ) -> io::Result<(ResourceId, SocketAddr)>;
+    #[cfg(feature = "websocket")]
+    fn listen_ws_with(
+        &self,
+        config: WsListenConfig,
         addr: SocketAddr,
     ) -> io::Result<(ResourceId, SocketAddr)>;
     fn send(&self, endpoint: Endpoint, data: &[u8]) -> SendStatus;
@@ -166,6 +174,18 @@ impl<R: Remote, L: Local> ActionController for Driver<R, L> {
         addr: SocketAddr,
     ) -> io::Result<(ResourceId, SocketAddr)> {
         L::listen_with(config, addr).map(|info| {
+            let id = self.local_registry.register(info.local, LocalProperties, false);
+            (id, info.local_addr)
+        })
+    }
+
+    #[cfg(feature = "websocket")]
+    fn listen_ws_with(
+        &self,
+        config: WsListenConfig,
+        addr: SocketAddr,
+    ) -> io::Result<(ResourceId, SocketAddr)> {
+        L::listen_ws_with(config, addr).map(|info| {
             let id = self.local_registry.register(info.local, LocalProperties, false);
             (id, info.local_addr)
         })

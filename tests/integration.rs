@@ -277,6 +277,51 @@ fn burst(transport: Transport, messages_count: usize) {
     let _sender_thread = start_burst_sender(transport, server_addr, messages_count);
 }
 
+// Two frames flushed in one write reach the listener in one socket read. Both must
+// come out of that readiness event: the poll is edge-triggered and the peer sends
+// nothing more.
+#[cfg(feature = "websocket")]
+#[test]
+fn websocket_frames_sharing_one_read() {
+    //util::init_logger(LogThread::Enabled); // Enable it for better debugging
+
+    let (tx, rx) = crossbeam_channel::bounded(1);
+    let mut receiver_thread = NamespacedThread::spawn("test-receiver", move || {
+        let (node, listener) = node::split::<()>();
+        node.signals().send_with_timer((), Duration::from_secs(5));
+
+        let (_, receiver_addr) = node.network().listen(Transport::Ws, LOCAL_ADDR).unwrap();
+        tx.send(receiver_addr).unwrap();
+
+        let mut count = 0;
+        listener.for_each(move |event| match event {
+            NodeEvent::Signal(_) => panic!("{}", TIMEOUT_EVENT_RECV_ERR),
+            NodeEvent::Network(net_event) => match net_event {
+                NetEvent::Connected(..) => unreachable!(),
+                NetEvent::Accepted(..) => (),
+                NetEvent::Message(_, data) => {
+                    assert_eq!(SMALL_MESSAGE.as_bytes(), data);
+                    count += 1;
+                    if count == 2 {
+                        node.stop();
+                    }
+                }
+                NetEvent::Disconnected(_) => (),
+            },
+        });
+    });
+
+    let receiver_addr = rx.recv().unwrap();
+    let (mut socket, _) = tungstenite::connect(format!("ws://{}", receiver_addr)).unwrap();
+    for _ in 0..2 {
+        let frame = tungstenite::Message::Binary(SMALL_MESSAGE.as_bytes().to_vec().into());
+        socket.write(frame).unwrap();
+    }
+    socket.flush().unwrap();
+
+    receiver_thread.join();
+}
+
 #[cfg_attr(feature = "tcp", test_case(Transport::Tcp, BIG_MESSAGE_SIZE))]
 #[cfg_attr(feature = "tcp", test_case(Transport::FramedTcp, BIG_MESSAGE_SIZE))]
 #[cfg_attr(feature = "udp", test_case(Transport::Udp, udp::MAX_LOCAL_PAYLOAD_LEN))]

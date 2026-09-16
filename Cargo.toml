@@ -37,7 +37,7 @@ integer-encoding = "3.0.2"
 lazy_static = "1.4.0"
 
 [target.'cfg(target_os = "linux")'.dependencies.nix]
-version = "0.26.2"
+version = "0.31.3"
 default-features = false
 features = ["socket", "uio", "net"]
 

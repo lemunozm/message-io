@@ -62,14 +62,11 @@ impl Decoder {
                 let max_remaining = (MAX_ENCODED_SIZE - self.stored.len()).min(data.len());
                 self.stored.extend_from_slice(&data[..max_remaining]);
 
-                if let Some(x) = decode_size(&self.stored) {
-                    // Now we know the size
-                    (x, &data[max_remaining..])
-                }
-                else {
-                    // We still don't know the size (data was too small)
-                    return None;
-                }
+                // If the size still can not be decoded, the data was too small.
+                let size_info = decode_size(&self.stored)?;
+
+                // Now we know the size
+                (size_info, &data[max_remaining..])
             }
         };
 

@@ -248,7 +248,14 @@ impl LocalResource {
                 Ok(msg) => {
                     let size = msg.bytes;
 
-                    let ingress_ip = match msg.cmsgs().find_map(|cmsg| match cmsg {
+                    let mut cmsgs = match msg.cmsgs() {
+                        Ok(cmsgs) => cmsgs,
+                        // The control messages can not be read: same as not finding
+                        // the packet info below, this datagram can not be filtered.
+                        Err(_) => continue,
+                    };
+
+                    let ingress_ip = match cmsgs.find_map(|cmsg| match cmsg {
                         ControlMessageOwned::Ipv4PacketInfo(pktinfo) => {
                             Some(Ipv4Addr::from(pktinfo.ipi_addr.s_addr.to_be()).into())
                         }
@@ -332,10 +339,10 @@ impl Local for LocalResource {
             // enable the socket packet info option
             match addr {
                 SocketAddr::V4 { .. } => {
-                    socket::setsockopt(socket.as_raw_fd(), sockopt::Ipv4PacketInfo, &true)?
+                    socket::setsockopt(&socket, sockopt::Ipv4PacketInfo, &true)?
                 }
                 SocketAddr::V6 { .. } => {
-                    socket::setsockopt(socket.as_raw_fd(), sockopt::Ipv6RecvPacketInfo, &true)?
+                    socket::setsockopt(&socket, sockopt::Ipv6RecvPacketInfo, &true)?
                 }
             }
 
@@ -343,7 +350,7 @@ impl Local for LocalResource {
             let ifaddr = getifaddrs()?.find_map(|ifaddr| {
                 ifaddr.address.and_then(|ss| {
                     match (
-                        ss.as_sockaddr_in().map(|si| Ipv4Addr::from(si.ip())),
+                        ss.as_sockaddr_in().map(|si| si.ip()),
                         ss.as_sockaddr_in6().map(|si| si.ip()),
                     ) {
                         (Some(ip4), _) if IpAddr::V4(ip4) == addr.ip() => Some(ifaddr),
@@ -362,7 +369,7 @@ impl Local for LocalResource {
                     // Some interfaces like VPN adapters don't have broadcast support.
                     if let Some(broadcast_ss) = ifaddr.broadcast {
                         if let Some(si) = broadcast_ss.as_sockaddr_in() {
-                            ingress_addresses.push(Ipv4Addr::from(si.ip()).into());
+                            ingress_addresses.push(si.ip().into());
                             ingress_addresses.push(Ipv4Addr::BROADCAST.into());
                         }
                         if let Some(si) = broadcast_ss.as_sockaddr_in6() {
@@ -372,7 +379,7 @@ impl Local for LocalResource {
 
                     // Bind the socket to the specific interface
                     socket::setsockopt(
-                        socket.as_raw_fd(),
+                        &socket,
                         sockopt::BindToDevice,
                         &ifaddr.interface_name.into(),
                     )?;

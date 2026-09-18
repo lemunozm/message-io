@@ -9,8 +9,8 @@ use crate::network::{TransportConnect, TransportListen};
 use mio::event::{Source};
 use mio::net::{TcpStream, TcpListener};
 
-use tungstenite::protocol::{WebSocket, Message};
-use tungstenite::{accept as ws_accept};
+use tungstenite::protocol::{WebSocket, Message, WebSocketConfig};
+use tungstenite::{accept_with_config as ws_accept};
 use tungstenite::client::{client as ws_connect};
 use tungstenite::handshake::{
     HandshakeError, MidHandshake,
@@ -30,6 +30,27 @@ use std::ops::{DerefMut};
 // From https://docs.rs/tungstenite/0.13.0/src/tungstenite/protocol/mod.rs.html#65
 pub const MAX_PAYLOAD_LEN: usize = 32 << 20;
 
+/// WebSocket settings applied to every connection accepted by one listener.
+#[must_use]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WsListenConfig {
+    websocket: WebSocketConfig,
+}
+
+impl WsListenConfig {
+    /// Set the maximum size of one incoming WebSocket message.
+    pub fn with_max_message_size(mut self, max_message_size: Option<usize>) -> Self {
+        self.websocket.max_message_size = max_message_size;
+        self
+    }
+
+    /// Set the maximum size of one incoming WebSocket frame.
+    pub fn with_max_frame_size(mut self, max_frame_size: Option<usize>) -> Self {
+        self.websocket.max_frame_size = max_frame_size;
+        self
+    }
+}
+
 pub(crate) struct WsAdapter;
 impl Adapter for WsAdapter {
     type Remote = RemoteResource;
@@ -38,7 +59,7 @@ impl Adapter for WsAdapter {
 
 enum PendingHandshake {
     Connect(Url, ArcTcpStream),
-    Accept(ArcTcpStream),
+    Accept(ArcTcpStream, WebSocketConfig),
     Client(MidHandshake<ClientHandshake<ArcTcpStream>>),
     Server(MidHandshake<ServerHandshake<ArcTcpStream, NoCallback>>),
 }
@@ -62,7 +83,7 @@ impl Resource for RemoteResource {
             }
             RemoteState::Handshake(Some(handshake)) => match handshake {
                 PendingHandshake::Connect(_, stream) => Arc::get_mut(&mut stream.0).unwrap(),
-                PendingHandshake::Accept(stream) => Arc::get_mut(&mut stream.0).unwrap(),
+                PendingHandshake::Accept(stream, _) => Arc::get_mut(&mut stream.0).unwrap(),
                 PendingHandshake::Client(handshake) => {
                     Arc::get_mut(&mut handshake.get_mut().get_mut().0).unwrap()
                 }
@@ -211,9 +232,9 @@ impl Remote for RemoteResource {
                         }
                     }
                 }
-                PendingHandshake::Accept(stream) => {
+                PendingHandshake::Accept(stream, config) => {
                     let stream_backup = stream.clone();
-                    match ws_accept(stream) {
+                    match ws_accept(stream, Some(config)) {
                         Ok(web_socket) => {
                             *state = RemoteState::WebSocket(web_socket);
                             PendingStatus::Ready
@@ -316,6 +337,7 @@ impl RemoteResource {
 
 pub(crate) struct LocalResource {
     listener: TcpListener,
+    websocket: WebSocketConfig,
 }
 
 impl Resource for LocalResource {
@@ -327,10 +349,21 @@ impl Resource for LocalResource {
 impl Local for LocalResource {
     type Remote = RemoteResource;
 
-    fn listen_with(_: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+    fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+        match config {
+            TransportListen::Ws => {}
+            _ => panic!("Internal error: Got wrong config"),
+        }
+        Self::listen_ws_with(WsListenConfig::default(), addr)
+    }
+
+    fn listen_ws_with(config: WsListenConfig, addr: SocketAddr) -> io::Result<ListeningInfo<Self>> {
         let listener = TcpListener::bind(addr)?;
         let local_addr = listener.local_addr().unwrap();
-        Ok(ListeningInfo { local: LocalResource { listener }, local_addr })
+        Ok(ListeningInfo {
+            local: LocalResource { listener, websocket: config.websocket },
+            local_addr,
+        })
     }
 
     fn accept(&self, mut accept_remote: impl FnMut(AcceptedType<'_, Self::Remote>)) {
@@ -340,6 +373,7 @@ impl Local for LocalResource {
                     let remote = RemoteResource {
                         state: Mutex::new(RemoteState::Handshake(Some(PendingHandshake::Accept(
                             stream.into(),
+                            self.websocket,
                         )))),
                     };
                     accept_remote(AcceptedType::Remote(addr, remote));

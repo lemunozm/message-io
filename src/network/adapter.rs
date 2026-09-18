@@ -1,4 +1,6 @@
 use crate::network::transport::{TransportConnect, TransportListen};
+#[cfg(feature = "websocket")]
+use crate::adapters::ws::WsListenConfig;
 
 use super::remote_addr::{RemoteAddr};
 use super::poll::{Readiness};
@@ -205,6 +207,14 @@ pub trait Local: Resource + Sized {
     /// is guaranteed by the upper level to be of the variant matching the adapter. Therefore other
     /// variants can be safely ignored.
     fn listen_with(config: TransportListen, addr: SocketAddr) -> io::Result<ListeningInfo<Self>>;
+
+    #[cfg(feature = "websocket")]
+    fn listen_ws_with(_: WsListenConfig, _: SocketAddr) -> io::Result<ListeningInfo<Self>> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "WebSocket listener settings are unsupported by this adapter",
+        ))
+    }
 
     /// Called when a local resource received an event.
     /// It means that some resource have tried to connect.

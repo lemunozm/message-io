@@ -1,4 +1,6 @@
 use crate::network::{TransportConnect, TransportListen};
+#[cfg(feature = "websocket")]
+use crate::adapters::ws::WsListenConfig;
 
 use super::endpoint::{Endpoint};
 use super::resource_id::{ResourceId};
@@ -75,6 +77,15 @@ impl ActionController for UnimplementedDriver {
     fn listen_with(
         &self,
         _: TransportListen,
+        _: SocketAddr,
+    ) -> io::Result<(ResourceId, SocketAddr)> {
+        panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
+    }
+
+    #[cfg(feature = "websocket")]
+    fn listen_ws_with(
+        &self,
+        _: WsListenConfig,
         _: SocketAddr,
     ) -> io::Result<(ResourceId, SocketAddr)> {
         panic!("{}", UNIMPLEMENTED_DRIVER_ERR);
